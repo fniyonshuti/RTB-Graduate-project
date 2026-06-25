@@ -1,277 +1,380 @@
-import { useState } from 'react'
-import { Alert, Button, Card, SelectField, TextField } from '../components/common'
-import { useAuth } from '../context/AuthContext'
-import type { Role } from '../types'
-import heroImage from '../assets/hero.png'
+import { useState } from "react";
+import {
+  Alert,
+  Button,
+  SelectField,
+  TextField,
+} from "../components/common";
+import { useAuth } from "../context/AuthContext";
+import type { Role } from "../types";
+import heroImage from "../assets/hero.png";
 
 export function AuthPages() {
-  const { login, register } = useAuth()
-  const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [role, setRole] = useState<Role>('graduate')
-  const [institution, setInstitution] = useState('')
-  const [error, setError] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { login, register } = useAuth();
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [showAuthPanel, setShowAuthPanel] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<Role>("graduate");
+  const [institution, setInstitution] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setError('')
-    setIsSubmitting(true)
+    event.preventDefault();
+    setError("");
+    setIsSubmitting(true);
 
     try {
-      if (mode === 'login') {
-        await login(email, password)
+      if (mode === "login") {
+        await login(email, password);
       } else {
-        await register({ name, email, password, role, institution })
+        await register({ name, email, password, role, institution });
       }
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Authentication failed')
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Authentication failed",
+      );
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
   }
 
   return (
     <main className="auth-page">
-      <nav className="auth-navbar" aria-label="Homepage navigation">
+      <header className="home-header">
         <div className="auth-brand">
-          <div className="brand-mark">RTB</div>
+          <div className="brand-mark">SG</div>
           <div>
-            <strong>Skills Gap Analysis Tool</strong>
-            <span>Kicukiro TVET ICT Graduates</span>
+            <strong>Skills Gap</strong>
+            <span>RTB-aligned graduate assessment</span>
           </div>
         </div>
-        <div className="auth-nav-links">
-          <a href="#overview">Overview</a>
+        <nav className="home-nav-links" aria-label="Homepage sections">
+          <a href="#project-description">Overview</a>
           <a href="#workflow">Workflow</a>
-          <a href="#users">Users</a>
-        </div>
+          <a href="#features">System Logic</a>
+        </nav>
         <div className="auth-nav-actions">
           <button
-            className={mode === 'login' ? 'active' : ''}
             type="button"
-            onClick={() => setMode('login')}
+            onClick={() => {
+              setMode("login");
+              setShowAuthPanel(true);
+            }}
           >
-            Login
+            Sign in
           </button>
           <button
-            className={mode === 'register' ? 'active' : ''}
             type="button"
-            onClick={() => setMode('register')}
+            onClick={() => {
+              setMode("register");
+              setShowAuthPanel(true);
+            }}
           >
-            Register
+            Create account
           </button>
         </div>
-      </nav>
+      </header>
 
-      <section className="auth-hero">
-        <section className="auth-intro">
+      <section
+        className="home-hero"
+        style={{
+          backgroundImage: `linear-gradient(90deg, rgba(9, 23, 38, 0.88) 0%, rgba(9, 23, 38, 0.72) 48%, rgba(9, 23, 38, 0.18) 100%), url(${heroImage})`,
+        }}
+      >
+        <div className="home-hero__content">
           <BadgeLine />
-          <h1>Evidence-based skills gap analysis for ICT TVET graduates.</h1>
+          <h1>Skills Gap Analysis Tool</h1>
           <p>
-            Designed for Kicukiro District, this system helps graduates prove
-            practical ICT competencies, helps assessors review evidence using
-            rubrics, and compares final scores with RTB occupational standards.
+            A web-based system for ICT TVET graduates in Kicukiro District to
+            submit practical evidence, complete theory questions, receive
+            assessor-reviewed scores, and compare results with RTB competency
+            benchmarks.
           </p>
           <div className="hero-actions">
-            <Button onClick={() => setMode('register')}>Get Started</Button>
-            <Button variant="secondary" onClick={() => setMode('login')}>
-              Sign In
-            </Button>
-          </div>
-          <div className="assessment-model">
-            <span>Practical Task 50%</span>
-            <span>Quiz Theory 20%</span>
-            <span>Portfolio 20%</span>
-            <span>Self Review 10%</span>
-          </div>
-          <div className="auth-trust-grid" aria-label="System capabilities">
-            <div>
-              <strong>50-120 graduates</strong>
-              <span>Built for realistic pilot evaluation in Kicukiro District.</span>
-            </div>
-            <div>
-              <strong>RTB standards</strong>
-              <span>Competencies are mapped to occupational requirements.</span>
-            </div>
-            <div>
-              <strong>Clear reports</strong>
-              <span>Graduates see strengths, weaknesses, and next steps.</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="auth-showcase" aria-label="Project assessment overview">
-          <img src={heroImage} alt="Digital competency assessment layers" />
-          <div className="showcase-panel">
-            <span>Graduate Assessment</span>
-            <strong>Networking Fundamentals</strong>
-            <div className="showcase-progress">
-              <div>
-                <span>Final score</span>
-                <strong>78%</strong>
-              </div>
-              <div>
-                <span>RTB benchmark</span>
-                <strong>85%</strong>
-              </div>
-            </div>
-            <div className="showcase-bar" aria-hidden="true">
-              <span />
-            </div>
-            <small>Low Gap - practice router configuration and subnetting tasks.</small>
-          </div>
-        </section>
-
-        <Card title={mode === 'login' ? 'Sign in to dashboard' : 'Create project account'}>
-          <form className="form-stack" onSubmit={handleSubmit}>
-            {error && <Alert type="error">{error}</Alert>}
-            {mode === 'register' && (
-              <>
-                <TextField
-                  label="Full name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  required
-                />
-                <SelectField
-                  label="Role"
-                  value={role}
-                  onChange={(event) => setRole(event.target.value as Role)}
-                >
-                  <option value="graduate">Graduate</option>
-                  <option value="assessor">Assessor</option>
-                  <option value="admin">Admin</option>
-                </SelectField>
-                <TextField
-                  label="Institution"
-                  value={institution}
-                  onChange={(event) => setInstitution(event.target.value)}
-                />
-              </>
-            )}
-            <TextField
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-            <TextField
-              label="Password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-            <Button disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Please wait...' : mode === 'login' ? 'Login' : 'Register'}
-            </Button>
-            <button
-              className="link-button"
-              type="button"
+            <Button
               onClick={() => {
-                setError('')
-                setMode(mode === 'login' ? 'register' : 'login')
+                setMode("register");
+                setShowAuthPanel(true);
               }}
             >
-              {mode === 'login' ? 'Create a new account' : 'Already have an account? Sign in'}
-            </button>
-          </form>
-        </Card>
+              Get started
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setMode("login");
+                setShowAuthPanel(true);
+              }}
+            >
+              Sign in
+            </Button>
+          </div>
+        </div>
       </section>
 
-      <section className="homepage-section" id="overview">
-        <div className="section-intro">
-          <span className="eyebrow">Why this system matters</span>
-          <h2>It closes the gap between training outcomes and workplace expectations.</h2>
+      {showAuthPanel && (
+        <section className="auth-panel">
+          <div className="auth-window">
+            <aside className="auth-window__brand">
+              <div className="brand-mark">SG</div>
+              <h2>Skills Gap Analysis Tool</h2>
+              <p>
+                Assess ICT graduate competencies against RTB-aligned standards
+                for Kicukiro District.
+              </p>
+              <div className="auth-window__meta">
+                <span>Practical evidence</span>
+                <span>Assessor review</span>
+                <span>Gap reports</span>
+              </div>
+            </aside>
+
+            <section className="auth-window__form" aria-label="Account access form">
+              <button
+                className="auth-window__close"
+                type="button"
+                onClick={() => setShowAuthPanel(false)}
+              >
+                Back to homepage
+              </button>
+              <div className="auth-window__heading">
+                <span className="eyebrow">Account access</span>
+                <h2>{mode === "login" ? "Sign in" : "Create account"}</h2>
+                <p>
+                  {mode === "login"
+                    ? "Enter your credentials to open your role-based dashboard."
+                    : "Create an account as a graduate, assessor, or administrator."}
+                </p>
+              </div>
+
+              <form className="form-stack auth-form" onSubmit={handleSubmit}>
+                {error && <Alert type="error">{error}</Alert>}
+                {mode === "register" && (
+                  <>
+                    <TextField
+                      label="Full name"
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      required
+                    />
+                    <SelectField
+                      label="Role"
+                      value={role}
+                      onChange={(event) => setRole(event.target.value as Role)}
+                    >
+                      <option value="graduate">Graduate</option>
+                      <option value="assessor">Assessor</option>
+                      <option value="admin">Admin</option>
+                    </SelectField>
+                    <TextField
+                      label="Institution"
+                      value={institution}
+                      onChange={(event) => setInstitution(event.target.value)}
+                    />
+                  </>
+                )}
+                <TextField
+                  label="Email"
+                  placeholder="graduate@skills-gap.local"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                />
+                <TextField
+                  label="Password"
+                  placeholder="Enter your password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+                <Button disabled={isSubmitting} type="submit">
+                  {isSubmitting
+                    ? "Please wait..."
+                    : mode === "login"
+                      ? "Sign in"
+                      : "Create account"}
+                </Button>
+                <p className="auth-switch">
+                  {mode === "login" ? "No account yet?" : "Already have an account?"}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError("");
+                      setMode(mode === "login" ? "register" : "login");
+                    }}
+                  >
+                    {mode === "login" ? "Create account" : "Sign in"}
+                  </button>
+                </p>
+              </form>
+            </section>
+          </div>
+        </section>
+      )}
+
+      <section
+        className="home-section home-section--light"
+        id="project-description"
+      >
+        <div className="section-intro section-intro--center">
+          <span className="eyebrow">About project</span>
+          <h2>Built for graduates, TVET institutions, and administrators</h2>
           <p>
-            The proposal identifies a real challenge: many ICT TVET graduates do
-            not clearly know how their skills compare with RTB occupational
-            standards. This tool turns assessment evidence into measurable scores,
-            gap levels, and improvement recommendations.
+            The system supports the full skills gap workflow: graduate profile
+            management, competency assessment, practical evidence submission,
+            assessor rubric review, RTB benchmark comparison, recommendations,
+            reports, notifications, and dashboards.
           </p>
         </div>
-        <div className="homepage-card-grid">
-          <article>
-            <strong>Practical skills first</strong>
+        <div className="card-grid card-grid--three">
+          <article className="info-card">
+            <span className="info-icon">01</span>
+            <strong>Graduates</strong>
             <p>
-              Graduates submit real tasks, project work, quiz answers, portfolio
-              links, and supporting files instead of relying only on self-report.
+              Register, manage a profile, select competencies, submit practical
+              tasks, answer theory questions, upload portfolio evidence, and view
+              skill gap results.
             </p>
           </article>
-          <article>
-            <strong>Assessor-reviewed evidence</strong>
+          <article className="info-card">
+            <span className="info-icon">02</span>
+            <strong>Assessors</strong>
             <p>
-              TVET assessors review submissions with predefined rubrics and add
+              Review submitted evidence, score practical work and portfolio
+              artifacts using rubrics, approve quiz/theory results, and provide
               competency-specific recommendations.
             </p>
           </article>
-          <article>
-            <strong>Automated gap analysis</strong>
+          <article className="info-card">
+            <span className="info-icon">03</span>
+            <strong>Administrators</strong>
             <p>
-              The system calculates final scores, compares them with RTB
-              benchmarks, classifies gap levels, and prepares downloadable reports.
+              Manage users, ICT competencies, RTB benchmark scores, assessment
+              records, reports, notifications, and overall system data.
             </p>
           </article>
         </div>
       </section>
 
-      <section className="homepage-section" id="workflow">
-        <div className="section-intro">
-          <span className="eyebrow">How it works</span>
-          <h2>A simple workflow from evidence submission to improvement plan.</h2>
-        </div>
-        <div className="homepage-workflow">
-          <div>
-            <span>01</span>
-            <strong>Select competency</strong>
-            <p>Graduate chooses an ICT competency aligned with RTB standards.</p>
+      <section className="home-section home-section--muted" id="workflow">
+        <div className="workflow-layout">
+          <div className="section-intro">
+            <span className="eyebrow">How it works</span>
+            <h2>From assessment to evidence-based action</h2>
+            <p>
+              The system measures real practical ability by combining practical
+              tasks, quiz/theory answers, portfolio evidence, and self-assessment
+              into a final weighted competency score.
+            </p>
           </div>
-          <div>
-            <span>02</span>
-            <strong>Submit evidence</strong>
-            <p>Practical tasks, theory answers, portfolio work, and self-score are submitted.</p>
-          </div>
-          <div>
-            <span>03</span>
-            <strong>Assessor review</strong>
-            <p>Assessor scores practical, quiz, portfolio, and self-assessment components.</p>
-          </div>
-          <div>
-            <span>04</span>
-            <strong>Gap report</strong>
-            <p>Graduate receives score, RTB benchmark comparison, gap level, and recommendations.</p>
+          <div className="workflow-checklist" aria-label="Workflow steps">
+            <div>
+              <span />
+              Graduate creates an account and completes profile information
+            </div>
+            <div>
+              <span />
+              Graduate selects an RTB-aligned ICT competency
+            </div>
+            <div>
+              <span />
+              Graduate submits practical task work, theory answers, and portfolio evidence
+            </div>
+            <div>
+              <span />
+              Assessor reviews evidence, assigns rubric scores, and adds recommendations
+            </div>
+            <div>
+              <span />
+              System calculates skill gap, classifies gap level, notifies users, and generates reports
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="homepage-section" id="users">
-        <div className="section-intro">
-          <span className="eyebrow">Built for every actor</span>
-          <h2>Graduates, assessors, and administrators each get a focused workspace.</h2>
-        </div>
-        <div className="homepage-user-grid">
-          <article>
-            <strong>Graduates</strong>
-            <span>Take assessments, upload evidence, view gap results, download reports.</span>
+      <section className="home-section home-section--cards" id="features">
+        <div className="card-grid card-grid--three card-grid--soft">
+          <article className="feature-card">
+            <strong>Weighted assessment model</strong>
+            <p>
+              Final score uses Practical Task 50%, Quiz/Theory 20%, Portfolio
+              20%, and Self Assessment 10%.
+            </p>
           </article>
-          <article>
-            <strong>Assessors</strong>
-            <span>Review submitted evidence, assign rubric scores, provide recommendations.</span>
+          <article className="feature-card">
+            <strong>RTB benchmark comparison</strong>
+            <p>
+              Skill Gap = RTB Benchmark Score - Graduate Final Score, then the
+              system classifies No, Low, Moderate, or High Gap.
+            </p>
           </article>
-          <article>
-            <strong>Administrators</strong>
-            <span>Manage users, competencies, RTB benchmarks, notifications, and reports.</span>
+          <article className="feature-card">
+            <strong>Reports and notifications</strong>
+            <p>
+              Graduates can download reports and receive notifications when
+              reviews are completed; assessors are notified after submissions.
+            </p>
           </article>
         </div>
       </section>
+
+      <footer className="home-footer">
+        <div className="home-footer__brand">
+          <div className="brand-mark">SG</div>
+          <p>
+            Supporting ICT TVET graduate readiness in Kicukiro District through
+            practical assessment, RTB benchmark comparison, assessor
+            recommendations, notifications, and reports.
+          </p>
+        </div>
+        <div>
+          <strong>Access</strong>
+          <button
+            className="home-footer-link"
+            type="button"
+            onClick={() => {
+              setMode("register");
+              setShowAuthPanel(true);
+            }}
+          >
+            Create account
+          </button>
+          <button
+            className="home-footer-link"
+            type="button"
+            onClick={() => {
+              setMode("login");
+              setShowAuthPanel(true);
+            }}
+          >
+            Sign in
+          </button>
+          <span>Role-based dashboard</span>
+        </div>
+        <div>
+          <strong>Users</strong>
+          <span>Graduates</span>
+          <span>Assessors</span>
+          <span>Administrators</span>
+        </div>
+        <div className="home-footer__bottom">
+          <span>Skills Gap Analysis Tool for ICT TVET Graduates in Kicukiro District</span>
+          <span>Practical evidence, RTB benchmarks, gap levels, and recommendations</span>
+        </div>
+      </footer>
     </main>
-  )
+  );
 }
 
 function BadgeLine() {
-  return <span className="eyebrow">TVET ICT Graduate Competency Assessment</span>
+  return (
+    <span className="eyebrow">TVET ICT Graduate Competency Assessment</span>
+  );
 }
