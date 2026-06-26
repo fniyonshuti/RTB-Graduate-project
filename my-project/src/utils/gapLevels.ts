@@ -2,6 +2,7 @@ import type { GapLevel } from '../types'
 
 export const gapLevelStyles: Record<GapLevel, string> = {
   'No Gap': 'gap-no',
+  'Very Low Gap': 'gap-very-low',
   'Low Gap': 'gap-low',
   'Moderate Gap': 'gap-moderate',
   'High Gap': 'gap-high',
