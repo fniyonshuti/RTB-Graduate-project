@@ -1,8 +1,8 @@
 export const SCORE_WEIGHTS = {
-  practicalTask: 0.5,
+  practicalTask: 0.6,
   quiz: 0.2,
-  portfolio: 0.2,
-  selfAssessment: 0.1,
+  portfolio: 0.15,
+  selfAssessment: 0.05,
 };
 
 function isValidScore(score) {
