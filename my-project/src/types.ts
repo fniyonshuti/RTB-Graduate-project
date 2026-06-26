@@ -1,6 +1,12 @@
 export type Role = 'graduate' | 'assessor' | 'admin'
 
-export type GapLevel = 'No Gap' | 'Low Gap' | 'Moderate Gap' | 'High Gap' | 'Not Reviewed'
+export type GapLevel =
+  | 'No Gap'
+  | 'Very Low Gap'
+  | 'Low Gap'
+  | 'Moderate Gap'
+  | 'High Gap'
+  | 'Not Reviewed'
 
 export type AssessmentStatus =
   | 'draft'
@@ -112,6 +118,8 @@ export type Assessment = {
     practicalTaskTitle?: string
     practicalTaskInstructions?: string
     practicalTask?: string
+    githubRepositoryUrl?: string
+    repositorySummary?: RepositorySummary
     quizAnswers?: string
     theoryAnswers?: {
       questionId: string
@@ -143,15 +151,58 @@ export type Assessment = {
   reviewedAt?: string
 }
 
+export type RepositorySummary = {
+  url?: string
+  owner?: string
+  repo?: string
+  isValid?: boolean
+  fetchStatus?: string
+  analyzedAt?: string
+  description?: string
+  defaultBranch?: string
+  stars?: number
+  forks?: number
+  languages?: string[]
+  readmeFound?: boolean
+  readmeExcerpt?: string
+  recentCommits?: {
+    message?: string
+    author?: string
+    date?: string
+  }[]
+  supportedFileCount?: number
+  supportedFileTypes?: {
+    extension?: string
+    count?: number
+  }[]
+  sampledSourceFiles?: {
+    path?: string
+    language?: string
+    size?: number
+    excerpt?: string
+  }[]
+  topLevelItems?: string[]
+  codeQualityNotes?: string[]
+  summaryText?: string
+}
+
 export type Recommendation = {
   _id: string
   graduate: User
   competency: Competency
   gapLevel: GapLevel
   message: string
+  draftMessage?: string
   actionItems: string[]
   resources: string[]
   priority: 'low' | 'medium' | 'high'
+  aiProvider?: string
+  aiModel?: string
+  aiPrompt?: string
+  aiRawResponse?: string
+  approvedBy?: User
+  approvedAt?: string
+  isApproved?: boolean
 }
 
 export type EvidenceFile = {
