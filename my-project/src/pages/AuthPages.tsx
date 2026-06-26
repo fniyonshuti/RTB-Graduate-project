@@ -304,15 +304,15 @@ export function AuthPages() {
           <article className="feature-card">
             <strong>Weighted assessment model</strong>
             <p>
-              Final score uses Practical Task 50%, Quiz/Theory 20%, Portfolio
-              20%, and Self Assessment 10%.
+              Final score uses Practical/GitHub Project 60%, Quiz/Theory 20%,
+              Portfolio 15%, and Self Assessment 5%.
             </p>
           </article>
           <article className="feature-card">
             <strong>RTB benchmark comparison</strong>
             <p>
               Skill Gap = RTB Benchmark Score - Graduate Final Score, then the
-              system classifies No, Low, Moderate, or High Gap.
+              system classifies No, Very Low, Low, Moderate, or High Gap.
             </p>
           </article>
           <article className="feature-card">
