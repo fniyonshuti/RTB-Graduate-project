@@ -92,6 +92,7 @@ export const api = {
       practicalSubmissionMode?: 'direct_test' | 'file_upload' | 'mixed'
       practicalTaskId?: string
       practicalTask?: string
+      githubRepositoryUrl?: string
       quizAnswers?: string
       theoryAnswers?: {
         questionId: string
@@ -129,6 +130,38 @@ export const api = {
     `/assessments/${id}/review`,
     { method: 'PUT', token, body },
   ),
+
+  previewAssessmentRecommendation: (
+    token: string,
+    id: string,
+    body: {
+      practicalTaskScore: number
+      quizScore: number
+      portfolioScore: number
+      selfAssessmentScore: number
+      assessorComment?: string
+    },
+  ) => request<{
+    assessmentId: string
+    benchmarkScore: number
+    finalScore: number
+    skillGap: number
+    gapLevel: string
+    recommendation: {
+      draftMessage: string
+      message: string
+      actionItems: string[]
+      resources: string[]
+      priority: 'low' | 'medium' | 'high'
+      provider: string
+      model: string
+    }
+    context: Record<string, unknown>
+  }>(`/assessments/${id}/recommendation-preview`, {
+    method: 'POST',
+    token,
+    body,
+  }),
 
   results: (token: string) => request<Assessment[]>('/assessments/results/me', { token }),
 
