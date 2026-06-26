@@ -33,7 +33,14 @@ const reportSchema = new mongoose.Schema(
     },
     overallGapLevel: {
       type: String,
-      enum: ['No Gap', 'Low Gap', 'Moderate Gap', 'High Gap', 'Not Available'],
+      enum: [
+        'No Gap',
+        'Very Low Gap',
+        'Low Gap',
+        'Moderate Gap',
+        'High Gap',
+        'Not Available',
+      ],
       default: 'Not Available',
     },
     strengths: [
