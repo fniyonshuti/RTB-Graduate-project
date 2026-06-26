@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { api } from '../api/client'
-import type { ViewKey } from '../components/layout'
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { api } from "../api/client";
+import type { ViewKey } from "../components/layout";
 import {
   Alert,
   Button,
@@ -13,7 +13,7 @@ import {
   StatCard,
   TextArea,
   TextField,
-} from '../components/common'
+} from "../components/common";
 import type {
   Assessment,
   Benchmark,
@@ -25,73 +25,76 @@ import type {
   Report,
   Role,
   User,
-} from '../types'
-import { formatDate, formatPercent, readableStatus } from '../utils/gapLevels'
+} from "../types";
+import { formatDate, formatPercent, readableStatus } from "../utils/gapLevels";
 
 type PageProps = {
-  token: string
-  role: Role
-}
+  token: string;
+  role: Role;
+};
 
 type DashboardPageProps = PageProps & {
-  onNavigate: (view: ViewKey) => void
-}
+  onNavigate: (view: ViewKey) => void;
+};
 
 type AsyncState<T> = {
-  data: T
-  isLoading: boolean
-  error: string
-}
+  data: T;
+  isLoading: boolean;
+  error: string;
+};
 
 function useAsyncData<T>(load: () => Promise<T>, initialData: T) {
   const [state, setState] = useState<AsyncState<T>>({
     data: initialData,
     isLoading: true,
-    error: '',
-  })
+    error: "",
+  });
 
   const refresh = async () => {
-    setState((current) => ({ ...current, isLoading: true, error: '' }))
+    setState((current) => ({ ...current, isLoading: true, error: "" }));
     try {
-      const data = await load()
-      setState({ data, isLoading: false, error: '' })
+      const data = await load();
+      setState({ data, isLoading: false, error: "" });
     } catch (caughtError) {
       setState({
         data: initialData,
         isLoading: false,
-        error: caughtError instanceof Error ? caughtError.message : 'Failed to load data',
-      })
+        error:
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Failed to load data",
+      });
     }
-  }
+  };
 
   useEffect(() => {
-    void refresh()
-  }, [])
+    void refresh();
+  }, []);
 
-  return { ...state, refresh }
+  return { ...state, refresh };
 }
 
 function dashboardNumber(data: DashboardData, key: string) {
-  return typeof data[key] === 'number' ? Number(data[key]) : 0
+  return typeof data[key] === "number" ? Number(data[key]) : 0;
 }
 
 function dashboardText(data: DashboardData, key: string) {
-  return typeof data[key] === 'string' ? String(data[key]) : 'N/A'
+  return typeof data[key] === "string" ? String(data[key]) : "N/A";
 }
 
 function dashboardList<T>(data: DashboardData, key: string) {
-  return Array.isArray(data[key]) ? (data[key] as T[]) : []
+  return Array.isArray(data[key]) ? (data[key] as T[]) : [];
 }
 
 export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.dashboard(token),
     {} as DashboardData,
-  )
+  );
 
-  if (isLoading) return <LoadingState message="Loading dashboard..." />
+  if (isLoading) return <LoadingState message="Loading dashboard..." />;
 
-  if (role === 'graduate') {
+  if (role === "graduate") {
     return (
       <GraduateDashboard
         data={data}
@@ -99,23 +102,29 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
         onNavigate={onNavigate}
         onRefresh={refresh}
       />
-    )
+    );
   }
 
   const cards =
-    role === 'assessor'
-        ? [
-            ['Pending Reviews', dashboardNumber(data, 'pendingReviews')],
-            ['Reviewed Assessments', dashboardNumber(data, 'reviewedAssessments')],
-            ['High Gap Cases', dashboardNumber(data, 'highGapCases')],
-            ['Current Role', 'Assessor'],
-          ]
-        : [
-            ['Total Graduates', dashboardNumber(data, 'totalGraduates')],
-            ['Total Assessors', dashboardNumber(data, 'totalAssessors')],
-            ['Total Competencies', dashboardNumber(data, 'totalCompetencies')],
-            ['Average Skill Gap', formatPercent(dashboardNumber(data, 'averageSkillGap'))],
-          ]
+    role === "assessor"
+      ? [
+          ["Pending Reviews", dashboardNumber(data, "pendingReviews")],
+          [
+            "Reviewed Assessments",
+            dashboardNumber(data, "reviewedAssessments"),
+          ],
+          ["High Gap Cases", dashboardNumber(data, "highGapCases")],
+          ["Current Role", "Assessor"],
+        ]
+      : [
+          ["Total Graduates", dashboardNumber(data, "totalGraduates")],
+          ["Total Assessors", dashboardNumber(data, "totalAssessors")],
+          ["Total Competencies", dashboardNumber(data, "totalCompetencies")],
+          [
+            "Average Skill Gap",
+            formatPercent(dashboardNumber(data, "averageSkillGap")),
+          ],
+        ];
 
   return (
     <section className="page-stack">
@@ -128,7 +137,11 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
       <div className="stat-grid">
         {cards.map(([label, value]) => (
           <StatCard
-            helper={label === 'Average Skill Gap' ? dashboardText(data, 'overallGapLevel') : undefined}
+            helper={
+              label === "Average Skill Gap"
+                ? dashboardText(data, "overallGapLevel")
+                : undefined
+            }
             key={label}
             label={String(label)}
             value={value}
@@ -145,7 +158,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
         </div>
       </Card>
     </section>
-  )
+  );
 }
 
 function GraduateDashboard({
@@ -154,23 +167,28 @@ function GraduateDashboard({
   onNavigate,
   onRefresh,
 }: {
-  data: DashboardData
-  error: string
-  onNavigate: (view: ViewKey) => void
-  onRefresh: () => Promise<void>
+  data: DashboardData;
+  error: string;
+  onNavigate: (view: ViewKey) => void;
+  onRefresh: () => Promise<void>;
 }) {
-  const recentAssessments = dashboardList<Assessment>(data, 'recentAssessments')
+  const recentAssessments = dashboardList<Assessment>(
+    data,
+    "recentAssessments",
+  );
   const latestRecommendations = dashboardList<Recommendation>(
     data,
-    'latestRecommendations',
-  )
-  const overallScore = dashboardNumber(data, 'overallScore')
-  const averageGap = dashboardNumber(data, 'averageGap')
-  const competenciesAssessed = dashboardNumber(data, 'competenciesAssessed')
-  const assessmentsSubmitted = dashboardNumber(data, 'assessmentsSubmitted')
-  const highGapCount = dashboardNumber(data, 'highGapCount')
-  const hasReviewedResults = competenciesAssessed > 0
-  const nextAction = hasReviewedResults ? 'Review improvement plan' : 'Take first assessment'
+    "latestRecommendations",
+  );
+  const overallScore = dashboardNumber(data, "overallScore");
+  const averageGap = dashboardNumber(data, "averageGap");
+  const competenciesAssessed = dashboardNumber(data, "competenciesAssessed");
+  const assessmentsSubmitted = dashboardNumber(data, "assessmentsSubmitted");
+  const highGapCount = dashboardNumber(data, "highGapCount");
+  const hasReviewedResults = competenciesAssessed > 0;
+  const nextAction = hasReviewedResults
+    ? "Review improvement plan"
+    : "Take first assessment";
 
   return (
     <section className="page-stack">
@@ -179,13 +197,13 @@ function GraduateDashboard({
           <span className="eyebrow">Graduate workspace</span>
           <h1>Know your ICT skill gaps and what to improve next.</h1>
           <p>
-            Submit practical evidence, wait for assessor review, then compare your
-            score with RTB competency benchmarks.
+            Submit practical evidence, wait for assessor review, then compare
+            your score with RTB competency benchmarks.
           </p>
         </div>
         <div className="hero-actions">
-          <Button onClick={() => onNavigate('submit')}>Take Assessment</Button>
-          <Button variant="secondary" onClick={() => onNavigate('results')}>
+          <Button onClick={() => onNavigate("submit")}>Take Assessment</Button>
+          <Button variant="secondary" onClick={() => onNavigate("results")}>
             View Gap Results
           </Button>
         </div>
@@ -195,12 +213,16 @@ function GraduateDashboard({
 
       <div className="stat-grid">
         <StatCard
-          helper={hasReviewedResults ? 'Across reviewed competencies' : 'No reviewed scores yet'}
+          helper={
+            hasReviewedResults
+              ? "Across reviewed competencies"
+              : "No reviewed scores yet"
+          }
           label="Overall Score"
           value={formatPercent(overallScore)}
         />
         <StatCard
-          helper={dashboardText(data, 'overallGapLevel')}
+          helper={dashboardText(data, "overallGapLevel")}
           label="Average Skill Gap"
           value={formatPercent(averageGap)}
         />
@@ -210,7 +232,9 @@ function GraduateDashboard({
           value={competenciesAssessed}
         />
         <StatCard
-          helper={highGapCount > 0 ? 'Needs urgent practice' : 'No urgent gaps found'}
+          helper={
+            highGapCount > 0 ? "Needs urgent practice" : "No urgent gaps found"
+          }
           label="High Gap Areas"
           value={highGapCount}
         />
@@ -229,14 +253,18 @@ function GraduateDashboard({
             <strong>{nextAction}</strong>
             <p>
               {hasReviewedResults
-                ? 'Open your gap results, focus on moderate and high gap competencies, and follow the assessor recommendations.'
-                : 'Start by selecting one ICT competency and submitting practical work, theory answers, portfolio evidence, and self-assessment.'}
+                ? "Open your gap results, focus on moderate and high gap competencies, and follow the assessor recommendations."
+                : "Start by selecting one ICT competency and submitting practical work, theory answers, portfolio evidence, and self-assessment."}
             </p>
             <div className="button-row">
-              <Button onClick={() => onNavigate(hasReviewedResults ? 'results' : 'submit')}>
+              <Button
+                onClick={() =>
+                  onNavigate(hasReviewedResults ? "results" : "submit")
+                }
+              >
                 Continue
               </Button>
-              <Button variant="ghost" onClick={() => onNavigate('profile')}>
+              <Button variant="ghost" onClick={() => onNavigate("profile")}>
                 Update Profile
               </Button>
             </div>
@@ -293,7 +321,10 @@ function GraduateDashboard({
           ) : (
             <div className="compact-list">
               {latestRecommendations.slice(0, 3).map((recommendation) => (
-                <div className="recommendation-preview" key={recommendation._id}>
+                <div
+                  className="recommendation-preview"
+                  key={recommendation._id}
+                >
                   <div className="compact-meta">
                     <strong>{recommendation.competency.title}</strong>
                     <GapBadge level={recommendation.gapLevel} />
@@ -308,14 +339,14 @@ function GraduateDashboard({
 
       <Card title="How your final score is calculated">
         <div className="score-weight-grid">
-          <WeightBox label="Practical task" value="50%" />
+          <WeightBox label="Practical / GitHub project" value="60%" />
           <WeightBox label="Quiz / theory" value="20%" />
-          <WeightBox label="Portfolio evidence" value="20%" />
-          <WeightBox label="Self-assessment" value="10%" />
+          <WeightBox label="Portfolio evidence" value="15%" />
+          <WeightBox label="Self-assessment" value="5%" />
         </div>
       </Card>
     </section>
-  )
+  );
 }
 
 function WorkflowStep({ label, text }: { label: string; text: string }) {
@@ -324,7 +355,7 @@ function WorkflowStep({ label, text }: { label: string; text: string }) {
       <span>{label}</span>
       <p>{text}</p>
     </div>
-  )
+  );
 }
 
 function WeightBox({ label, value }: { label: string; value: string }) {
@@ -333,27 +364,30 @@ function WeightBox({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
       <span>{label}</span>
     </div>
-  )
+  );
 }
 
 export function GraduateProfilePage({ token }: { token: string }) {
-  const { data, isLoading, error } = useAsyncData(() => api.profile(token), null)
-  const [profile, setProfile] = useState<GraduateProfile>({})
-  const [message, setMessage] = useState('')
+  const { data, isLoading, error } = useAsyncData(
+    () => api.profile(token),
+    null,
+  );
+  const [profile, setProfile] = useState<GraduateProfile>({});
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
-    if (data) setProfile(data)
-  }, [data])
+    if (data) setProfile(data);
+  }, [data]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setMessage('')
-    const savedProfile = await api.saveProfile(token, profile)
-    setProfile(savedProfile)
-    setMessage('Profile saved successfully.')
+    event.preventDefault();
+    setMessage("");
+    const savedProfile = await api.saveProfile(token, profile);
+    setProfile(savedProfile);
+    setMessage("Profile saved successfully.");
   }
 
-  if (isLoading) return <LoadingState message="Loading profile..." />
+  if (isLoading) return <LoadingState message="Loading profile..." />;
 
   return (
     <section className="page-stack">
@@ -367,49 +401,60 @@ export function GraduateProfilePage({ token }: { token: string }) {
         <form className="form-grid" onSubmit={handleSubmit}>
           <TextField
             label="Registration number"
-            value={profile.registrationNumber || ''}
+            value={profile.registrationNumber || ""}
             onChange={(event) =>
               setProfile({ ...profile, registrationNumber: event.target.value })
             }
           />
           <TextField
             label="Phone"
-            value={profile.phone || ''}
-            onChange={(event) => setProfile({ ...profile, phone: event.target.value })}
+            value={profile.phone || ""}
+            onChange={(event) =>
+              setProfile({ ...profile, phone: event.target.value })
+            }
           />
           <TextField
             label="District"
-            value={profile.district || 'Kicukiro'}
-            onChange={(event) => setProfile({ ...profile, district: event.target.value })}
+            value={profile.district || "Kicukiro"}
+            onChange={(event) =>
+              setProfile({ ...profile, district: event.target.value })
+            }
           />
           <TextField
             label="Sector"
-            value={profile.sector || ''}
-            onChange={(event) => setProfile({ ...profile, sector: event.target.value })}
+            value={profile.sector || ""}
+            onChange={(event) =>
+              setProfile({ ...profile, sector: event.target.value })
+            }
           />
           <TextField
             label="Institution"
-            value={profile.institution || ''}
+            value={profile.institution || ""}
             onChange={(event) =>
               setProfile({ ...profile, institution: event.target.value })
             }
           />
           <TextField
             label="Program"
-            value={profile.program || ''}
-            onChange={(event) => setProfile({ ...profile, program: event.target.value })}
+            value={profile.program || ""}
+            onChange={(event) =>
+              setProfile({ ...profile, program: event.target.value })
+            }
           />
           <TextField
             label="Graduation year"
             type="number"
-            value={profile.graduationYear || ''}
+            value={profile.graduationYear || ""}
             onChange={(event) =>
-              setProfile({ ...profile, graduationYear: Number(event.target.value) })
+              setProfile({
+                ...profile,
+                graduationYear: Number(event.target.value),
+              })
             }
           />
           <TextField
             label="Specialization"
-            value={profile.specialization || ''}
+            value={profile.specialization || ""}
             onChange={(event) =>
               setProfile({ ...profile, specialization: event.target.value })
             }
@@ -418,105 +463,125 @@ export function GraduateProfilePage({ token }: { token: string }) {
             <TextArea
               label="Bio"
               rows={4}
-              value={profile.bio || ''}
-              onChange={(event) => setProfile({ ...profile, bio: event.target.value })}
+              value={profile.bio || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, bio: event.target.value })
+              }
             />
           </div>
           <Button type="submit">Save Profile</Button>
         </form>
       </Card>
     </section>
-  )
+  );
 }
 
 export function SubmitAssessmentPage({ token }: { token: string }) {
-  const { data: competencies, isLoading } = useAsyncData(() => api.competencies(token), [])
-  const [currentStep, setCurrentStep] = useState(1)
-  const [competency, setCompetency] = useState('')
-  const [practicalTaskId, setPracticalTaskId] = useState('')
+  const { data: competencies, isLoading } = useAsyncData(
+    () => api.competencies(token),
+    [],
+  );
+  const [currentStep, setCurrentStep] = useState(1);
+  const [competency, setCompetency] = useState("");
+  const [practicalTaskId, setPracticalTaskId] = useState("");
   const [practicalSubmissionMode, setPracticalSubmissionMode] = useState<
-    'direct_test' | 'file_upload' | 'mixed'
-  >('direct_test')
-  const [practicalTask, setPracticalTask] = useState('')
+    "direct_test" | "file_upload" | "mixed"
+  >("direct_test");
+  const [practicalTask, setPracticalTask] = useState("");
+  const [githubRepositoryUrl, setGithubRepositoryUrl] = useState("");
   const [evidenceFiles, setEvidenceFiles] = useState<
     { name: string; type?: string; size?: number; dataUrl: string }[]
-  >([])
-  const [theoryAnswers, setTheoryAnswers] = useState<Record<string, string>>({})
-  const [portfolioLink, setPortfolioLink] = useState('')
-  const [projectDescription, setProjectDescription] = useState('')
-  const [selfAssessmentScore, setSelfAssessmentScore] = useState(0)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
-  const selectedCompetency = competencies.find((item) => item._id === competency)
-  const availableTasks = selectedCompetency?.practicalTasks || []
+  >([]);
+  const [theoryAnswers, setTheoryAnswers] = useState<Record<string, string>>(
+    {},
+  );
+  const [portfolioLink, setPortfolioLink] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
+  const [selfAssessmentScore, setSelfAssessmentScore] = useState(0);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const selectedCompetency = competencies.find(
+    (item) => item._id === competency,
+  );
+  const availableTasks = selectedCompetency?.practicalTasks || [];
   const selectedTask =
-    availableTasks.find((task) => task._id === practicalTaskId) || availableTasks[0]
-  const theoryQuestions = selectedCompetency?.theoryQuestions || []
-  const portfolioRequirements = selectedCompetency?.portfolioRequirements || []
+    availableTasks.find((task) => task._id === practicalTaskId) ||
+    availableTasks[0];
+  const theoryQuestions = selectedCompetency?.theoryQuestions || [];
+  const portfolioRequirements = selectedCompetency?.portfolioRequirements || [];
   const answeredTheoryCount = theoryQuestions.filter(
-    (question) => (theoryAnswers[question._id] || '').trim().length > 0,
-  ).length
+    (question) => (theoryAnswers[question._id] || "").trim().length > 0,
+  ).length;
   const requiredTheoryAnswered =
-    theoryQuestions.length === 0 || answeredTheoryCount === theoryQuestions.length
+    theoryQuestions.length === 0 ||
+    answeredTheoryCount === theoryQuestions.length;
   const evidenceCount = [
+    githubRepositoryUrl,
     practicalTask,
-    evidenceFiles.length > 0 ? String(evidenceFiles.length) : '',
-    answeredTheoryCount > 0 ? String(answeredTheoryCount) : '',
+    evidenceFiles.length > 0 ? String(evidenceFiles.length) : "",
+    answeredTheoryCount > 0 ? String(answeredTheoryCount) : "",
     portfolioLink,
     projectDescription,
-  ].filter((value) => value.trim().length > 0).length
-  const canContinueToEvidence = Boolean(competency)
+  ].filter((value) => value.trim().length > 0).length;
+  const canContinueToEvidence = Boolean(competency);
   const practicalEvidenceReady =
-    practicalSubmissionMode === 'direct_test'
+    githubRepositoryUrl.trim().length > 0 &&
+    (practicalSubmissionMode === "direct_test"
       ? practicalTask.trim().length > 0
-      : practicalSubmissionMode === 'file_upload'
+      : practicalSubmissionMode === "file_upload"
         ? evidenceFiles.length > 0
-        : practicalTask.trim().length > 0 && evidenceFiles.length > 0
+        : practicalTask.trim().length > 0 && evidenceFiles.length > 0);
   const canReview =
-    practicalEvidenceReady && requiredTheoryAnswered && selfAssessmentScore >= 0
+    practicalEvidenceReady &&
+    requiredTheoryAnswered &&
+    selfAssessmentScore >= 0;
   const canSubmit =
-    Boolean(competency) && practicalEvidenceReady && requiredTheoryAnswered
+    Boolean(competency) && practicalEvidenceReady && requiredTheoryAnswered;
 
   async function handleEvidenceFiles(files: FileList | null) {
-    if (!files) return
+    if (!files) return;
 
-    const selectedFiles = Array.from(files)
-    const maxSize = 2 * 1024 * 1024
-    const oversized = selectedFiles.find((file) => file.size > maxSize)
+    const selectedFiles = Array.from(files);
+    const maxSize = 2 * 1024 * 1024;
+    const oversized = selectedFiles.find((file) => file.size > maxSize);
 
     if (oversized) {
-      setError(`File "${oversized.name}" is larger than 2MB.`)
-      return
+      setError(`File "${oversized.name}" is larger than 2MB.`);
+      return;
     }
 
     const encodedFiles = await Promise.all(
       selectedFiles.map(
         (file) =>
-          new Promise<{ name: string; type?: string; size?: number; dataUrl: string }>(
-            (resolve, reject) => {
-              const reader = new FileReader()
-              reader.onload = () =>
-                resolve({
-                  name: file.name,
-                  type: file.type,
-                  size: file.size,
-                  dataUrl: String(reader.result),
-                })
-              reader.onerror = () => reject(new Error(`Failed to read ${file.name}`))
-              reader.readAsDataURL(file)
-            },
-          ),
+          new Promise<{
+            name: string;
+            type?: string;
+            size?: number;
+            dataUrl: string;
+          }>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () =>
+              resolve({
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                dataUrl: String(reader.result),
+              });
+            reader.onerror = () =>
+              reject(new Error(`Failed to read ${file.name}`));
+            reader.readAsDataURL(file);
+          }),
       ),
-    )
+    );
 
-    setEvidenceFiles((current) => [...current, ...encodedFiles])
-    setError('')
+    setEvidenceFiles((current) => [...current, ...encodedFiles]);
+    setError("");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setMessage('')
-    setError('')
+    event.preventDefault();
+    setMessage("");
+    setError("");
 
     try {
       await api.submitAssessment(token, {
@@ -524,32 +589,38 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
         practicalSubmissionMode,
         practicalTaskId: selectedTask?._id,
         practicalTask,
+        githubRepositoryUrl,
         evidenceFiles,
         theoryAnswers: theoryQuestions.map((question) => ({
           questionId: question._id,
-          answer: theoryAnswers[question._id] || '',
+          answer: theoryAnswers[question._id] || "",
         })),
         portfolioLink,
         projectDescription,
         selfAssessmentScore,
-      })
-      setMessage('Assessment evidence submitted for assessor review.')
-      setPracticalTask('')
-      setPracticalSubmissionMode('direct_test')
-      setEvidenceFiles([])
-      setPracticalTaskId('')
-      setTheoryAnswers({})
-      setPortfolioLink('')
-      setProjectDescription('')
-      setSelfAssessmentScore(0)
-      setCompetency('')
-      setCurrentStep(1)
+      });
+      setMessage("Assessment evidence submitted for assessor review.");
+      setPracticalTask("");
+      setGithubRepositoryUrl("");
+      setPracticalSubmissionMode("direct_test");
+      setEvidenceFiles([]);
+      setPracticalTaskId("");
+      setTheoryAnswers({});
+      setPortfolioLink("");
+      setProjectDescription("");
+      setSelfAssessmentScore(0);
+      setCompetency("");
+      setCurrentStep(1);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Submission failed')
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Submission failed",
+      );
     }
   }
 
-  if (isLoading) return <LoadingState message="Loading competencies..." />
+  if (isLoading) return <LoadingState message="Loading competencies..." />;
 
   return (
     <section className="page-stack">
@@ -563,19 +634,47 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
         <aside className="assessment-side">
           <Card title="Assessment steps">
             <div className="stepper">
-              <StepItem active={currentStep === 1} done={currentStep > 1} label="1" text="Choose competency" />
-              <StepItem active={currentStep === 2} done={currentStep > 2} label="2" text="Add evidence" />
-              <StepItem active={currentStep === 3} done={currentStep > 3} label="3" text="Self-assess" />
-              <StepItem active={currentStep === 4} done={false} label="4" text="Review & submit" />
+              <StepItem
+                active={currentStep === 1}
+                done={currentStep > 1}
+                label="1"
+                text="Choose competency"
+              />
+              <StepItem
+                active={currentStep === 2}
+                done={currentStep > 2}
+                label="2"
+                text="Add evidence"
+              />
+              <StepItem
+                active={currentStep === 3}
+                done={currentStep > 3}
+                label="3"
+                text="Self-assess"
+              />
+              <StepItem
+                active={currentStep === 4}
+                done={false}
+                label="4"
+                text="Review & submit"
+              />
             </div>
           </Card>
 
           <Card title="Scoring model">
             <div className="score-weight-list">
-              <span><strong>50%</strong> Practical task</span>
-              <span><strong>20%</strong> Quiz / theory</span>
-              <span><strong>20%</strong> Portfolio evidence</span>
-              <span><strong>10%</strong> Self-assessment</span>
+              <span>
+                <strong>60%</strong> Practical/GitHub project
+              </span>
+              <span>
+                <strong>20%</strong> Quiz / theory
+              </span>
+              <span>
+                <strong>15%</strong> Portfolio evidence
+              </span>
+              <span>
+                <strong>5%</strong> Self-assessment
+              </span>
             </div>
           </Card>
         </aside>
@@ -603,14 +702,17 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                     <div>
                       <span>{selectedCompetency.code}</span>
                       <strong>{selectedCompetency.title}</strong>
-                      <p>{selectedCompetency.description || 'No description provided.'}</p>
+                      <p>
+                        {selectedCompetency.description ||
+                          "No description provided."}
+                      </p>
                     </div>
                     <div>
                       <span>Assessment package</span>
                       <p>
-                        {availableTasks.length} practical task(s), {theoryQuestions.length}{' '}
-                        theory question(s), and {portfolioRequirements.length} portfolio
-                        requirement(s).
+                        {availableTasks.length} practical task(s),{" "}
+                        {theoryQuestions.length} theory question(s), and{" "}
+                        {portfolioRequirements.length} portfolio requirement(s).
                       </p>
                     </div>
                   </div>
@@ -634,14 +736,15 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
             <Card title="Complete the practical test and theory questions">
               <div className="form-stack">
                 <Alert type="info">
-                  This is a real assessment submission. You can take the practical test
-                  directly in the system, upload completed work, or submit both.
+                  This is a real assessment submission. You can take the
+                  practical test directly in the system, submit a GitHub
+                  repository URL, upload completed work, or submit both.
                 </Alert>
 
                 {availableTasks.length > 0 ? (
                   <SelectField
                     label="Practical task"
-                    value={selectedTask?._id || ''}
+                    value={selectedTask?._id || ""}
                     onChange={(event) => setPracticalTaskId(event.target.value)}
                   >
                     {availableTasks.map((task) => (
@@ -652,8 +755,8 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                   </SelectField>
                 ) : (
                   <Alert type="error">
-                    This competency does not yet have a practical test configured by the
-                    administrator.
+                    This competency does not yet have a practical test
+                    configured by the administrator.
                   </Alert>
                 )}
 
@@ -675,24 +778,32 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
 
                 <div className="submission-mode-grid">
                   <button
-                    className={practicalSubmissionMode === 'direct_test' ? 'active' : ''}
-                    onClick={() => setPracticalSubmissionMode('direct_test')}
+                    className={
+                      practicalSubmissionMode === "direct_test" ? "active" : ""
+                    }
+                    onClick={() => setPracticalSubmissionMode("direct_test")}
                     type="button"
                   >
                     Take test here
                     <span>Write the solution directly in the system.</span>
                   </button>
                   <button
-                    className={practicalSubmissionMode === 'file_upload' ? 'active' : ''}
-                    onClick={() => setPracticalSubmissionMode('file_upload')}
+                    className={
+                      practicalSubmissionMode === "file_upload" ? "active" : ""
+                    }
+                    onClick={() => setPracticalSubmissionMode("file_upload")}
                     type="button"
                   >
                     Upload evidence
-                    <span>Attach screenshots, code, PDFs, or exported work.</span>
+                    <span>
+                      Attach screenshots, code, PDFs, or exported work.
+                    </span>
                   </button>
                   <button
-                    className={practicalSubmissionMode === 'mixed' ? 'active' : ''}
-                    onClick={() => setPracticalSubmissionMode('mixed')}
+                    className={
+                      practicalSubmissionMode === "mixed" ? "active" : ""
+                    }
+                    onClick={() => setPracticalSubmissionMode("mixed")}
                     type="button"
                   >
                     Use both
@@ -700,44 +811,63 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                   </button>
                 </div>
 
-                {practicalSubmissionMode !== 'file_upload' && (
+                {practicalSubmissionMode !== "file_upload" && (
                   <TextArea
                     label="Practical task answer / work summary"
                     rows={6}
                     value={practicalTask}
                     onChange={(event) => setPracticalTask(event.target.value)}
                     placeholder="Explain exactly what you completed, commands used, files created, test results, or deployment link."
-                    required
                   />
                 )}
 
-                {practicalSubmissionMode !== 'direct_test' && (
+                <TextField
+                  label="GitHub repository URL"
+                  type="url"
+                  value={githubRepositoryUrl}
+                  onChange={(event) =>
+                    setGithubRepositoryUrl(event.target.value)
+                  }
+                  placeholder="https://github.com/username/project"
+                  required
+                />
+
+                {practicalSubmissionMode !== "direct_test" && (
                   <div className="upload-panel">
                     <label className="file-drop">
                       <span>Upload practical evidence files</span>
                       <input
                         multiple
-                        onChange={(event) => void handleEvidenceFiles(event.target.files)}
+                        onChange={(event) =>
+                          void handleEvidenceFiles(event.target.files)
+                        }
                         type="file"
                       />
                     </label>
                     <small>
-                      Accepted evidence: screenshots, PDF documents, source files, exported
-                      reports, or images. Maximum 2MB per file.
+                      Accepted evidence: screenshots, PDF documents, source
+                      files, exported reports, or images. Maximum 2MB per file.
                     </small>
                     {evidenceFiles.length > 0 && (
                       <div className="uploaded-file-list">
                         {evidenceFiles.map((file) => (
-                          <div className="uploaded-file" key={`${file.name}-${file.size}`}>
+                          <div
+                            className="uploaded-file"
+                            key={`${file.name}-${file.size}`}
+                          >
                             <div>
                               <strong>{file.name}</strong>
-                              <span>{Math.round((file.size || 0) / 1024)} KB</span>
+                              <span>
+                                {Math.round((file.size || 0) / 1024)} KB
+                              </span>
                             </div>
                             <Button
                               variant="ghost"
                               onClick={() =>
                                 setEvidenceFiles((current) =>
-                                  current.filter((item) => item.dataUrl !== file.dataUrl),
+                                  current.filter(
+                                    (item) => item.dataUrl !== file.dataUrl,
+                                  ),
                                 )
                               }
                             >
@@ -765,17 +895,20 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                         <div className="compact-meta">
                           <strong>
                             Question {index + 1} ({question.points} point
-                            {question.points === 1 ? '' : 's'})
+                            {question.points === 1 ? "" : "s"})
                           </strong>
-                          <span>{question.type.replace('_', ' ')}</span>
+                          <span>{question.type.replace("_", " ")}</span>
                         </div>
                         <p>{question.question}</p>
-                        {question.type === 'multiple_choice' && question.options?.length ? (
+                        {question.type === "multiple_choice" &&
+                        question.options?.length ? (
                           <div className="option-list">
                             {question.options.map((option) => (
                               <label key={option}>
                                 <input
-                                  checked={theoryAnswers[question._id] === option}
+                                  checked={
+                                    theoryAnswers[question._id] === option
+                                  }
                                   name={question._id}
                                   onChange={() =>
                                     setTheoryAnswers({
@@ -793,7 +926,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                           <TextArea
                             label="Your answer"
                             rows={3}
-                            value={theoryAnswers[question._id] || ''}
+                            value={theoryAnswers[question._id] || ""}
                             onChange={(event) =>
                               setTheoryAnswers({
                                 ...theoryAnswers,
@@ -823,7 +956,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                       <div className="requirement-item" key={requirement._id}>
                         <strong>
                           {requirement.title}
-                          {requirement.required ? ' (required)' : ''}
+                          {requirement.required ? " (required)" : ""}
                         </strong>
                         <p>{requirement.description}</p>
                       </div>
@@ -834,18 +967,25 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                   label="Project description"
                   rows={4}
                   value={projectDescription}
-                  onChange={(event) => setProjectDescription(event.target.value)}
+                  onChange={(event) =>
+                    setProjectDescription(event.target.value)
+                  }
                   placeholder="Explain the project goal, tools used, your role, and the final outcome."
                 />
                 <div className="evidence-readiness">
-                  <strong>{Math.min(evidenceCount, 5)}/5 evidence sections completed</strong>
-                  <ProgressBar value={Math.min(evidenceCount, 5) * 20} />
+                  <strong>
+                    {Math.min(evidenceCount, 6)}/6 evidence sections completed
+                  </strong>
+                  <ProgressBar value={Math.min(evidenceCount, 6) * (100 / 6)} />
                 </div>
                 <div className="button-row">
                   <Button variant="secondary" onClick={() => setCurrentStep(1)}>
                     Back
                   </Button>
-                  <Button disabled={!canReview} onClick={() => setCurrentStep(3)}>
+                  <Button
+                    disabled={!canReview}
+                    onClick={() => setCurrentStep(3)}
+                  >
                     Continue to Self-Assessment
                   </Button>
                 </div>
@@ -857,8 +997,8 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
             <Card title="Self-assessment">
               <div className="form-stack">
                 <Alert type="info">
-                  Be honest. This score has the smallest weight, but it helps the assessor
-                  understand your confidence level.
+                  Be honest. This score has the smallest weight, but it helps
+                  the assessor understand your confidence level.
                 </Alert>
                 <TextField
                   label="Self-assessment score"
@@ -866,7 +1006,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                   min={0}
                   type="number"
                   value={selfAssessmentScore}
-                  onChange={(event) => setSelfAssessmentScore(Number(event.target.value))}
+                  onChange={(event) =>
+                    setSelfAssessmentScore(Number(event.target.value))
+                  }
                 />
                 <div className="self-score-preview">
                   <ProgressBar value={selfAssessmentScore} />
@@ -876,7 +1018,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                   <Button variant="secondary" onClick={() => setCurrentStep(2)}>
                     Back
                   </Button>
-                  <Button onClick={() => setCurrentStep(4)}>Review Submission</Button>
+                  <Button onClick={() => setCurrentStep(4)}>
+                    Review Submission
+                  </Button>
                 </div>
               </div>
             </Card>
@@ -885,28 +1029,50 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
           {currentStep === 4 && (
             <Card title="Review before submission">
               <div className="review-summary">
-                <ReviewLine label="Competency" value={selectedCompetency?.title || 'Not selected'} />
-                <ReviewLine label="Practical test" value={selectedTask?.title || 'No test selected'} />
+                <ReviewLine
+                  label="Competency"
+                  value={selectedCompetency?.title || "Not selected"}
+                />
+                <ReviewLine
+                  label="Practical test"
+                  value={selectedTask?.title || "No test selected"}
+                />
                 <ReviewLine
                   label="Submission mode"
-                  value={practicalSubmissionMode.replace('_', ' ')}
+                  value={practicalSubmissionMode.replace("_", " ")}
                 />
-                <ReviewLine label="Practical answer" value={practicalTask || 'Not provided'} />
+                <ReviewLine
+                  label="Practical answer"
+                  value={practicalTask || "Not provided"}
+                />
+                <ReviewLine
+                  label="GitHub repository"
+                  value={githubRepositoryUrl || "Not provided"}
+                />
                 <ReviewLine
                   label="Uploaded evidence"
                   value={
                     evidenceFiles.length > 0
-                      ? evidenceFiles.map((file) => file.name).join(', ')
-                      : 'No files uploaded'
+                      ? evidenceFiles.map((file) => file.name).join(", ")
+                      : "No files uploaded"
                   }
                 />
                 <ReviewLine
                   label="Theory answers"
                   value={`${answeredTheoryCount}/${theoryQuestions.length} answered`}
                 />
-                <ReviewLine label="Portfolio link" value={portfolioLink || 'Not provided'} />
-                <ReviewLine label="Project description" value={projectDescription || 'Not provided'} />
-                <ReviewLine label="Self-assessment" value={formatPercent(selfAssessmentScore)} />
+                <ReviewLine
+                  label="Portfolio link"
+                  value={portfolioLink || "Not provided"}
+                />
+                <ReviewLine
+                  label="Project description"
+                  value={projectDescription || "Not provided"}
+                />
+                <ReviewLine
+                  label="Self-assessment"
+                  value={formatPercent(selfAssessmentScore)}
+                />
               </div>
               <div className="button-row">
                 <Button variant="secondary" onClick={() => setCurrentStep(3)}>
@@ -921,7 +1087,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
         </form>
       </div>
     </section>
-  )
+  );
 }
 
 function StepItem({
@@ -930,17 +1096,19 @@ function StepItem({
   label,
   text,
 }: {
-  active: boolean
-  done: boolean
-  label: string
-  text: string
+  active: boolean;
+  done: boolean;
+  label: string;
+  text: string;
 }) {
   return (
-    <div className={`step-item ${active ? 'active' : ''} ${done ? 'done' : ''}`}>
-      <span>{done ? 'Done' : label}</span>
+    <div
+      className={`step-item ${active ? "active" : ""} ${done ? "done" : ""}`}
+    >
+      <span>{done ? "Done" : label}</span>
       <strong>{text}</strong>
     </div>
-  )
+  );
 }
 
 function ReviewLine({ label, value }: { label: string; value: string }) {
@@ -949,31 +1117,37 @@ function ReviewLine({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <p>{value}</p>
     </div>
-  )
+  );
 }
 
 export function AssessmentsPage({ token, role }: PageProps) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.assessments(token),
     [] as Assessment[],
-  )
-  const [selected, setSelected] = useState<Assessment | null>(null)
+  );
+  const [selected, setSelected] = useState<Assessment | null>(null);
 
-  if (isLoading) return <LoadingState message="Loading assessments..." />
+  if (isLoading) return <LoadingState message="Loading assessments..." />;
 
-  const submittedCount = data.filter((item) => item.status === 'submitted').length
-  const reviewedCount = data.filter((item) => item.status === 'reviewed').length
-  const returnedCount = data.filter((item) => item.status === 'returned').length
+  const submittedCount = data.filter(
+    (item) => item.status === "submitted",
+  ).length;
+  const reviewedCount = data.filter(
+    (item) => item.status === "reviewed",
+  ).length;
+  const returnedCount = data.filter(
+    (item) => item.status === "returned",
+  ).length;
 
   return (
     <section className="page-stack">
       <PageHeader
         title={
-          role === 'assessor'
-            ? 'Assessment Reviews'
-            : role === 'admin'
-              ? 'All Assessments'
-              : 'My Assessments'
+          role === "assessor"
+            ? "Assessment Reviews"
+            : role === "admin"
+              ? "All Assessments"
+              : "My Assessments"
         }
         description="Track submitted evidence, review status, final scores, and gap levels."
         onRefresh={refresh}
@@ -1010,7 +1184,7 @@ export function AssessmentsPage({ token, role }: PageProps) {
                   <th>Final Score</th>
                   <th>Gap</th>
                   <th>Submitted</th>
-                  {role === 'assessor' && <th>Action</th>}
+                  {role === "assessor" && <th>Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -1024,9 +1198,12 @@ export function AssessmentsPage({ token, role }: PageProps) {
                       <GapBadge level={assessment.gapLevel} />
                     </td>
                     <td>{formatDate(assessment.createdAt)}</td>
-                    {role === 'assessor' && (
+                    {role === "assessor" && (
                       <td>
-                        <Button variant="secondary" onClick={() => setSelected(assessment)}>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setSelected(assessment)}
+                        >
                           Review
                         </Button>
                       </td>
@@ -1038,18 +1215,18 @@ export function AssessmentsPage({ token, role }: PageProps) {
           </div>
         )}
       </Card>
-      {role === 'assessor' && selected && (
+      {role === "assessor" && selected && (
         <ReviewAssessmentPanel
           assessment={selected}
           onReviewed={() => {
-            setSelected(null)
-            void refresh()
+            setSelected(null);
+            void refresh();
           }}
           token={token}
         />
       )}
     </section>
-  )
+  );
 }
 
 function ReviewAssessmentPanel({
@@ -1057,39 +1234,92 @@ function ReviewAssessmentPanel({
   token,
   onReviewed,
 }: {
-  assessment: Assessment
-  token: string
-  onReviewed: () => void
+  assessment: Assessment;
+  token: string;
+  onReviewed: () => void;
 }) {
-  const [practicalTaskScore, setPracticalTaskScore] = useState(0)
-  const [quizScore, setQuizScore] = useState(0)
-  const [portfolioScore, setPortfolioScore] = useState(0)
+  const [practicalTaskScore, setPracticalTaskScore] = useState(0);
+  const [quizScore, setQuizScore] = useState(0);
+  const [portfolioScore, setPortfolioScore] = useState(0);
   const [selfAssessmentScore, setSelfAssessmentScore] = useState(
     assessment.evidence.selfAssessmentScore || 0,
-  )
-  const [assessorComment, setAssessorComment] = useState('')
-  const [message, setMessage] = useState('')
-  const [actionItems, setActionItems] = useState('')
-  const [error, setError] = useState('')
-  const rubricCriteria = assessment.competency.rubricCriteria || []
-  const theoryAnswers = assessment.evidence.theoryAnswers || []
+  );
+  const [assessorComment, setAssessorComment] = useState("");
+  const [message, setMessage] = useState("");
+  const [actionItems, setActionItems] = useState("");
+  const [error, setError] = useState("");
+  const [draftStatus, setDraftStatus] = useState(
+    "Loading AI draft recommendation...",
+  );
+  const rubricCriteria = assessment.competency.rubricCriteria || [];
+  const theoryAnswers = assessment.evidence.theoryAnswers || [];
 
   useEffect(() => {
-    setQuizScore(assessment.scores.quizScore || 0)
-  }, [assessment.scores.quizScore])
+    setQuizScore(assessment.scores.quizScore || 0);
+  }, [assessment.scores.quizScore]);
 
   const previewScore = useMemo(
     () =>
-      practicalTaskScore * 0.5 +
+      practicalTaskScore * 0.6 +
       quizScore * 0.2 +
-      portfolioScore * 0.2 +
-      selfAssessmentScore * 0.1,
+      portfolioScore * 0.15 +
+      selfAssessmentScore * 0.05,
     [portfolioScore, practicalTaskScore, quizScore, selfAssessmentScore],
-  )
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDraft() {
+      try {
+        const draft = await api.previewAssessmentRecommendation(
+          token,
+          assessment._id,
+          {
+            practicalTaskScore,
+            quizScore,
+            portfolioScore,
+            selfAssessmentScore,
+            assessorComment,
+          },
+        );
+
+        if (cancelled) return;
+
+        setMessage(draft.recommendation.message);
+        setActionItems(draft.recommendation.actionItems.join("\n"));
+        setDraftStatus(
+          `${draft.recommendation.provider} draft loaded from ${draft.recommendation.model}`,
+        );
+      } catch (caughtError) {
+        if (!cancelled) {
+          setDraftStatus(
+            caughtError instanceof Error
+              ? caughtError.message
+              : "AI draft unavailable, using manual recommendation editing.",
+          );
+        }
+      }
+    }
+
+    void loadDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    assessment._id,
+    assessorComment,
+    portfolioScore,
+    practicalTaskScore,
+    quizScore,
+    selfAssessmentScore,
+    token,
+  ]);
 
   async function handleReview(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setError('')
+    event.preventDefault();
+    setError("");
 
     try {
       await api.reviewAssessment(token, assessment._id, {
@@ -1101,14 +1331,16 @@ function ReviewAssessmentPanel({
         recommendation: {
           message,
           actionItems: actionItems
-            .split('\n')
+            .split("\n")
             .map((item) => item.trim())
             .filter(Boolean),
         },
-      })
-      onReviewed()
+      });
+      onReviewed();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Review failed')
+      setError(
+        caughtError instanceof Error ? caughtError.message : "Review failed",
+      );
     }
   }
 
@@ -1119,23 +1351,86 @@ function ReviewAssessmentPanel({
           <h3>Submitted Evidence</h3>
           <div className="assessor-evidence-section">
             <strong>Assigned practical test</strong>
-            <p>{assessment.evidence.practicalTaskTitle || assessment.competency.title}</p>
+            <p>
+              {assessment.evidence.practicalTaskTitle ||
+                assessment.competency.title}
+            </p>
             <small>
               {assessment.evidence.practicalTaskInstructions ||
-                'No stored practical instructions available.'}
+                "No stored practical instructions available."}
             </small>
           </div>
           <div className="assessor-evidence-section">
             <strong>Graduate practical submission</strong>
-            <p>{assessment.evidence.practicalTask || 'No practical task details provided.'}</p>
+            <p>
+              {assessment.evidence.practicalTask ||
+                "No practical task details provided."}
+            </p>
+          </div>
+          <div className="assessor-evidence-section">
+            <strong>GitHub repository / practical project</strong>
+            {assessment.evidence.githubRepositoryUrl ? (
+              <>
+                <a
+                  href={assessment.evidence.githubRepositoryUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open GitHub repository
+                </a>
+                {assessment.evidence.repositorySummary?.summaryText && (
+                  <p>{assessment.evidence.repositorySummary.summaryText}</p>
+                )}
+                {assessment.evidence.repositorySummary?.languages?.length ? (
+                  <div className="compact-meta">
+                    {assessment.evidence.repositorySummary.languages.map(
+                      (language) => (
+                        <span key={language}>{language}</span>
+                      ),
+                    )}
+                  </div>
+                ) : null}
+                {assessment.evidence.repositorySummary?.codeQualityNotes
+                  ?.length ? (
+                  <ul>
+                    {assessment.evidence.repositorySummary.codeQualityNotes.map(
+                      (note) => (
+                        <li key={note}>{note}</li>
+                      ),
+                    )}
+                  </ul>
+                ) : null}
+                {assessment.evidence.repositorySummary?.readmeExcerpt && (
+                  <div className="assessor-note">
+                    <strong>README excerpt</strong>
+                    <p>{assessment.evidence.repositorySummary.readmeExcerpt}</p>
+                  </div>
+                )}
+                {assessment.evidence.repositorySummary?.sampledSourceFiles
+                  ?.length ? (
+                  <div className="theory-review-list">
+                    {assessment.evidence.repositorySummary.sampledSourceFiles.map(
+                      (file) => (
+                        <div className="theory-review-item" key={file.path}>
+                          <strong>{file.path}</strong>
+                          <span>{file.language}</span>
+                          <p>{file.excerpt || "No excerpt available."}</p>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p>No GitHub repository URL provided.</p>
+            )}
           </div>
           <div className="assessor-evidence-section">
             <strong>Submission mode</strong>
             <p>
-              {(assessment.evidence.practicalSubmissionMode || 'direct_test').replace(
-                '_',
-                ' ',
-              )}
+              {(
+                assessment.evidence.practicalSubmissionMode || "direct_test"
+              ).replace("_", " ")}
             </p>
           </div>
           <div className="assessor-evidence-section">
@@ -1164,7 +1459,10 @@ function ReviewAssessmentPanel({
           </div>
           <div className="assessor-evidence-section">
             <strong>Project / portfolio description</strong>
-            <p>{assessment.evidence.projectDescription || 'No project description provided.'}</p>
+            <p>
+              {assessment.evidence.projectDescription ||
+                "No project description provided."}
+            </p>
           </div>
           {assessment.evidence.portfolioLink && (
             <a href={assessment.evidence.portfolioLink} target="_blank">
@@ -1180,7 +1478,7 @@ function ReviewAssessmentPanel({
                 {theoryAnswers.map((answer) => (
                   <div className="theory-review-item" key={answer.questionId}>
                     <p>{answer.question}</p>
-                    <span>Answer: {answer.answer || 'No answer'}</span>
+                    <span>Answer: {answer.answer || "No answer"}</span>
                     <span>
                       Auto score: {answer.pointsAwarded}/{answer.pointsPossible}
                     </span>
@@ -1208,6 +1506,7 @@ function ReviewAssessmentPanel({
         </div>
         <form className="form-stack" onSubmit={handleReview}>
           {error && <Alert type="error">{error}</Alert>}
+          <Alert type="info">{draftStatus}</Alert>
           <div className="form-grid">
             <TextField
               label="Practical task score"
@@ -1215,7 +1514,9 @@ function ReviewAssessmentPanel({
               min={0}
               type="number"
               value={practicalTaskScore}
-              onChange={(event) => setPracticalTaskScore(Number(event.target.value))}
+              onChange={(event) =>
+                setPracticalTaskScore(Number(event.target.value))
+              }
             />
             <TextField
               label="Quiz score"
@@ -1231,7 +1532,9 @@ function ReviewAssessmentPanel({
               min={0}
               type="number"
               value={portfolioScore}
-              onChange={(event) => setPortfolioScore(Number(event.target.value))}
+              onChange={(event) =>
+                setPortfolioScore(Number(event.target.value))
+              }
             />
             <TextField
               label="Self-assessment score"
@@ -1239,7 +1542,9 @@ function ReviewAssessmentPanel({
               min={0}
               type="number"
               value={selfAssessmentScore}
-              onChange={(event) => setSelfAssessmentScore(Number(event.target.value))}
+              onChange={(event) =>
+                setSelfAssessmentScore(Number(event.target.value))
+              }
             />
           </div>
           <StatCard
@@ -1269,20 +1574,20 @@ function ReviewAssessmentPanel({
         </form>
       </div>
     </Card>
-  )
+  );
 }
 
 export function GapResultsPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.results(token),
     [] as Assessment[],
-  )
+  );
   const { data: recommendations } = useAsyncData(
     () => api.recommendations(token),
     [] as Recommendation[],
-  )
+  );
 
-  if (isLoading) return <LoadingState message="Loading gap results..." />
+  if (isLoading) return <LoadingState message="Loading gap results..." />;
 
   return (
     <section className="page-stack">
@@ -1299,7 +1604,7 @@ export function GapResultsPage({ token }: { token: string }) {
           {data.map((assessment) => {
             const recommendation = recommendations.find(
               (item) => item.competency._id === assessment.competency._id,
-            )
+            );
 
             return (
               <Card key={assessment._id} title={assessment.competency.title}>
@@ -1310,45 +1615,61 @@ export function GapResultsPage({ token }: { token: string }) {
                   </div>
                   <ProgressBar value={assessment.scores.finalScore} />
                   <div className="result-metrics">
-                    <span>Graduate score: {formatPercent(assessment.scores.finalScore)}</span>
-                    <span>RTB benchmark: {formatPercent(assessment.benchmarkScore)}</span>
+                    <span>
+                      Graduate score:{" "}
+                      {formatPercent(assessment.scores.finalScore)}
+                    </span>
+                    <span>
+                      RTB benchmark: {formatPercent(assessment.benchmarkScore)}
+                    </span>
                     <span>Skill gap: {formatPercent(assessment.skillGap)}</span>
                   </div>
                   <div className="assessor-note">
                     <strong>Assessor comment</strong>
-                    <p>{assessment.assessorComment || 'No assessor comment provided.'}</p>
+                    <p>
+                      {assessment.assessorComment ||
+                        "No assessor comment provided."}
+                    </p>
+                  </div>
+                  <div className="assessor-note">
+                    <strong>Repository summary</strong>
+                    <p>
+                      {assessment.evidence.repositorySummary?.summaryText ||
+                        "No GitHub repository summary was stored for this assessment."}
+                    </p>
                   </div>
                   <div className="assessor-note">
                     <strong>Recommendation</strong>
                     <p>
                       {recommendation?.message ||
-                        'Recommendation will appear after the assessor adds improvement guidance.'}
+                        "Recommendation will appear after the assessor adds improvement guidance."}
                     </p>
-                    {recommendation && recommendation.actionItems.length > 0 && (
-                      <ul>
-                        {recommendation.actionItems.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    )}
+                    {recommendation &&
+                      recommendation.actionItems.length > 0 && (
+                        <ul>
+                          {recommendation.actionItems.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      )}
                   </div>
                 </div>
               </Card>
-            )
+            );
           })}
         </div>
       )}
     </section>
-  )
+  );
 }
 
 export function RecommendationsPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.recommendations(token),
     [] as Recommendation[],
-  )
+  );
 
-  if (isLoading) return <LoadingState message="Loading recommendations..." />
+  if (isLoading) return <LoadingState message="Loading recommendations..." />;
 
   return (
     <section className="page-stack">
@@ -1363,10 +1684,17 @@ export function RecommendationsPage({ token }: { token: string }) {
       ) : (
         <div className="card-list">
           {data.map((recommendation) => (
-            <Card key={recommendation._id} title={recommendation.competency.title}>
+            <Card
+              key={recommendation._id}
+              title={recommendation.competency.title}
+            >
               <div className="recommendation">
                 <GapBadge level={recommendation.gapLevel} />
                 <p>{recommendation.message}</p>
+                {recommendation.draftMessage &&
+                  recommendation.draftMessage !== recommendation.message && (
+                    <p>{recommendation.draftMessage}</p>
+                  )}
                 {recommendation.actionItems.length > 0 && (
                   <ul>
                     {recommendation.actionItems.map((item) => (
@@ -1380,38 +1708,41 @@ export function RecommendationsPage({ token }: { token: string }) {
         </div>
       )}
     </section>
-  )
+  );
 }
 
 export function ReportsPage({ token, role }: PageProps) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.reports(token),
     [] as Report[],
-  )
-  const [graduateId, setGraduateId] = useState('')
-  const [message, setMessage] = useState('')
+  );
+  const [graduateId, setGraduateId] = useState("");
+  const [message, setMessage] = useState("");
 
   async function handleGenerate() {
-    setMessage('')
-    await api.generateReport(token, role === 'graduate' ? undefined : graduateId)
-    setMessage('Report generated successfully.')
-    await refresh()
+    setMessage("");
+    await api.generateReport(
+      token,
+      role === "graduate" ? undefined : graduateId,
+    );
+    setMessage("Report generated successfully.");
+    await refresh();
   }
 
   function downloadReport(report: Report) {
-    const reportHtml = buildReportHtml(report)
-    const blob = new Blob([reportHtml], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${report.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.html`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
+    const reportHtml = buildReportHtml(report);
+    const blob = new Blob([reportHtml], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${report.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.html`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
-  if (isLoading) return <LoadingState message="Loading reports..." />
+  if (isLoading) return <LoadingState message="Loading reports..." />;
 
   return (
     <section className="page-stack">
@@ -1426,7 +1757,7 @@ export function ReportsPage({ token, role }: PageProps) {
         actions={<Button onClick={handleGenerate}>Generate Report</Button>}
         title="Report generation"
       >
-        {role !== 'graduate' && (
+        {role !== "graduate" && (
           <TextField
             label="Graduate user ID"
             value={graduateId}
@@ -1441,7 +1772,10 @@ export function ReportsPage({ token, role }: PageProps) {
           {data.map((report) => (
             <Card
               actions={
-                <Button variant="secondary" onClick={() => downloadReport(report)}>
+                <Button
+                  variant="secondary"
+                  onClick={() => downloadReport(report)}
+                >
                   Download Report
                 </Button>
               }
@@ -1460,7 +1794,23 @@ export function ReportsPage({ token, role }: PageProps) {
                   <ul>
                     {report.assessments.map((assessment) => (
                       <li key={assessment._id}>
-                        {assessment.competency.title} - {formatPercent(assessment.scores.finalScore)} - {assessment.gapLevel}
+                        {assessment.competency.title} -{" "}
+                        {formatPercent(assessment.scores.finalScore)} -{" "}
+                        {assessment.gapLevel}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {report.assessments && report.assessments.length > 0 && (
+                <div className="report-preview">
+                  <strong>Repository summaries</strong>
+                  <ul>
+                    {report.assessments.map((assessment) => (
+                      <li key={`${report._id}-${assessment._id}-repo`}>
+                        {assessment.competency.title}:{" "}
+                        {assessment.evidence.repositorySummary?.summaryText ||
+                          "No repository summary available."}
                       </li>
                     ))}
                   </ul>
@@ -1471,27 +1821,48 @@ export function ReportsPage({ token, role }: PageProps) {
         </div>
       )}
     </section>
-  )
+  );
 }
 
 function escapeHtml(value: string | number | undefined) {
-  return String(value ?? 'N/A')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+  return String(value ?? "N/A")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function buildReportHtml(report: Report) {
-  const assessments = report.assessments || []
-  const recommendations = report.recommendations || []
+  const assessments = report.assessments || [];
+  const recommendations = report.recommendations || [];
   const recommendationFor = (assessment: Assessment) =>
-    recommendations.find((item) => item.competency._id === assessment.competency._id)
+    recommendations.find(
+      (item) => item.competency._id === assessment.competency._id,
+    );
+  const repositoryDetails = assessments
+    .map((assessment) => {
+      const summary = assessment.evidence.repositorySummary;
+      const sampledFiles =
+        summary?.sampledSourceFiles
+          ?.map(
+            (file) =>
+              `<li>${escapeHtml(file.path)} (${escapeHtml(file.language)}): ${escapeHtml(file.excerpt || "")}</li>`,
+          )
+          .join("") || "<li>No sampled source file excerpts available.</li>";
+
+      return `<section class="summary">
+        <h3>${escapeHtml(assessment.competency.title)}</h3>
+        <p>${escapeHtml(summary?.summaryText || "No repository summary available.")}</p>
+        <p><strong>README:</strong> ${escapeHtml(summary?.readmeExcerpt || "No README excerpt available.")}</p>
+        <ul>${sampledFiles}</ul>
+      </section>`;
+    })
+    .join("");
 
   const assessmentRows = assessments
     .map((assessment) => {
-      const recommendation = recommendationFor(assessment)
+      const recommendation = recommendationFor(assessment);
       return `
         <tr>
           <td>${escapeHtml(assessment.competency.title)}</td>
@@ -1499,12 +1870,12 @@ function buildReportHtml(report: Report) {
           <td>${escapeHtml(formatPercent(assessment.benchmarkScore))}</td>
           <td>${escapeHtml(formatPercent(assessment.skillGap))}</td>
           <td>${escapeHtml(assessment.gapLevel)}</td>
-          <td>${escapeHtml(assessment.assessorComment || '')}</td>
-          <td>${escapeHtml(recommendation?.message || '')}</td>
+          <td>${escapeHtml(assessment.assessorComment || "")}</td>
+          <td>${escapeHtml(recommendation?.message || "")}</td>
         </tr>
-      `
+      `;
     })
-    .join('')
+    .join("");
 
   return `<!doctype html>
 <html>
@@ -1536,12 +1907,27 @@ function buildReportHtml(report: Report) {
     </div>
     <p>
       <strong>Strengths:</strong>
-      ${(report.strengths || []).map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join('') || 'N/A'}
+      ${(report.strengths || []).map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join("") || "N/A"}
     </p>
     <p>
       <strong>Weaknesses:</strong>
-      ${(report.weaknesses || []).map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join('') || 'N/A'}
+      ${(report.weaknesses || []).map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join("") || "N/A"}
     </p>
+    <h2>Repository Summaries</h2>
+    <ul>
+      ${
+        assessments
+          .map(
+            (assessment) =>
+              `<li><strong>${escapeHtml(assessment.competency.title)}</strong>: ${escapeHtml(
+                assessment.evidence.repositorySummary?.summaryText ||
+                  "No repository summary available.",
+              )}</li>`,
+          )
+          .join("") || "<li>No repository summaries available.</li>"
+      }
+    </ul>
+    ${repositoryDetails}
     <h2>Competency Results</h2>
     <table>
       <thead>
@@ -1558,35 +1944,41 @@ function buildReportHtml(report: Report) {
       <tbody>${assessmentRows || '<tr><td colspan="7">No assessment results found.</td></tr>'}</tbody>
     </table>
   </body>
-</html>`
+</html>`;
 }
 
 export function NotificationsPage({ token, role }: PageProps) {
-  if (role === 'admin') {
-    return <AdminNotificationsPage token={token} />
+  if (role === "admin") {
+    return <AdminNotificationsPage token={token} />;
   }
 
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.notifications(token),
     [] as NotificationItem[],
-  )
-  const unreadCount = data.filter((notification) => !notification.isRead).length
+  );
+  const unreadCount = data.filter(
+    (notification) => !notification.isRead,
+  ).length;
 
   async function markRead(id: string) {
-    await api.markNotificationRead(token, id)
-    await refresh()
+    await api.markNotificationRead(token, id);
+    await refresh();
   }
 
   async function markAllRead() {
-    await api.markAllNotificationsRead(token)
-    await refresh()
+    await api.markAllNotificationsRead(token);
+    await refresh();
   }
 
-  if (isLoading) return <LoadingState message="Loading notifications..." />
+  if (isLoading) return <LoadingState message="Loading notifications..." />;
 
   return (
     <section className="page-stack">
-      <PageHeader title="Notifications" description="System updates about assessments, reports, and recommendations." onRefresh={refresh} />
+      <PageHeader
+        title="Notifications"
+        description="System updates about assessments, reports, and recommendations."
+        onRefresh={refresh}
+      />
       {error && <Alert type="error">{error}</Alert>}
       <div className="status-summary-grid">
         <StatCard helper="Need attention" label="Unread" value={unreadCount} />
@@ -1612,7 +2004,10 @@ export function NotificationsPage({ token, role }: PageProps) {
             <Card
               actions={
                 !notification.isRead && (
-                  <Button variant="secondary" onClick={() => void markRead(notification._id)}>
+                  <Button
+                    variant="secondary"
+                    onClick={() => void markRead(notification._id)}
+                  >
                     Mark read
                   </Button>
                 )
@@ -1620,7 +2015,9 @@ export function NotificationsPage({ token, role }: PageProps) {
               key={notification._id}
               title={notification.title}
             >
-              <div className={`notification-item ${notification.isRead ? 'read' : 'unread'}`}>
+              <div
+                className={`notification-item ${notification.isRead ? "read" : "unread"}`}
+              >
                 <div className="compact-meta">
                   <span>{notification.type}</span>
                   <span>{formatDate(notification.createdAt)}</span>
@@ -1633,46 +2030,49 @@ export function NotificationsPage({ token, role }: PageProps) {
         </div>
       )}
     </section>
-  )
+  );
 }
 
 function AdminNotificationsPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.allNotifications(token),
     [] as NotificationItem[],
-  )
+  );
   const [form, setForm] = useState({
-    title: '',
-    message: '',
-    type: 'system' as NotificationItem['type'],
-    role: 'all' as Role | 'all',
-    recipientId: '',
-  })
-  const [message, setMessage] = useState('')
-  const unreadCount = data.filter((notification) => !notification.isRead).length
+    title: "",
+    message: "",
+    type: "system" as NotificationItem["type"],
+    role: "all" as Role | "all",
+    recipientId: "",
+  });
+  const [message, setMessage] = useState("");
+  const unreadCount = data.filter(
+    (notification) => !notification.isRead,
+  ).length;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setMessage('')
+    event.preventDefault();
+    setMessage("");
     await api.createNotification(token, {
       title: form.title,
       message: form.message,
       type: form.type,
       role: form.recipientId ? undefined : form.role,
       recipientId: form.recipientId || undefined,
-    })
-    setMessage('Notification sent successfully.')
+    });
+    setMessage("Notification sent successfully.");
     setForm({
-      title: '',
-      message: '',
-      type: 'system',
-      role: 'all',
-      recipientId: '',
-    })
-    await refresh()
+      title: "",
+      message: "",
+      type: "system",
+      role: "all",
+      recipientId: "",
+    });
+    await refresh();
   }
 
-  if (isLoading) return <LoadingState message="Loading notification manager..." />
+  if (isLoading)
+    return <LoadingState message="Loading notification manager..." />;
 
   return (
     <section className="page-stack">
@@ -1686,11 +2086,19 @@ function AdminNotificationsPage({ token }: { token: string }) {
 
       <div className="status-summary-grid">
         <StatCard helper="Need attention" label="Unread" value={unreadCount} />
-        <StatCard helper="All sent and generated messages" label="Total" value={data.length} />
+        <StatCard
+          helper="All sent and generated messages"
+          label="Total"
+          value={data.length}
+        />
         <StatCard
           helper="Unique recipients"
           label="Recipients"
-          value={new Set(data.map((item) => item.recipient?.id || item.recipient?._id)).size}
+          value={
+            new Set(
+              data.map((item) => item.recipient?.id || item.recipient?._id),
+            ).size
+          }
         />
       </div>
 
@@ -1700,13 +2108,18 @@ function AdminNotificationsPage({ token }: { token: string }) {
             label="Title"
             required
             value={form.title}
-            onChange={(event) => setForm({ ...form, title: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, title: event.target.value })
+            }
           />
           <SelectField
             label="Type"
             value={form.type}
             onChange={(event) =>
-              setForm({ ...form, type: event.target.value as NotificationItem['type'] })
+              setForm({
+                ...form,
+                type: event.target.value as NotificationItem["type"],
+              })
             }
           >
             <option value="system">System</option>
@@ -1718,7 +2131,7 @@ function AdminNotificationsPage({ token }: { token: string }) {
             label="Send to role"
             value={form.role}
             onChange={(event) =>
-              setForm({ ...form, role: event.target.value as Role | 'all' })
+              setForm({ ...form, role: event.target.value as Role | "all" })
             }
           >
             <option value="all">All users</option>
@@ -1730,7 +2143,9 @@ function AdminNotificationsPage({ token }: { token: string }) {
             label="Specific user ID"
             placeholder="Optional. Overrides role selection."
             value={form.recipientId}
-            onChange={(event) => setForm({ ...form, recipientId: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, recipientId: event.target.value })
+            }
           />
           <div className="full-span">
             <TextArea
@@ -1738,7 +2153,9 @@ function AdminNotificationsPage({ token }: { token: string }) {
               required
               rows={4}
               value={form.message}
-              onChange={(event) => setForm({ ...form, message: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, message: event.target.value })
+              }
             />
           </div>
           <Button type="submit">Send Notification</Button>
@@ -1765,12 +2182,12 @@ function AdminNotificationsPage({ token }: { token: string }) {
                   <tr key={notification._id}>
                     <td>{notification.title}</td>
                     <td>
-                      {notification.recipient?.name || 'Unknown'}
+                      {notification.recipient?.name || "Unknown"}
                       <br />
-                      <small>{notification.recipient?.role || 'N/A'}</small>
+                      <small>{notification.recipient?.role || "N/A"}</small>
                     </td>
                     <td>{notification.type}</td>
-                    <td>{notification.isRead ? 'Read' : 'Unread'}</td>
+                    <td>{notification.isRead ? "Read" : "Unread"}</td>
                     <td>{formatDate(notification.createdAt)}</td>
                   </tr>
                 ))}
@@ -1780,17 +2197,24 @@ function AdminNotificationsPage({ token }: { token: string }) {
         )}
       </Card>
     </section>
-  )
+  );
 }
 
 export function UsersPage({ token }: { token: string }) {
-  const { data, isLoading, error, refresh } = useAsyncData(() => api.users(token), [] as User[])
+  const { data, isLoading, error, refresh } = useAsyncData(
+    () => api.users(token),
+    [] as User[],
+  );
 
-  if (isLoading) return <LoadingState message="Loading users..." />
+  if (isLoading) return <LoadingState message="Loading users..." />;
 
   return (
     <section className="page-stack">
-      <PageHeader title="User Management" description="View graduate, assessor, and admin accounts." onRefresh={refresh} />
+      <PageHeader
+        title="User Management"
+        description="View graduate, assessor, and admin accounts."
+        onRefresh={refresh}
+      />
       {error && <Alert type="error">{error}</Alert>}
       <Card title="Users">
         {data.length === 0 ? (
@@ -1812,7 +2236,7 @@ export function UsersPage({ token }: { token: string }) {
                     <td>{user.name}</td>
                     <td>{user.email}</td>
                     <td>{user.role}</td>
-                    <td>{user.institution || 'N/A'}</td>
+                    <td>{user.institution || "N/A"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1821,36 +2245,36 @@ export function UsersPage({ token }: { token: string }) {
         )}
       </Card>
     </section>
-  )
+  );
 }
 
 export function CompetenciesPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.competencies(token),
     [] as Competency[],
-  )
+  );
   const [form, setForm] = useState({
-    code: '',
-    title: '',
-    category: '',
-    description: '',
-    expectedEvidence: '',
-    practicalTaskTitle: '',
-    practicalTaskInstructions: '',
-    practicalTaskDeliverables: '',
-    theoryQuestion: '',
-    theoryOptions: '',
-    theoryCorrectAnswer: '',
-    portfolioRequirementTitle: '',
-    portfolioRequirementDescription: '',
-    rubricName: '',
-    rubricDescription: '',
+    code: "",
+    title: "",
+    category: "",
+    description: "",
+    expectedEvidence: "",
+    practicalTaskTitle: "",
+    practicalTaskInstructions: "",
+    practicalTaskDeliverables: "",
+    theoryQuestion: "",
+    theoryOptions: "",
+    theoryCorrectAnswer: "",
+    portfolioRequirementTitle: "",
+    portfolioRequirementDescription: "",
+    rubricName: "",
+    rubricDescription: "",
     rubricWeight: 100,
-  })
-  const [message, setMessage] = useState('')
+  });
+  const [message, setMessage] = useState("");
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+    event.preventDefault();
     await api.createCompetency(token, {
       code: form.code,
       title: form.title,
@@ -1872,9 +2296,9 @@ export function CompetenciesPage({ token }: { token: string }) {
         ? [
             {
               question: form.theoryQuestion,
-              type: 'multiple_choice',
+              type: "multiple_choice",
               options: form.theoryOptions
-                .split('\n')
+                .split("\n")
                 .map((option) => option.trim())
                 .filter(Boolean),
               correctAnswer: form.theoryCorrectAnswer,
@@ -1901,34 +2325,38 @@ export function CompetenciesPage({ token }: { token: string }) {
             },
           ]
         : [],
-    })
+    });
     setForm({
-      code: '',
-      title: '',
-      category: '',
-      description: '',
-      expectedEvidence: '',
-      practicalTaskTitle: '',
-      practicalTaskInstructions: '',
-      practicalTaskDeliverables: '',
-      theoryQuestion: '',
-      theoryOptions: '',
-      theoryCorrectAnswer: '',
-      portfolioRequirementTitle: '',
-      portfolioRequirementDescription: '',
-      rubricName: '',
-      rubricDescription: '',
+      code: "",
+      title: "",
+      category: "",
+      description: "",
+      expectedEvidence: "",
+      practicalTaskTitle: "",
+      practicalTaskInstructions: "",
+      practicalTaskDeliverables: "",
+      theoryQuestion: "",
+      theoryOptions: "",
+      theoryCorrectAnswer: "",
+      portfolioRequirementTitle: "",
+      portfolioRequirementDescription: "",
+      rubricName: "",
+      rubricDescription: "",
       rubricWeight: 100,
-    })
-    setMessage('Competency created successfully.')
-    await refresh()
+    });
+    setMessage("Competency created successfully.");
+    await refresh();
   }
 
-  if (isLoading) return <LoadingState message="Loading competencies..." />
+  if (isLoading) return <LoadingState message="Loading competencies..." />;
 
   return (
     <section className="page-stack">
-      <PageHeader title="Competency Management" description="Maintain ICT competency standards used during assessments." onRefresh={refresh} />
+      <PageHeader
+        title="Competency Management"
+        description="Maintain ICT competency standards used during assessments."
+        onRefresh={refresh}
+      />
       {error && <Alert type="error">{error}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
       <Card title="Add real assessment competency">
@@ -1942,19 +2370,25 @@ export function CompetenciesPage({ token }: { token: string }) {
           <TextField
             label="Title"
             value={form.title}
-            onChange={(event) => setForm({ ...form, title: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, title: event.target.value })
+            }
             required
           />
           <TextField
             label="Category"
             value={form.category}
-            onChange={(event) => setForm({ ...form, category: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, category: event.target.value })
+            }
             required
           />
           <TextField
             label="Description"
             value={form.description}
-            onChange={(event) => setForm({ ...form, description: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, description: event.target.value })
+            }
           />
           <TextField
             label="Expected evidence"
@@ -1977,7 +2411,10 @@ export function CompetenciesPage({ token }: { token: string }) {
                 label="Deliverables"
                 value={form.practicalTaskDeliverables}
                 onChange={(event) =>
-                  setForm({ ...form, practicalTaskDeliverables: event.target.value })
+                  setForm({
+                    ...form,
+                    practicalTaskDeliverables: event.target.value,
+                  })
                 }
               />
               <div className="full-span">
@@ -1986,7 +2423,10 @@ export function CompetenciesPage({ token }: { token: string }) {
                   rows={4}
                   value={form.practicalTaskInstructions}
                   onChange={(event) =>
-                    setForm({ ...form, practicalTaskInstructions: event.target.value })
+                    setForm({
+                      ...form,
+                      practicalTaskInstructions: event.target.value,
+                    })
                   }
                 />
               </div>
@@ -2028,13 +2468,18 @@ export function CompetenciesPage({ token }: { token: string }) {
                 label="Portfolio requirement"
                 value={form.portfolioRequirementTitle}
                 onChange={(event) =>
-                  setForm({ ...form, portfolioRequirementTitle: event.target.value })
+                  setForm({
+                    ...form,
+                    portfolioRequirementTitle: event.target.value,
+                  })
                 }
               />
               <TextField
                 label="Rubric criterion"
                 value={form.rubricName}
-                onChange={(event) => setForm({ ...form, rubricName: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, rubricName: event.target.value })
+                }
               />
               <TextArea
                 label="Portfolio requirement description"
@@ -2088,11 +2533,11 @@ export function CompetenciesPage({ token }: { token: string }) {
                   <td>{item.code}</td>
                   <td>{item.title}</td>
                   <td>{item.category}</td>
-                  <td>{item.expectedEvidence || 'N/A'}</td>
+                  <td>{item.expectedEvidence || "N/A"}</td>
                   <td>
-                    {(item.practicalTasks?.length || 0)} task(s),{' '}
-                    {(item.theoryQuestions?.length || 0)} question(s),{' '}
-                    {(item.rubricCriteria?.length || 0)} rubric item(s)
+                    {item.practicalTasks?.length || 0} task(s),{" "}
+                    {item.theoryQuestions?.length || 0} question(s),{" "}
+                    {item.rubricCriteria?.length || 0} rubric item(s)
                   </td>
                 </tr>
               ))}
@@ -2101,35 +2546,44 @@ export function CompetenciesPage({ token }: { token: string }) {
         </div>
       </Card>
     </section>
-  )
+  );
 }
 
 export function BenchmarksPage({ token }: { token: string }) {
-  const { data: benchmarks, isLoading, error, refresh } = useAsyncData(
-    () => api.benchmarks(token),
-    [] as Benchmark[],
-  )
-  const { data: competencies } = useAsyncData(() => api.competencies(token), [] as Competency[])
+  const {
+    data: benchmarks,
+    isLoading,
+    error,
+    refresh,
+  } = useAsyncData(() => api.benchmarks(token), [] as Benchmark[]);
+  const { data: competencies } = useAsyncData(
+    () => api.competencies(token),
+    [] as Competency[],
+  );
   const [form, setForm] = useState({
-    competency: '',
+    competency: "",
     requiredScore: 80,
-    level: 'intermediate',
-    description: '',
-  })
-  const [message, setMessage] = useState('')
+    level: "intermediate",
+    description: "",
+  });
+  const [message, setMessage] = useState("");
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    await api.createBenchmark(token, form)
-    setMessage('Benchmark saved successfully.')
-    await refresh()
+    event.preventDefault();
+    await api.createBenchmark(token, form);
+    setMessage("Benchmark saved successfully.");
+    await refresh();
   }
 
-  if (isLoading) return <LoadingState message="Loading benchmarks..." />
+  if (isLoading) return <LoadingState message="Loading benchmarks..." />;
 
   return (
     <section className="page-stack">
-      <PageHeader title="RTB Benchmark Management" description="Define the required score for each ICT competency." onRefresh={refresh} />
+      <PageHeader
+        title="RTB Benchmark Management"
+        description="Define the required score for each ICT competency."
+        onRefresh={refresh}
+      />
       {error && <Alert type="error">{error}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
       <Card title="Add benchmark">
@@ -2137,7 +2591,9 @@ export function BenchmarksPage({ token }: { token: string }) {
           <SelectField
             label="Competency"
             value={form.competency}
-            onChange={(event) => setForm({ ...form, competency: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, competency: event.target.value })
+            }
             required
           >
             <option value="">Select competency</option>
@@ -2160,7 +2616,9 @@ export function BenchmarksPage({ token }: { token: string }) {
           <SelectField
             label="Level"
             value={form.level}
-            onChange={(event) => setForm({ ...form, level: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, level: event.target.value })
+            }
           >
             <option value="basic">Basic</option>
             <option value="intermediate">Intermediate</option>
@@ -2169,7 +2627,9 @@ export function BenchmarksPage({ token }: { token: string }) {
           <TextField
             label="Description"
             value={form.description}
-            onChange={(event) => setForm({ ...form, description: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, description: event.target.value })
+            }
           />
           <Button type="submit">Save Benchmark</Button>
         </form>
@@ -2197,7 +2657,7 @@ export function BenchmarksPage({ token }: { token: string }) {
         </div>
       </Card>
     </section>
-  )
+  );
 }
 
 function PageHeader({
@@ -2205,9 +2665,9 @@ function PageHeader({
   description,
   onRefresh,
 }: {
-  title: string
-  description: string
-  onRefresh?: () => Promise<void>
+  title: string;
+  description: string;
+  onRefresh?: () => Promise<void>;
 }) {
   return (
     <div className="page-header">
@@ -2221,5 +2681,5 @@ function PageHeader({
         </Button>
       )}
     </div>
-  )
+  );
 }
