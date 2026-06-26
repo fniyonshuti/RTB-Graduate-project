@@ -22,6 +22,50 @@ const evidenceSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    githubRepositoryUrl: {
+      type: String,
+      trim: true,
+    },
+    repositorySummary: {
+      url: String,
+      owner: String,
+      repo: String,
+      isValid: Boolean,
+      fetchStatus: String,
+      analyzedAt: Date,
+      description: String,
+      defaultBranch: String,
+      stars: Number,
+      forks: Number,
+      languages: [String],
+      readmeFound: Boolean,
+      readmeExcerpt: String,
+      recentCommits: [
+        {
+          message: String,
+          author: String,
+          date: String,
+        },
+      ],
+      supportedFileCount: Number,
+      supportedFileTypes: [
+        {
+          extension: String,
+          count: Number,
+        },
+      ],
+      sampledSourceFiles: [
+        {
+          path: String,
+          language: String,
+          size: Number,
+          excerpt: String,
+        },
+      ],
+      topLevelItems: [String],
+      codeQualityNotes: [String],
+      summaryText: String,
+    },
     quizAnswers: {
       type: String,
       trim: true,
@@ -170,7 +214,14 @@ const assessmentSchema = new mongoose.Schema(
     },
     gapLevel: {
       type: String,
-      enum: ['No Gap', 'Low Gap', 'Moderate Gap', 'High Gap', 'Not Reviewed'],
+      enum: [
+        'No Gap',
+        'Very Low Gap',
+        'Low Gap',
+        'Moderate Gap',
+        'High Gap',
+        'Not Reviewed',
+      ],
       default: 'Not Reviewed',
     },
     status: {
