@@ -277,7 +277,7 @@ The stored summary can include:
 
 ## Gemini Recommendation Integration
 
-The system uses Gemini only to generate a draft recommendation after assessor scores are available. If Gemini credentials are missing or the Gemini request fails, the recommendation endpoint returns an error instead of using a local fallback.
+The system uses Gemini only to generate a draft recommendation after assessor scores are available. If Gemini credentials are missing or the Gemini request fails, the recommendation endpoint returns an error.
 
 Recommended Gemini environment values:
 
@@ -322,9 +322,9 @@ Create a `.env` file using `backend/.env.example`:
 ```env
 PORT=5000
 MONGO_URI=mongodb+srv://<db_username>:<db_password>@<cluster-host>/rtb_skills_gap?retryWrites=true&w=majority
-MONGO_FALLBACK_URI=
 JWT_SECRET=replace_with_a_long_random_secret
 DB_CONNECT_TIMEOUT_MS=8000
+GITHUB_TOKEN=
 
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_RECOMMENDATION_MODEL=gemini-2.5-flash
@@ -708,11 +708,30 @@ Review assessment request:
 
 ```json
 {
+  "rubricScores": [
+    {
+      "criterionId": "RUBRIC_CRITERION_ID_1",
+      "score": 85,
+      "comment": "CRUD functionality works and routes are clearly implemented."
+    },
+    {
+      "criterionId": "RUBRIC_CRITERION_ID_2",
+      "score": 78,
+      "comment": "Code is organized but validation can be improved."
+    }
+  ],
   "practicalTaskScore": 82,
   "quizScore": 70,
   "portfolioScore": 78,
   "selfAssessmentScore": 75,
   "assessorComment": "The project demonstrates good CRUD functionality and documentation. More attention is needed on validation and error handling.",
+  "evidenceVerification": {
+    "githubReviewed": true,
+    "practicalEvidenceReviewed": true,
+    "portfolioReviewed": true,
+    "theoryReviewed": true,
+    "authenticityNotes": "Repository, README, commits, uploaded screenshot, and portfolio link were reviewed by the assessor."
+  },
   "recommendation": {
     "message": "Improve form validation, error handling, and testing before the next assessment.",
     "actionItems": [
@@ -732,11 +751,25 @@ Recommendation preview request:
 
 ```json
 {
+  "rubricScores": [
+    {
+      "criterionId": "RUBRIC_CRITERION_ID_1",
+      "score": 85,
+      "comment": "Functional implementation is mostly complete."
+    }
+  ],
   "practicalTaskScore": 82,
   "quizScore": 70,
   "portfolioScore": 78,
   "selfAssessmentScore": 75,
-  "assessorComment": "The project works, but validation and testing need improvement."
+  "assessorComment": "The project works, but validation and testing need improvement.",
+  "evidenceVerification": {
+    "githubReviewed": true,
+    "practicalEvidenceReviewed": true,
+    "portfolioReviewed": true,
+    "theoryReviewed": true,
+    "authenticityNotes": "Evidence was checked against the submitted GitHub project and portfolio."
+  }
 }
 ```
 
