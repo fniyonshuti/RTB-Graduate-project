@@ -22,6 +22,10 @@ const SUPPORTED_CODE_EXTENSIONS = new Set([
   '.md',
 ]);
 
+const TEST_FILE_PATTERN = /(^|\/)(test|tests|__tests__|spec)(\/|\.|-|_)/i;
+const CONFIG_FILE_PATTERN =
+  /(^|\/)(package\.json|vite\.config\.[jt]s|webpack\.config\.[jt]s|tsconfig\.json|eslint\.config\.[jt]s|\.eslintrc(\.json)?|requirements\.txt|pom\.xml|composer\.json)$/i;
+
 function getExtension(path = '') {
   const match = path.toLowerCase().match(/\.[a-z0-9]+$/);
   return match ? match[0] : '';
@@ -33,15 +37,26 @@ function withTimeout(ms = 7000) {
   return { controller, timeout };
 }
 
+function buildGitHubHeaders(accept) {
+  const headers = {
+    Accept: accept,
+    'User-Agent': 'rtb-skills-gap-analysis-tool',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+
+  if (process.env.GITHUB_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  }
+
+  return headers;
+}
+
 async function fetchGitHubJson(url) {
   const { controller, timeout } = withTimeout();
 
   try {
     const response = await fetch(url, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'rtb-skills-gap-analysis-tool',
-      },
+      headers: buildGitHubHeaders('application/vnd.github+json'),
       signal: controller.signal,
     });
 
@@ -60,10 +75,7 @@ async function fetchGitHubText(url) {
 
   try {
     const response = await fetch(url, {
-      headers: {
-        Accept: 'text/plain',
-        'User-Agent': 'rtb-skills-gap-analysis-tool',
-      },
+      headers: buildGitHubHeaders('text/plain'),
       signal: controller.signal,
     });
 
@@ -106,6 +118,83 @@ function fileLanguage(path = '') {
   };
 
   return map[extension] || extension.replace('.', '').toUpperCase() || 'Text';
+}
+
+function scoreRepositoryEvidence({
+  repository,
+  readmeFound,
+  readmeContent,
+  supportedFiles,
+  files,
+  commits,
+  languages,
+}) {
+  const hasSourceFiles = supportedFiles.length > 0;
+  const hasMultipleFiles = supportedFiles.length >= 5;
+  const hasMultipleLanguages = Object.keys(languages || {}).length >= 2;
+  const hasCommits = Array.isArray(commits) && commits.length > 0;
+  const hasRecentActivity =
+    hasCommits &&
+    commits.some((commit) => {
+      const date = new Date(commit.commit?.author?.date || 0);
+      const ageInDays = (Date.now() - date.getTime()) / 86400000;
+      return Number.isFinite(ageInDays) && ageInDays <= 365;
+    });
+  const hasConfigFile = files.some((file) =>
+    CONFIG_FILE_PATTERN.test(file.path)
+  );
+  const hasTests = files.some((file) => TEST_FILE_PATTERN.test(file.path));
+  const hasDocumentationDepth = compactText(readmeContent, 3000).length >= 400;
+
+  const qualityChecks = [
+    { passed: hasSourceFiles, weight: 25, note: 'Supported source files detected.' },
+    { passed: hasMultipleFiles, weight: 15, note: 'Project contains several implementation files.' },
+    { passed: hasConfigFile, weight: 15, note: 'Project configuration/dependency file detected.' },
+    { passed: hasTests, weight: 15, note: 'Test/spec files detected.' },
+    { passed: readmeFound, weight: 15, note: 'README documentation detected.' },
+    { passed: hasCommits, weight: 10, note: 'Commit history is available.' },
+    { passed: hasMultipleLanguages, weight: 5, note: 'Multiple relevant file types/languages detected.' },
+  ];
+  const completenessChecks = [
+    { passed: readmeFound, weight: 25 },
+    { passed: hasDocumentationDepth, weight: 20 },
+    { passed: hasSourceFiles, weight: 25 },
+    { passed: hasConfigFile, weight: 15 },
+    { passed: hasCommits, weight: 15 },
+  ];
+  const codeQualityScore = qualityChecks.reduce(
+    (sum, check) => sum + (check.passed ? check.weight : 0),
+    0,
+  );
+  const evidenceCompletenessScore = completenessChecks.reduce(
+    (sum, check) => sum + (check.passed ? check.weight : 0),
+    0,
+  );
+  const riskFlags = [
+    !repository.description ? 'Repository has no description.' : '',
+    !readmeFound ? 'README documentation is missing.' : '',
+    !hasDocumentationDepth && readmeFound
+      ? 'README is present but may not explain the project deeply.'
+      : '',
+    !hasSourceFiles ? 'No supported source files were detected.' : '',
+    !hasConfigFile
+      ? 'No dependency/configuration file was detected for reproducible setup.'
+      : '',
+    !hasTests ? 'No automated test/spec files were detected.' : '',
+    !hasRecentActivity
+      ? 'Recent development activity could not be confirmed.'
+      : '',
+  ].filter(Boolean);
+  const positiveNotes = qualityChecks
+    .filter((check) => check.passed)
+    .map((check) => check.note);
+
+  return {
+    codeQualityScore,
+    evidenceCompletenessScore,
+    riskFlags,
+    positiveNotes,
+  };
 }
 
 export function parseGitHubRepositoryUrl(url = '') {
@@ -181,6 +270,15 @@ export async function summarizeGitHubRepository(url = '') {
     const readmeContent = readmeUrl
       ? await fetchGitHubText(readmeUrl).catch(() => '')
       : '';
+    const evidenceScore = scoreRepositoryEvidence({
+      repository,
+      readmeFound,
+      readmeContent,
+      supportedFiles,
+      files,
+      commits,
+      languages,
+    });
     const sampledSourceFiles = await Promise.all(
       supportedFiles.slice(0, 6).map(async (file) => {
         const rawUrl = `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${repository.default_branch}/${file.path}`;
@@ -204,6 +302,9 @@ export async function summarizeGitHubRepository(url = '') {
       Array.isArray(commits) && commits.length > 0
         ? `${commits.length} recent commit(s) available for assessor review.`
         : 'Recent commit history could not be confirmed automatically.',
+      `Repository quality score: ${evidenceScore.codeQualityScore}%.`,
+      `Evidence completeness score: ${evidenceScore.evidenceCompletenessScore}%.`,
+      ...evidenceScore.positiveNotes,
     ];
 
     return {
@@ -227,6 +328,9 @@ export async function summarizeGitHubRepository(url = '') {
         : [],
       supportedFileCount: supportedFiles.length,
       supportedFileTypes,
+      codeQualityScore: evidenceScore.codeQualityScore,
+      evidenceCompletenessScore: evidenceScore.evidenceCompletenessScore,
+      riskFlags: evidenceScore.riskFlags,
       sampledSourceFiles,
       topLevelItems: files
         .filter((file) => !file.path.includes('/'))
