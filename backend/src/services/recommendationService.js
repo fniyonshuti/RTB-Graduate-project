@@ -34,6 +34,16 @@ function buildRepositorySummaryText(repositorySummary = {}) {
     : [];
   const parts = [
     repositorySummary.summaryText,
+    Number.isFinite(repositorySummary.codeQualityScore)
+      ? `Repository quality score: ${repositorySummary.codeQualityScore}%.`
+      : "",
+    Number.isFinite(repositorySummary.evidenceCompletenessScore)
+      ? `Evidence completeness score: ${repositorySummary.evidenceCompletenessScore}%.`
+      : "",
+    Array.isArray(repositorySummary.riskFlags) &&
+    repositorySummary.riskFlags.length > 0
+      ? `Evidence risk flags: ${repositorySummary.riskFlags.join("; ")}`
+      : "",
     repositorySummary.description,
     repositorySummary.readmeExcerpt
       ? `README excerpt: ${repositorySummary.readmeExcerpt}`
@@ -46,6 +56,21 @@ function buildRepositorySummaryText(repositorySummary = {}) {
     .filter(Boolean);
 
   return parts.join(" ");
+}
+
+function buildRubricSummary(rubricScores = []) {
+  return rubricScores
+    .map((criterion) =>
+      [
+        criterion.name,
+        `score ${criterion.score}%`,
+        `weight ${criterion.weight}%`,
+        criterion.comment ? `comment: ${criterion.comment}` : "",
+      ]
+        .filter(Boolean)
+        .join(" - "),
+    )
+    .join(" | ");
 }
 
 export function buildRecommendationContext({
@@ -62,6 +87,8 @@ export function buildRecommendationContext({
     gapLevel: assessment.gapLevel,
     weakAreas: getWeakAssessmentAreas(assessment.scores),
     assessorComment: assessorComment || assessment.assessorComment || "",
+    rubricScores: buildRubricSummary(assessment.scores?.rubricScores || []),
+    evidenceVerification: assessment.evidenceVerification || {},
     repositorySummary: buildRepositorySummaryText(
       assessment.evidence?.repositorySummary,
     ),
@@ -77,6 +104,22 @@ export async function generateDraftRecommendation({
   return generateAiRecommendationDraft(
     buildRecommendationContext({ assessment, competency, assessorComment }),
   );
+}
+
+export function listRecommendationsForUser(user, filters = {}) {
+  const query = {};
+
+  if (user.role === "graduate") query.graduate = user._id;
+  if (filters.graduate && user.role !== "graduate") {
+    query.graduate = filters.graduate;
+  }
+  if (filters.competency) query.competency = filters.competency;
+
+  return Recommendation.find(query)
+    .populate("graduate", "name email institution")
+    .populate("competency", "title code category")
+    .populate("assessor", "name email institution")
+    .sort({ createdAt: -1 });
 }
 
 export function generateDraftActionItems(assessment) {
