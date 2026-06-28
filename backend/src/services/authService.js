@@ -14,6 +14,16 @@ export function sanitizeUser(user) {
   };
 }
 
+export async function getActiveUserById(userId) {
+  const user = await User.findById(userId);
+
+  if (!user || !user.isActive) {
+    throw new AppError('User account is not available', 401);
+  }
+
+  return user;
+}
+
 export async function registerUser(payload) {
   const { name, email, password, role = 'graduate', institution } = payload;
 
