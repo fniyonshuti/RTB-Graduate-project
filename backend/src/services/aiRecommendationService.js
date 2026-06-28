@@ -7,8 +7,8 @@ const DEFAULT_GEMINI_MODEL =
 const GEMINI_API_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta/models";
 
-function safeString(value, fallback = "") {
-  return String(value ?? fallback).trim();
+function safeString(value, defaultValue = "") {
+  return String(value ?? defaultValue).trim();
 }
 
 function normalizeList(values = []) {
