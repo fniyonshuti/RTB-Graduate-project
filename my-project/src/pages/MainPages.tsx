@@ -1238,6 +1238,16 @@ function ReviewAssessmentPanel({
   token: string;
   onReviewed: () => void;
 }) {
+  const rubricCriteria = assessment.competency.rubricCriteria || [];
+  const theoryAnswers = assessment.evidence.theoryAnswers || [];
+  const [rubricScores, setRubricScores] = useState(() =>
+    rubricCriteria.map((criterion) => ({
+      criterionId: criterion._id,
+      name: criterion.name,
+      score: 0,
+      comment: "",
+    })),
+  );
   const [practicalTaskScore, setPracticalTaskScore] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
   const [portfolioScore, setPortfolioScore] = useState(0);
@@ -1248,23 +1258,68 @@ function ReviewAssessmentPanel({
   const [message, setMessage] = useState("");
   const [actionItems, setActionItems] = useState("");
   const [error, setError] = useState("");
+  const [evidenceVerification, setEvidenceVerification] = useState({
+    githubReviewed: false,
+    practicalEvidenceReviewed: false,
+    portfolioReviewed: false,
+    theoryReviewed: false,
+    authenticityNotes: "",
+  });
   const [draftStatus, setDraftStatus] = useState(
-    "Loading AI draft recommendation...",
+    "Loading Gemini draft recommendation...",
   );
-  const rubricCriteria = assessment.competency.rubricCriteria || [];
-  const theoryAnswers = assessment.evidence.theoryAnswers || [];
 
   useEffect(() => {
     setQuizScore(assessment.scores.quizScore || 0);
   }, [assessment.scores.quizScore]);
 
+  useEffect(() => {
+    setRubricScores(
+      rubricCriteria.map((criterion) => ({
+        criterionId: criterion._id,
+        name: criterion.name,
+        score:
+          assessment.scores.rubricScores?.find(
+            (score) => score.criterionId === criterion._id,
+          )?.score || 0,
+        comment:
+          assessment.scores.rubricScores?.find(
+            (score) => score.criterionId === criterion._id,
+          )?.comment || "",
+      })),
+    );
+  }, [assessment.scores.rubricScores, rubricCriteria]);
+
+  const rubricPracticalScore = useMemo(() => {
+    if (rubricCriteria.length === 0) return practicalTaskScore;
+
+    const totalWeight = rubricCriteria.reduce(
+      (sum, criterion) => sum + (Number(criterion.weight) || 0),
+      0,
+    );
+
+    if (totalWeight === 0) return practicalTaskScore;
+
+    const weightedScore = rubricCriteria.reduce((sum, criterion) => {
+      const item = rubricScores.find(
+        (score) => score.criterionId === criterion._id,
+      );
+      return sum + (Number(item?.score) || 0) * (Number(criterion.weight) || 0);
+    }, 0);
+
+    return Math.round((weightedScore / totalWeight) * 100) / 100;
+  }, [practicalTaskScore, rubricCriteria, rubricScores]);
+
+  const effectivePracticalScore =
+    rubricCriteria.length > 0 ? rubricPracticalScore : practicalTaskScore;
+
   const previewScore = useMemo(
     () =>
-      practicalTaskScore * 0.6 +
+      effectivePracticalScore * 0.6 +
       quizScore * 0.2 +
       portfolioScore * 0.15 +
       selfAssessmentScore * 0.05,
-    [portfolioScore, practicalTaskScore, quizScore, selfAssessmentScore],
+    [effectivePracticalScore, portfolioScore, quizScore, selfAssessmentScore],
   );
 
   useEffect(() => {
@@ -1276,11 +1331,13 @@ function ReviewAssessmentPanel({
           token,
           assessment._id,
           {
-            practicalTaskScore,
+            rubricScores,
+            practicalTaskScore: effectivePracticalScore,
             quizScore,
             portfolioScore,
             selfAssessmentScore,
             assessorComment,
+            evidenceVerification,
           },
         );
 
@@ -1310,9 +1367,11 @@ function ReviewAssessmentPanel({
   }, [
     assessment._id,
     assessorComment,
+    effectivePracticalScore,
+    evidenceVerification,
     portfolioScore,
-    practicalTaskScore,
     quizScore,
+    rubricScores,
     selfAssessmentScore,
     token,
   ]);
@@ -1323,11 +1382,13 @@ function ReviewAssessmentPanel({
 
     try {
       await api.reviewAssessment(token, assessment._id, {
-        practicalTaskScore,
+        rubricScores,
+        practicalTaskScore: effectivePracticalScore,
         quizScore,
         portfolioScore,
         selfAssessmentScore,
         assessorComment,
+        evidenceVerification,
         recommendation: {
           message,
           actionItems: actionItems
@@ -1399,6 +1460,36 @@ function ReviewAssessmentPanel({
                       ),
                     )}
                   </ul>
+                ) : null}
+                <div className="quality-grid">
+                  <StatCard
+                    helper="Automatic signal from README, source files, commits, config, and tests."
+                    label="Repository Quality"
+                    value={formatPercent(
+                      assessment.evidence.repositorySummary?.codeQualityScore ||
+                        0,
+                    )}
+                  />
+                  <StatCard
+                    helper="Automatic signal showing how complete the project evidence is."
+                    label="Evidence Completeness"
+                    value={formatPercent(
+                      assessment.evidence.repositorySummary
+                        ?.evidenceCompletenessScore || 0,
+                    )}
+                  />
+                </div>
+                {assessment.evidence.repositorySummary?.riskFlags?.length ? (
+                  <div className="assessor-note warning-note">
+                    <strong>Evidence risk flags</strong>
+                    <ul>
+                      {assessment.evidence.repositorySummary.riskFlags.map(
+                        (flag) => (
+                          <li key={flag}>{flag}</li>
+                        ),
+                      )}
+                    </ul>
+                  </div>
                 ) : null}
                 {assessment.evidence.repositorySummary?.readmeExcerpt && (
                   <div className="assessor-note">
@@ -1507,17 +1598,83 @@ function ReviewAssessmentPanel({
         <form className="form-stack" onSubmit={handleReview}>
           {error && <Alert type="error">{error}</Alert>}
           <Alert type="info">{draftStatus}</Alert>
+          {rubricCriteria.length > 0 ? (
+            <div className="assessor-evidence-section">
+              <strong>RTB-aligned rubric scoring</strong>
+              <p>
+                Score each criterion from 0 to 100. The practical/GitHub score
+                is calculated from the rubric weights.
+              </p>
+              <div className="rubric-score-list">
+                {rubricCriteria.map((criterion) => {
+                  const current = rubricScores.find(
+                    (score) => score.criterionId === criterion._id,
+                  );
+
+                  return (
+                    <div className="rubric-score-card" key={criterion._id}>
+                      <div className="compact-meta">
+                        <strong>{criterion.name}</strong>
+                        <span>{criterion.weight}% weight</span>
+                      </div>
+                      <p>{criterion.description}</p>
+                      <TextField
+                        label="Criterion score"
+                        max={100}
+                        min={0}
+                        type="number"
+                        value={current?.score || 0}
+                        onChange={(event) =>
+                          setRubricScores((items) =>
+                            items.map((item) =>
+                              item.criterionId === criterion._id
+                                ? {
+                                    ...item,
+                                    score: Number(event.target.value),
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                      <TextArea
+                        label="Criterion comment"
+                        rows={2}
+                        value={current?.comment || ""}
+                        onChange={(event) =>
+                          setRubricScores((items) =>
+                            items.map((item) =>
+                              item.criterionId === criterion._id
+                                ? { ...item, comment: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <StatCard
+                helper="Calculated from the rubric criteria and used as the practical/GitHub score."
+                label="Rubric Practical Score"
+                value={formatPercent(rubricPracticalScore)}
+              />
+            </div>
+          ) : null}
           <div className="form-grid">
-            <TextField
-              label="Practical task score"
-              max={100}
-              min={0}
-              type="number"
-              value={practicalTaskScore}
-              onChange={(event) =>
-                setPracticalTaskScore(Number(event.target.value))
-              }
-            />
+            {rubricCriteria.length === 0 ? (
+              <TextField
+                label="Practical task score"
+                max={100}
+                min={0}
+                type="number"
+                value={practicalTaskScore}
+                onChange={(event) =>
+                  setPracticalTaskScore(Number(event.target.value))
+                }
+              />
+            ) : null}
             <TextField
               label="Quiz score"
               max={100}
@@ -1558,6 +1715,48 @@ function ReviewAssessmentPanel({
             value={assessorComment}
             onChange={(event) => setAssessorComment(event.target.value)}
           />
+          <div className="assessor-evidence-section">
+            <strong>Evidence verification</strong>
+            <div className="check-grid">
+              {[
+                ["githubReviewed", "GitHub project reviewed"],
+                ["practicalEvidenceReviewed", "Practical evidence reviewed"],
+                ["portfolioReviewed", "Portfolio evidence reviewed"],
+                ["theoryReviewed", "Theory answers reviewed"],
+              ].map(([key, label]) => (
+                <label className="check-row" key={key}>
+                  <input
+                    checked={
+                      Boolean(
+                        evidenceVerification[
+                          key as keyof typeof evidenceVerification
+                        ],
+                      )
+                    }
+                    type="checkbox"
+                    onChange={(event) =>
+                      setEvidenceVerification((current) => ({
+                        ...current,
+                        [key]: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <TextArea
+              label="Authenticity notes"
+              rows={2}
+              value={evidenceVerification.authenticityNotes}
+              onChange={(event) =>
+                setEvidenceVerification((current) => ({
+                  ...current,
+                  authenticityNotes: event.target.value,
+                }))
+              }
+            />
+          </div>
           <TextArea
             label="Recommendation message"
             rows={3}
@@ -1637,6 +1836,64 @@ export function GapResultsPage({ token }: { token: string }) {
                       {assessment.evidence.repositorySummary?.summaryText ||
                         "No GitHub repository summary was stored for this assessment."}
                     </p>
+                    {assessment.evidence.repositorySummary && (
+                      <div className="result-metrics">
+                        <span>
+                          Repository quality:{" "}
+                          {formatPercent(
+                            assessment.evidence.repositorySummary
+                              .codeQualityScore || 0,
+                          )}
+                        </span>
+                        <span>
+                          Evidence completeness:{" "}
+                          {formatPercent(
+                            assessment.evidence.repositorySummary
+                              .evidenceCompletenessScore || 0,
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {assessment.scores.rubricScores?.length ? (
+                    <div className="assessor-note">
+                      <strong>Rubric scoring</strong>
+                      <ul>
+                        {assessment.scores.rubricScores.map((score) => (
+                          <li key={score.criterionId || score.name}>
+                            {score.name}: {formatPercent(score.score)} (
+                            {score.weight}% weight)
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <div className="assessor-note">
+                    <strong>Evidence verification</strong>
+                    <p>
+                      {assessment.evidenceVerification
+                        ? [
+                            assessment.evidenceVerification.githubReviewed
+                              ? "GitHub reviewed"
+                              : "",
+                            assessment.evidenceVerification
+                              .practicalEvidenceReviewed
+                              ? "Practical reviewed"
+                              : "",
+                            assessment.evidenceVerification.portfolioReviewed
+                              ? "Portfolio reviewed"
+                              : "",
+                            assessment.evidenceVerification.theoryReviewed
+                              ? "Theory reviewed"
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(", ") || "Verification checks not recorded."
+                        : "Verification checks not recorded."}
+                    </p>
+                    {assessment.evidenceVerification?.authenticityNotes && (
+                      <p>{assessment.evidenceVerification.authenticityNotes}</p>
+                    )}
                   </div>
                   <div className="assessor-note">
                     <strong>Recommendation</strong>
@@ -1811,6 +2068,21 @@ export function ReportsPage({ token, role }: PageProps) {
                         {assessment.competency.title}:{" "}
                         {assessment.evidence.repositorySummary?.summaryText ||
                           "No repository summary available."}
+                        {assessment.evidence.repositorySummary && (
+                          <>
+                            {" "}
+                            Quality{" "}
+                            {formatPercent(
+                              assessment.evidence.repositorySummary
+                                .codeQualityScore || 0,
+                            )}
+                            , completeness{" "}
+                            {formatPercent(
+                              assessment.evidence.repositorySummary
+                                .evidenceCompletenessScore || 0,
+                            )}
+                          </>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -1850,11 +2122,49 @@ function buildReportHtml(report: Report) {
               `<li>${escapeHtml(file.path)} (${escapeHtml(file.language)}): ${escapeHtml(file.excerpt || "")}</li>`,
           )
           .join("") || "<li>No sampled source file excerpts available.</li>";
+      const rubricScores =
+        assessment.scores.rubricScores
+          ?.map(
+            (score) =>
+              `<li>${escapeHtml(score.name)}: ${escapeHtml(formatPercent(score.score))} (${escapeHtml(score.weight)}% weight) ${score.comment ? `- ${escapeHtml(score.comment)}` : ""}</li>`,
+          )
+          .join("") || "<li>No rubric criterion scores recorded.</li>";
+      const riskFlags =
+        summary?.riskFlags
+          ?.map((flag) => `<li>${escapeHtml(flag)}</li>`)
+          .join("") || "<li>No repository risk flags recorded.</li>";
+      const verification = assessment.evidenceVerification
+        ? [
+            assessment.evidenceVerification.githubReviewed
+              ? "GitHub project reviewed"
+              : "",
+            assessment.evidenceVerification.practicalEvidenceReviewed
+              ? "Practical evidence reviewed"
+              : "",
+            assessment.evidenceVerification.portfolioReviewed
+              ? "Portfolio evidence reviewed"
+              : "",
+            assessment.evidenceVerification.theoryReviewed
+              ? "Theory answers reviewed"
+              : "",
+          ]
+            .filter(Boolean)
+            .join(", ") || "No verification checks recorded."
+        : "No verification checks recorded.";
 
       return `<section class="summary">
         <h3>${escapeHtml(assessment.competency.title)}</h3>
         <p>${escapeHtml(summary?.summaryText || "No repository summary available.")}</p>
+        <p><strong>Repository quality:</strong> ${escapeHtml(formatPercent(summary?.codeQualityScore || 0))}</p>
+        <p><strong>Evidence completeness:</strong> ${escapeHtml(formatPercent(summary?.evidenceCompletenessScore || 0))}</p>
+        <p><strong>Evidence verification:</strong> ${escapeHtml(verification)}</p>
+        <p><strong>Authenticity notes:</strong> ${escapeHtml(assessment.evidenceVerification?.authenticityNotes || "N/A")}</p>
         <p><strong>README:</strong> ${escapeHtml(summary?.readmeExcerpt || "No README excerpt available.")}</p>
+        <h4>Repository risk flags</h4>
+        <ul>${riskFlags}</ul>
+        <h4>Rubric scores</h4>
+        <ul>${rubricScores}</ul>
+        <h4>Sampled source files</h4>
         <ul>${sampledFiles}</ul>
       </section>`;
     })
