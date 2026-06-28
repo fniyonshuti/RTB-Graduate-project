@@ -115,11 +115,24 @@ export const api = {
     token: string,
     id: string,
     body: {
+      rubricScores?: {
+        criterionId?: string
+        name?: string
+        score: number
+        comment?: string
+      }[]
       practicalTaskScore: number
       quizScore: number
       portfolioScore: number
       selfAssessmentScore: number
       assessorComment?: string
+      evidenceVerification?: {
+        githubReviewed?: boolean
+        practicalEvidenceReviewed?: boolean
+        portfolioReviewed?: boolean
+        theoryReviewed?: boolean
+        authenticityNotes?: string
+      }
       recommendation?: {
         message?: string
         actionItems?: string[]
@@ -135,11 +148,24 @@ export const api = {
     token: string,
     id: string,
     body: {
+      rubricScores?: {
+        criterionId?: string
+        name?: string
+        score: number
+        comment?: string
+      }[]
       practicalTaskScore: number
       quizScore: number
       portfolioScore: number
       selfAssessmentScore: number
       assessorComment?: string
+      evidenceVerification?: {
+        githubReviewed?: boolean
+        practicalEvidenceReviewed?: boolean
+        portfolioReviewed?: boolean
+        theoryReviewed?: boolean
+        authenticityNotes?: string
+      }
     },
   ) => request<{
     assessmentId: string
