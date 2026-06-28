@@ -54,6 +54,9 @@ const evidenceSchema = new mongoose.Schema(
           count: Number,
         },
       ],
+      codeQualityScore: Number,
+      evidenceCompletenessScore: Number,
+      riskFlags: [String],
       sampledSourceFiles: [
         {
           path: String,
@@ -149,6 +152,40 @@ const evidenceSchema = new mongoose.Schema(
 
 const scoresSchema = new mongoose.Schema(
   {
+    rubricScores: [
+      {
+        criterionId: {
+          type: mongoose.Schema.Types.ObjectId,
+        },
+        name: {
+          type: String,
+          trim: true,
+        },
+        description: {
+          type: String,
+          trim: true,
+        },
+        weight: {
+          type: Number,
+          min: 0,
+          max: 100,
+        },
+        score: {
+          type: Number,
+          min: 0,
+          max: 100,
+        },
+        weightedScore: {
+          type: Number,
+          min: 0,
+          max: 100,
+        },
+        comment: {
+          type: String,
+          trim: true,
+        },
+      },
+    ],
     practicalTaskScore: {
       type: Number,
       min: 0,
@@ -232,6 +269,28 @@ const assessmentSchema = new mongoose.Schema(
     assessorComment: {
       type: String,
       trim: true,
+    },
+    evidenceVerification: {
+      githubReviewed: {
+        type: Boolean,
+        default: false,
+      },
+      practicalEvidenceReviewed: {
+        type: Boolean,
+        default: false,
+      },
+      portfolioReviewed: {
+        type: Boolean,
+        default: false,
+      },
+      theoryReviewed: {
+        type: Boolean,
+        default: false,
+      },
+      authenticityNotes: {
+        type: String,
+        trim: true,
+      },
     },
     reviewedAt: {
       type: Date,
