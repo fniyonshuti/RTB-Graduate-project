@@ -1632,6 +1632,57 @@ td small {
   padding: 16px;
 }
 
+.quality-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.warning-note {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.rubric-score-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.rubric-score-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.check-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 12px 0;
+}
+
+.check-row {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--heading);
+  cursor: pointer;
+  display: flex;
+  font-weight: var(--font-bold);
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.check-row input {
+  accent-color: var(--primary);
+}
+
 .result-grid {
   display: grid;
   gap: 16px;
