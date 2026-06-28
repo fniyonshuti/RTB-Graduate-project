@@ -136,6 +136,15 @@ export type Assessment = {
     selfAssessmentScore?: number
   }
   scores: {
+    rubricScores?: {
+      criterionId?: string
+      name?: string
+      description?: string
+      weight?: number
+      score?: number
+      weightedScore?: number
+      comment?: string
+    }[]
     practicalTaskScore?: number
     quizScore?: number
     portfolioScore?: number
@@ -147,6 +156,13 @@ export type Assessment = {
   gapLevel: GapLevel
   status: AssessmentStatus
   assessorComment?: string
+  evidenceVerification?: {
+    githubReviewed?: boolean
+    practicalEvidenceReviewed?: boolean
+    portfolioReviewed?: boolean
+    theoryReviewed?: boolean
+    authenticityNotes?: string
+  }
   createdAt?: string
   reviewedAt?: string
 }
@@ -175,6 +191,9 @@ export type RepositorySummary = {
     extension?: string
     count?: number
   }[]
+  codeQualityScore?: number
+  evidenceCompletenessScore?: number
+  riskFlags?: string[]
   sampledSourceFiles?: {
     path?: string
     language?: string
