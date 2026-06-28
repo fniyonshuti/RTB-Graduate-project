@@ -96,6 +96,79 @@ function calculateTheoryResult(competency, submittedAnswers = []) {
   };
 }
 
+function roundScore(value) {
+  return Math.round(Number(value) * 100) / 100;
+}
+
+function normalizeRubricScores(competency, submittedRubricScores = []) {
+  const rubricCriteria = competency.rubricCriteria || [];
+
+  if (rubricCriteria.length === 0) {
+    return {
+      rubricScores: [],
+      practicalTaskScore: null,
+    };
+  }
+
+  const normalized = rubricCriteria.map((criterion) => {
+    const submitted = submittedRubricScores.find(
+      (item) =>
+        String(item.criterionId || item._id || item.name) ===
+          String(criterion._id) || item.name === criterion.name,
+    );
+    const rawScore = Number(submitted?.score);
+    const score = Number.isFinite(rawScore)
+      ? Math.min(Math.max(rawScore, 0), 100)
+      : 0;
+    const weight = Number(criterion.weight) || 0;
+
+    return {
+      criterionId: criterion._id,
+      name: criterion.name,
+      description: criterion.description,
+      weight,
+      score,
+      weightedScore: roundScore((score * weight) / 100),
+      comment: submitted?.comment || "",
+    };
+  });
+  const totalWeight = normalized.reduce(
+    (sum, criterion) => sum + criterion.weight,
+    0,
+  );
+  const practicalTaskScore =
+    totalWeight > 0
+      ? roundScore(
+          normalized.reduce(
+            (sum, criterion) => sum + criterion.score * criterion.weight,
+            0,
+          ) / totalWeight,
+        )
+      : null;
+
+  return {
+    rubricScores: normalized,
+    practicalTaskScore,
+  };
+}
+
+function resolveReviewScores({ competency, assessment, payload }) {
+  const rubricReview = normalizeRubricScores(
+    competency,
+    payload.rubricScores || [],
+  );
+
+  return {
+    rubricScores: rubricReview.rubricScores,
+    practicalTaskScore:
+      rubricReview.practicalTaskScore ?? payload.practicalTaskScore,
+    quizScore: payload.quizScore ?? assessment.scores.quizScore,
+    portfolioScore: payload.portfolioScore,
+    selfAssessmentScore:
+      payload.selfAssessmentScore ?? assessment.evidence.selfAssessmentScore,
+  };
+}
+
 function validateAssessmentSubmission({
   competency,
   payload,
@@ -312,23 +385,27 @@ export async function reviewAssessment(assessmentId, assessorId, payload) {
     );
   }
 
-  const analysis = analyzeCompetency(
-    {
-      practicalTaskScore: payload.practicalTaskScore,
-      quizScore: payload.quizScore ?? assessment.scores.quizScore,
-      portfolioScore: payload.portfolioScore,
-      selfAssessmentScore:
-        payload.selfAssessmentScore ?? assessment.evidence.selfAssessmentScore,
-    },
-    benchmark.requiredScore,
-  );
+  const reviewScores = resolveReviewScores({ competency, assessment, payload });
+  const analysis = analyzeCompetency(reviewScores, benchmark.requiredScore);
 
   assessment.assessor = assessorId;
-  assessment.scores = analysis.scores;
+  assessment.scores = {
+    ...analysis.scores,
+    rubricScores: reviewScores.rubricScores,
+  };
   assessment.benchmarkScore = analysis.benchmarkScore;
   assessment.skillGap = analysis.skillGap;
   assessment.gapLevel = analysis.gapLevel;
   assessment.assessorComment = payload.assessorComment;
+  assessment.evidenceVerification = {
+    githubReviewed: Boolean(payload.evidenceVerification?.githubReviewed),
+    practicalEvidenceReviewed: Boolean(
+      payload.evidenceVerification?.practicalEvidenceReviewed,
+    ),
+    portfolioReviewed: Boolean(payload.evidenceVerification?.portfolioReviewed),
+    theoryReviewed: Boolean(payload.evidenceVerification?.theoryReviewed),
+    authenticityNotes: payload.evidenceVerification?.authenticityNotes || "",
+  };
   assessment.status = "reviewed";
   assessment.reviewedAt = new Date();
 
@@ -384,25 +461,21 @@ export async function previewRecommendationDraft(assessmentId, payload) {
     );
   }
 
-  const analysis = analyzeCompetency(
-    {
-      practicalTaskScore: payload.practicalTaskScore,
-      quizScore: payload.quizScore ?? assessment.scores.quizScore,
-      portfolioScore: payload.portfolioScore,
-      selfAssessmentScore:
-        payload.selfAssessmentScore ?? assessment.evidence.selfAssessmentScore,
-    },
-    benchmark.requiredScore,
-  );
+  const reviewScores = resolveReviewScores({ competency, assessment, payload });
+  const analysis = analyzeCompetency(reviewScores, benchmark.requiredScore);
 
   const draftAssessment = {
     ...assessment.toObject(),
-    scores: analysis.scores,
+    scores: {
+      ...analysis.scores,
+      rubricScores: reviewScores.rubricScores,
+    },
     benchmarkScore: analysis.benchmarkScore,
     skillGap: analysis.skillGap,
     gapLevel: analysis.gapLevel,
     assessorComment:
       payload.assessorComment || assessment.assessorComment || "",
+    evidenceVerification: payload.evidenceVerification,
   };
 
   const draft = await generateDraftRecommendation({
