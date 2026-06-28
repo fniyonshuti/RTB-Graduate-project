@@ -54,7 +54,6 @@ const graduateProfileSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-graduateProfileSchema.index({ user: 1 }, { unique: true });
 graduateProfileSchema.index({ institution: 1, program: 1 });
 
 export default mongoose.model('GraduateProfile', graduateProfileSchema);
