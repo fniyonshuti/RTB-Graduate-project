@@ -169,7 +169,6 @@ const competencySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-competencySchema.index({ code: 1 }, { unique: true });
 competencySchema.index({ category: 1, isActive: 1 });
 
 export default mongoose.model('Competency', competencySchema);
