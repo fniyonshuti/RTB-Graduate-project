@@ -9,6 +9,7 @@ import { runEslint } from './eslintService.js';
 import { runSecurityScan } from './securityScanService.js';
 import { scoreRepositoryAssessment } from './competencyScoringService.js';
 import { buildRepositoryAssessmentRecommendations } from './recommendationService.js';
+import { isLearnerRole, ROLES } from '../constants/roles.js';
 
 function findPracticalTask(competency, practicalTaskId) {
   if (!competency || !practicalTaskId) return null;
@@ -53,16 +54,16 @@ export async function assessGithubRepository({
     const eslintResult = await runEslint(localPath, analysis);
     const securityScanResult = await runSecurityScan(localPath, analysis);
     // Final scoring combines static requirement checks, executed tests, lint,
-    // security scan, and assessor approval state into one result.
+    // and security scan evidence into one explainable automatic result.
     const score = scoreRepositoryAssessment({
       staticChecks: analysis.requirementChecks,
       testCases: testResult.testCases,
       eslintResult,
       securityScanResult,
-      assessorReviewStatus: 'pending',
     });
     const draftResult = {
       graduate: user?._id,
+      organization: user?.organization?._id || user?.organization,
       competency: competency?._id,
       practicalTaskId: practicalTask?._id,
       repositoryUrl,
@@ -88,11 +89,9 @@ export async function assessGithubRepository({
       ],
       eslintResult,
       securityScanResult,
-      assessorReviewStatus: 'pending',
-      assessorValidationRequired:
-        testResult.assessorValidationRequired ||
-        score.failedRequirements.some((item) => item.id === 'assessor-review-stage') ||
-        score.failedRequirements.some((item) => item.competency !== 'testing'),
+      assessorReviewStatus: 'approved',
+      automaticReviewStatus: 'completed',
+      assessorValidationRequired: false,
       securityNotes: testResult.securityNotes,
     };
 
@@ -102,7 +101,7 @@ export async function assessGithubRepository({
     return RepositoryAssessmentResult.create(draftResult);
   } catch (error) {
     // Preserve a failed assessment result instead of losing the review attempt.
-    // This gives assessors and graduates a concrete reason to fix access/setup.
+    // This gives users a concrete reason to fix access/setup and resubmit.
     const failedRequirement = {
       id: 'repository-assessment-engine',
       title: 'Repository assessment engine completed',
@@ -116,6 +115,7 @@ export async function assessGithubRepository({
     };
     const result = await RepositoryAssessmentResult.create({
       graduate: user?._id,
+      organization: user?.organization?._id || user?.organization,
       competency: competencyId,
       practicalTaskId,
       repositoryUrl,
@@ -139,8 +139,9 @@ export async function assessGithubRepository({
       passedRequirements: [],
       failedRequirements: [failedRequirement],
       staticChecks: [failedRequirement],
-      assessorReviewStatus: 'pending',
-      assessorValidationRequired: true,
+      assessorReviewStatus: 'returned',
+      automaticReviewStatus: 'failed',
+      assessorValidationRequired: false,
       errorMessage: error.message,
       recommendations: [
         'Fix repository access, project setup, dependencies, or automated tests, then run the assessment again.',
@@ -158,7 +159,11 @@ export async function assessGithubRepository({
 }
 
 export function listRepositoryAssessmentResults(user) {
-  const query = user.role === 'graduate' ? { graduate: user._id } : {};
+  const query = isLearnerRole(user.role)
+    ? { graduate: user._id }
+    : user.role === ROLES.ORGANIZATION_ADMIN
+      ? { organization: user.organization?._id || user.organization }
+      : {};
   return RepositoryAssessmentResult.find(query)
     .populate('graduate', 'name email institution')
     .populate('competency', 'title code category')
@@ -166,7 +171,11 @@ export function listRepositoryAssessmentResults(user) {
 }
 
 export async function getRepositoryAssessmentResult(resultId, user) {
-  const query = user.role === 'graduate' ? { _id: resultId, graduate: user._id } : { _id: resultId };
+  const query = isLearnerRole(user.role)
+    ? { _id: resultId, graduate: user._id }
+    : user.role === ROLES.ORGANIZATION_ADMIN
+      ? { _id: resultId, organization: user.organization?._id || user.organization }
+      : { _id: resultId };
   const result = await RepositoryAssessmentResult.findOne(query)
     .populate('graduate', 'name email institution')
     .populate('competency', 'title code category');
@@ -181,53 +190,13 @@ export async function getRepositoryAssessmentResult(resultId, user) {
 export async function updateRepositoryAssessmentResult(resultId, payload) {
   const allowedUpdates = [
     'recommendations',
-    'assessorValidationRequired',
     'securityNotes',
-    'assessorReviewStatus',
   ];
   const updates = {};
 
   allowedUpdates.forEach((field) => {
     if (payload[field] !== undefined) updates[field] = payload[field];
   });
-
-  if (payload.assessorReviewStatus) {
-    const current = await RepositoryAssessmentResult.findById(resultId);
-
-    if (!current) {
-      throw new AppError('Repository assessment result was not found.', 404);
-    }
-
-    // Recalculate derived scores when an assessor approves/rejects the result,
-    // while keeping the original objective command/test evidence intact.
-    const score = scoreRepositoryAssessment({
-      staticChecks: current.staticChecks,
-      testCases: [
-        ...(current.passedRequirements || []),
-        ...(current.failedRequirements || []),
-      ].filter((item) =>
-        [
-          'dependency-install',
-          'build-script',
-          'submitted-automated-tests',
-          'instructor-task-tests',
-        ].includes(item.id),
-      ),
-      eslintResult: current.eslintResult,
-      securityScanResult: current.securityScanResult,
-      assessorReviewStatus: payload.assessorReviewStatus,
-    });
-
-    updates.totalTestCases = score.totalTestCases;
-    updates.passedTestCases = score.passedTestCases;
-    updates.totalWeight = score.totalWeight;
-    updates.passedWeight = score.passedWeight;
-    updates.accuracyScore = score.accuracyScore;
-    updates.gapClassification = score.gapClassification;
-    updates.competencyScores = score.competencyScores;
-    updates.passedRequirements = score.passedRequirements;
-    updates.failedRequirements = score.failedRequirements;
-  }
 
   const result = await RepositoryAssessmentResult.findByIdAndUpdate(
     resultId,
@@ -245,7 +214,11 @@ export async function updateRepositoryAssessmentResult(resultId, payload) {
 }
 
 export async function deleteRepositoryAssessmentResult(resultId, user) {
-  const query = user.role === 'graduate' ? { _id: resultId, graduate: user._id } : { _id: resultId };
+  const query = isLearnerRole(user.role)
+    ? { _id: resultId, graduate: user._id }
+    : user.role === ROLES.ORGANIZATION_ADMIN
+      ? { _id: resultId, organization: user.organization?._id || user.organization }
+      : { _id: resultId };
   const result = await RepositoryAssessmentResult.findOneAndDelete(query);
 
   if (!result) {
