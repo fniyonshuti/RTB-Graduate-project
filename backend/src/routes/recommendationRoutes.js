@@ -12,11 +12,11 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get('/', authorize('graduate', 'assessor', 'admin'), listRecommendations);
+router.get('/', authorize('learner', 'org_admin', 'admin'), listRecommendations);
 router
   .route('/:id')
-  .get(authorize('graduate', 'assessor', 'admin'), getRecommendation)
-  .put(authorize('assessor', 'admin'), updateRecommendation)
+  .get(authorize('learner', 'org_admin', 'admin'), getRecommendation)
+  .put(authorize('admin'), updateRecommendation)
   .delete(authorize('admin'), deleteRecommendation);
 
 export default router;
