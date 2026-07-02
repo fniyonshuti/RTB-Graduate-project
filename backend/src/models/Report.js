@@ -65,6 +65,21 @@ const reportSchema = new mongoose.Schema(
         ref: 'Recommendation',
       },
     ],
+    repositoryAnalysisSummary: {
+      type: String,
+      trim: true,
+    },
+    rubricBreakdown: [
+      {
+        label: String,
+        score: Number,
+        explanation: String,
+      },
+    ],
+    finalConclusion: {
+      type: String,
+      trim: true,
+    },
   },
   { timestamps: true }
 );
