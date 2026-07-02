@@ -1,7 +1,9 @@
 import Recommendation from "../models/Recommendation.js";
+import User from "../models/User.js";
 import { getPriorityFromGap } from "../utils/gapClassifier.js";
 import { AppError } from "../utils/errors.js";
 import { generateAiRecommendationDraft } from "./aiRecommendationService.js";
+import { isLearnerRole, ROLES } from "../constants/roles.js";
 
 const SCORE_AREA_LABELS = {
   practicalTaskScore: "Practical/GitHub project",
@@ -95,11 +97,66 @@ export async function generateDraftRecommendation({
   );
 }
 
-export function listRecommendationsForUser(user, filters = {}) {
+function buildRuleBasedRecommendationDraft(context) {
+  const weakAreas = context.weakAreas?.length
+    ? context.weakAreas.join(", ")
+    : "the assessed competency";
+  const priority = getPriorityFromGap(context.gapLevel);
+  const actionItems = [
+    `Improve ${weakAreas} with a focused practical exercise.`,
+    "Fix failed repository checklist items and rerun the automated assessment.",
+    "Add automated tests that prove the practical task works end to end.",
+  ];
+
+  if (context.gapLevel === "No Gap") {
+    actionItems.unshift("Maintain the current standard by practicing a more advanced version of the task.");
+  }
+
+  return {
+    message: `Automatic recommendation: final score ${context.finalScore}% against benchmark ${context.benchmarkScore}% produced a ${context.gapLevel}. Focus next on ${weakAreas}.`,
+    actionItems,
+    resources: [
+      "Review the repository analysis checklist in the assessment report.",
+      "Use the RTB competency requirements as the improvement checklist.",
+    ],
+    priority,
+    provider: "rule_based",
+    model: "local-rubric-v1",
+    prompt: JSON.stringify(context),
+    rawResponse: "",
+  };
+}
+
+export async function generateAutomaticRecommendationDraft({
+  assessment,
+  competency,
+}) {
+  const context = buildRecommendationContext({ assessment, competency });
+
+  try {
+    return await generateAiRecommendationDraft(context);
+  } catch (error) {
+    return {
+      ...buildRuleBasedRecommendationDraft(context),
+      aiFallbackReason: error.message,
+    };
+  }
+}
+
+async function learnerIdsForOrganization(user) {
+  return User.distinct("_id", {
+    organization: user.organization?._id || user.organization,
+  });
+}
+
+export async function listRecommendationsForUser(user, filters = {}) {
   const query = {};
 
-  if (user.role === "graduate") query.graduate = user._id;
-  if (filters.graduate && user.role !== "graduate") {
+  if (isLearnerRole(user.role)) query.graduate = user._id;
+  if (user.role === ROLES.ORGANIZATION_ADMIN) {
+    query.graduate = { $in: await learnerIdsForOrganization(user) };
+  }
+  if (filters.graduate && !isLearnerRole(user.role)) {
     query.graduate = filters.graduate;
   }
   if (filters.competency) query.competency = filters.competency;
@@ -112,9 +169,13 @@ export function listRecommendationsForUser(user, filters = {}) {
 }
 
 export async function getRecommendationForUser(recommendationId, user) {
-  const query =
-    user.role === "graduate"
-      ? { _id: recommendationId, graduate: user._id }
+  const query = isLearnerRole(user.role)
+    ? { _id: recommendationId, graduate: user._id }
+    : user.role === ROLES.ORGANIZATION_ADMIN
+      ? {
+          _id: recommendationId,
+          graduate: { $in: await learnerIdsForOrganization(user) },
+        }
       : { _id: recommendationId };
   const recommendation = await Recommendation.findOne(query)
     .populate("graduate", "name email institution")
@@ -174,11 +235,11 @@ export async function upsertAssessmentRecommendation({
   assessorId,
   recommendation = {},
 }) {
-  const draft = recommendation.geminiDraft;
+  const draft = recommendation.geminiDraft || recommendation.automaticDraft;
 
-  if (!draft || draft.provider !== "gemini" || !draft.message) {
+  if (!draft || !draft.message) {
     throw new AppError(
-      "A Gemini-generated recommendation draft is required before saving the review.",
+      "An automatic recommendation draft is required before saving the assessment.",
       400,
     );
   }
@@ -228,7 +289,7 @@ export function buildRepositoryAssessmentRecommendations(result = {}) {
 
   if (result.assessorValidationRequired) {
     recommendations.push(
-      "Add objective automated tests or request assessor validation for requirements that cannot be verified automatically.",
+      "Add objective automated tests so the system can verify requirements automatically with stronger evidence.",
     );
   }
 
