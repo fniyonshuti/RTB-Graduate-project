@@ -1,4 +1,11 @@
-export type Role = 'graduate' | 'assessor' | 'org_admin' | 'admin'
+export type Role =
+  | 'normal_user'
+  | 'organization_user'
+  | 'org_admin'
+  | 'admin'
+  | 'super_admin'
+  | 'graduate'
+  | 'assessor'
 
 export type Organization = {
   _id: string
@@ -112,6 +119,9 @@ export type Assessment = {
   _id: string
   graduate: User
   assessor?: User
+  reviewMode?: 'automatic' | 'manual_legacy'
+  reviewedBySystem?: boolean
+  scoringEngineVersion?: string
   competency: Competency
   evidence: {
     practicalSubmissionMode?: 'direct_test' | 'file_upload' | 'mixed'
@@ -300,6 +310,7 @@ export type RepositoryAssessmentResult = {
     output?: string
   }
   assessorReviewStatus?: 'pending' | 'approved' | 'returned'
+  automaticReviewStatus?: 'completed' | 'failed'
   commandResults?: {
     name?: string
     command?: string
@@ -354,6 +365,13 @@ export type Report = {
   strengths: string[]
   weaknesses: string[]
   recommendations?: Recommendation[]
+  repositoryAnalysisSummary?: string
+  rubricBreakdown?: {
+    label?: string
+    score?: number
+    explanation?: string
+  }[]
+  finalConclusion?: string
   createdAt?: string
 }
 
