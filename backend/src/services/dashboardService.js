@@ -3,6 +3,7 @@ import Competency from '../models/Competency.js';
 import Assessment from '../models/Assessment.js';
 import Recommendation from '../models/Recommendation.js';
 import { summarizeAssessments } from './gapAnalysisService.js';
+import { ROLES, LEARNER_ROLES } from '../constants/roles.js';
 
 export async function getGraduateDashboard(userId) {
   const assessments = await Assessment.find({ graduate: userId }).populate(
@@ -31,44 +32,23 @@ export async function getGraduateDashboard(userId) {
   };
 }
 
-export async function getAssessorDashboard() {
-  const [pendingReviews, reviewedAssessments, highGapCases] = await Promise.all([
-    Assessment.countDocuments({ status: { $in: ['submitted', 'under_review'] } }),
-    Assessment.countDocuments({ status: 'reviewed' }),
-    Assessment.countDocuments({ gapLevel: 'High Gap' }),
-  ]);
-
-  const recentSubmissions = await Assessment.find({
-    status: { $in: ['submitted', 'under_review'] },
-  })
-    .populate('graduate', 'name institution')
-    .populate('competency', 'title code')
-    .sort({ createdAt: -1 })
-    .limit(5);
-
-  return {
-    pendingReviews,
-    reviewedAssessments,
-    highGapCases,
-    recentSubmissions,
-  };
-}
-
 export async function getAdminDashboard(user) {
   const organizationFilter =
-    user.role === 'org_admin'
+    user.role === ROLES.ORGANIZATION_ADMIN
       ? { organization: user.organization?._id || user.organization }
       : {};
   const [
     totalGraduates,
-    totalAssessors,
+    totalOrganizationUsers,
     totalOrganizationAdmins,
+    totalAdmins,
     totalCompetencies,
     reviewedAssessments,
   ] = await Promise.all([
-    User.countDocuments({ role: 'graduate', ...organizationFilter }),
-    User.countDocuments({ role: 'assessor', ...organizationFilter }),
-    User.countDocuments({ role: 'org_admin', ...organizationFilter }),
+    User.countDocuments({ role: { $in: LEARNER_ROLES }, ...organizationFilter }),
+    User.countDocuments({ role: ROLES.ORGANIZATION_USER, ...organizationFilter }),
+    User.countDocuments({ role: ROLES.ORGANIZATION_ADMIN, ...organizationFilter }),
+    User.countDocuments({ role: ROLES.ADMIN }),
     Competency.countDocuments({ isActive: true }),
     Assessment.find({ status: 'reviewed', ...organizationFilter }),
   ]);
@@ -81,8 +61,9 @@ export async function getAdminDashboard(user) {
 
   return {
     totalGraduates,
-    totalAssessors,
+    totalOrganizationUsers,
     totalOrganizationAdmins,
+    totalAdmins,
     totalCompetencies,
     averageSkillGap: summary.averageGap,
     overallGapLevel: summary.overallGapLevel,
