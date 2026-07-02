@@ -5,6 +5,7 @@ import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import { AppError } from '../utils/errors.js';
 import { summarizeAssessments } from './gapAnalysisService.js';
+import { isLearnerRole, ROLES } from '../constants/roles.js';
 
 function organizationIdOf(user) {
   return user?.organization?._id || user?.organization;
@@ -12,7 +13,7 @@ function organizationIdOf(user) {
 
 function assertSameOrganization(user, resourceOrganization) {
   if (
-    user.role === 'org_admin' &&
+    user.role === ROLES.ORGANIZATION_ADMIN &&
     String(resourceOrganization || '') !== String(organizationIdOf(user) || '')
   ) {
     throw new AppError('You can only manage reports for your organization', 403);
@@ -22,8 +23,8 @@ function assertSameOrganization(user, resourceOrganization) {
 export async function generateGraduateReport(graduateId, generatedBy) {
   const graduate = await User.findById(graduateId);
 
-  if (!graduate || graduate.role !== 'graduate') {
-    throw new AppError('Graduate was not found', 404);
+  if (!graduate || !isLearnerRole(graduate.role)) {
+    throw new AppError('Assessment user was not found', 404);
   }
 
   assertSameOrganization(generatedBy, graduate.organization);
@@ -31,10 +32,12 @@ export async function generateGraduateReport(graduateId, generatedBy) {
   const assessments = await Assessment.find({
     graduate: graduateId,
     status: 'reviewed',
-  }).populate('competency', 'title code category');
+  })
+    .populate('competency', 'title code category')
+    .sort({ reviewedAt: -1, createdAt: -1 });
 
   if (assessments.length === 0) {
-    throw new AppError('No reviewed assessments found for this graduate', 400);
+    throw new AppError('No completed assessments found for this user', 400);
   }
 
   const recommendations = await Recommendation.find({ graduate: graduateId });
@@ -47,6 +50,16 @@ export async function generateGraduateReport(graduateId, generatedBy) {
       ['Moderate Gap', 'High Gap'].includes(assessment.gapLevel)
     )
     .map((assessment) => assessment.competency.title);
+  const latestAssessment = assessments[0];
+  const repositoryTaskReview = latestAssessment?.evidence?.repositorySummary?.taskReview;
+  const rubricBreakdown =
+    repositoryTaskReview?.checklist?.map((item) => ({
+      label: item.label,
+      score: item.passed ? item.weight : 0,
+      explanation: item.passed
+        ? item.evidence || 'Requirement passed.'
+        : item.advice || item.evidence || 'Requirement needs improvement.',
+    })) || [];
 
   const report = await Report.create({
     graduate: graduateId,
@@ -60,6 +73,15 @@ export async function generateGraduateReport(graduateId, generatedBy) {
     strengths,
     weaknesses,
     recommendations: recommendations.map((recommendation) => recommendation._id),
+    repositoryAnalysisSummary:
+      latestAssessment?.evidence?.repositorySummary?.summaryText ||
+      repositoryTaskReview?.summary ||
+      'Repository analysis summary was not available.',
+    rubricBreakdown,
+    finalConclusion:
+      summary.overallGapLevel === 'No Gap'
+        ? 'The user currently meets the RTB benchmark for the completed assessment evidence.'
+        : `The user has a ${summary.overallGapLevel}. Follow the recommendations and resubmit improved repository evidence.`,
   });
 
   await Notification.create({
@@ -91,9 +113,9 @@ export async function generateGraduateReport(graduateId, generatedBy) {
 
 export async function listReportsForUser(user) {
   const query =
-    user.role === 'graduate'
+    isLearnerRole(user.role)
       ? { graduate: user._id }
-      : user.role === 'org_admin'
+      : user.role === ROLES.ORGANIZATION_ADMIN
         ? { organization: organizationIdOf(user) }
         : {};
 
@@ -119,9 +141,9 @@ export async function listReportsForUser(user) {
 
 export async function getReportForUser(reportId, user) {
   const query =
-    user.role === 'graduate'
+    isLearnerRole(user.role)
       ? { _id: reportId, graduate: user._id }
-      : user.role === 'org_admin'
+      : user.role === ROLES.ORGANIZATION_ADMIN
         ? { _id: reportId, organization: organizationIdOf(user) }
         : { _id: reportId };
   const report = await Report.findOne(query)
@@ -158,7 +180,7 @@ export async function updateReportById(reportId, payload, user) {
   });
 
   const query =
-    user.role === 'org_admin'
+    user.role === ROLES.ORGANIZATION_ADMIN
       ? { _id: reportId, organization: organizationIdOf(user) }
       : { _id: reportId };
 
@@ -176,9 +198,9 @@ export async function updateReportById(reportId, payload, user) {
 
 export async function deleteReportForUser(reportId, user) {
   const query =
-    user.role === 'graduate'
+    isLearnerRole(user.role)
       ? { _id: reportId, graduate: user._id }
-      : user.role === 'org_admin'
+      : user.role === ROLES.ORGANIZATION_ADMIN
         ? { _id: reportId, organization: organizationIdOf(user) }
         : { _id: reportId };
   const report = await Report.findOneAndDelete(query);
