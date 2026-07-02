@@ -6,8 +6,10 @@ import Recommendation from "../models/Recommendation.js";
 import User from "../models/User.js";
 import { AppError } from "../utils/errors.js";
 import { analyzeCompetency } from "./gapAnalysisService.js";
+import { isLearnerRole, ROLES } from "../constants/roles.js";
 import {
   buildRecommendationContext,
+  generateAutomaticRecommendationDraft,
   generateDraftRecommendation,
   upsertAssessmentRecommendation,
 } from "./recommendationService.js";
@@ -16,6 +18,7 @@ import {
   validateGitHubRepositoryUrl,
 } from "./repositoryAnalysisService.js";
 import { assessGithubRepository } from "./repositoryAssessmentService.js";
+import { generateGraduateReport } from "./reportService.js";
 
 function populateAssessment(query) {
   return query
@@ -124,8 +127,6 @@ function validateAssessmentSubmission({ competency, payload, theoryResult }) {
   }
 
   const hasGitHubUrl = Boolean(payload.githubRepositoryUrl);
-  const hasRepositoryTaskReview = Boolean(payload.repositoryTaskReview);
-
   if (!hasGitHubUrl) {
     throw new AppError(
       "GitHub repository URL is required for ICT skills assessment",
@@ -135,19 +136,12 @@ function validateAssessmentSubmission({ competency, payload, theoryResult }) {
 
   validateGitHubRepositoryUrl(payload.githubRepositoryUrl);
 
-  if (!hasRepositoryTaskReview) {
-    throw new AppError(
-      "Repository task review must be completed before submission",
-      400,
-    );
-  }
-
   if (theoryQuestions.length > 0 && theoryResult.theoryAnswers.length === 0) {
     throw new AppError("Theory answers are required for this competency", 400);
   }
 }
 
-export async function submitAssessment(graduateId, payload) {
+export async function submitAssessment(user, payload) {
   const competency = await Competency.findById(payload.competency);
 
   if (!competency || !competency.isActive) {
@@ -167,27 +161,65 @@ export async function submitAssessment(graduateId, payload) {
     payload,
     theoryResult,
   });
-  const repositoryReview = payload.githubRepositoryUrl
-    ? await reviewGitHubRepositoryForTask({
+  const repositoryReview = payload.repositoryTaskReview
+    ? null
+    : await previewRepositoryTaskReview(
+        {
+          competency: competency._id,
+          practicalTaskId: selectedTask?._id,
+          githubRepositoryUrl: payload.githubRepositoryUrl,
+        },
+        user,
+      );
+  const staticRepositoryReview = repositoryReview
+    ? repositoryReview
+    : await reviewGitHubRepositoryForTask({
         repositoryUrl: payload.githubRepositoryUrl,
         competency,
         practicalTask: selectedTask,
-      })
-    : null;
-  const repositorySummary = repositoryReview?.repositorySummary || null;
+      });
+  const repositorySummary = staticRepositoryReview?.repositorySummary || null;
 
   if (repositorySummary && payload.repositoryTaskReview) {
     repositorySummary.taskReview = payload.repositoryTaskReview;
-  } else if (repositorySummary && repositoryReview?.taskReview) {
-    repositorySummary.taskReview = repositoryReview.taskReview;
+  } else if (repositorySummary && staticRepositoryReview?.taskReview) {
+    repositorySummary.taskReview = staticRepositoryReview.taskReview;
   }
 
-  const graduate = await User.findById(graduateId);
+  const graduate = await User.findById(user._id);
+
+  if (!graduate || !isLearnerRole(graduate.role)) {
+    throw new AppError("Only normal users and organization users can submit assessments", 403);
+  }
+
+  const benchmark = await Benchmark.findOne({
+    competency: competency._id,
+    isActive: true,
+  }).sort({ effectiveFrom: -1, createdAt: -1 });
+
+  if (!benchmark) {
+    throw new AppError(
+      "Active RTB benchmark was not found for this competency",
+      400,
+    );
+  }
+
+  const practicalTaskScore = Number(repositorySummary?.taskReview?.score || 0);
+  const analysis = analyzeCompetency(
+    {
+      practicalTaskScore,
+      quizScore: theoryResult.quizScore,
+    },
+    benchmark.requiredScore,
+  );
 
   const assessment = await Assessment.create({
-    graduate: graduateId,
+    graduate: graduate._id,
     organization: graduate?.organization,
     competency: competency._id,
+    reviewMode: "automatic",
+    reviewedBySystem: true,
+    scoringEngineVersion: "automatic-rubric-v1",
     evidence: {
       practicalSubmissionMode: payload.practicalSubmissionMode || "direct_test",
       practicalTaskId: selectedTask?._id,
@@ -201,40 +233,42 @@ export async function submitAssessment(graduateId, payload) {
       fileUrls: payload.fileUrls || [],
       evidenceFiles: payload.evidenceFiles || [],
     },
-    scores: {
-      quizScore: theoryResult.quizScore,
+    scores: analysis.scores,
+    benchmarkScore: analysis.benchmarkScore,
+    skillGap: analysis.skillGap,
+    gapLevel: analysis.gapLevel,
+    status: "reviewed",
+    assessorComment:
+      "Automatically reviewed using repository analysis, automated checks, theory answers, and RTB benchmark comparison.",
+    evidenceVerification: {
+      githubReviewed: true,
+      practicalEvidenceReviewed: true,
+      theoryReviewed: true,
+      authenticityNotes:
+        "No human assessor review was used. Repository evidence was checked by the automated assessment engine.",
     },
-    status: "submitted",
+    reviewedAt: new Date(),
   });
 
-  const assessorQuery = { role: "assessor", isActive: true };
+  const automaticDraft = await generateAutomaticRecommendationDraft({
+    assessment,
+    competency,
+  });
+  await upsertAssessmentRecommendation({
+    assessment,
+    assessorId: user._id,
+    recommendation: { automaticDraft },
+  });
 
-  if (graduate?.organization) {
-    assessorQuery.organization = graduate.organization;
-  } else if (graduate?.institution) {
-    assessorQuery.institution = graduate.institution;
-  }
+  await Notification.create({
+    recipient: graduate._id,
+    title: "Automatic Assessment Completed",
+    message: `${competency.title} was scored instantly. Gap level: ${assessment.gapLevel}.`,
+    type: "assessment",
+    link: "/graduate/results",
+  });
 
-  let assessors = await User.find(assessorQuery);
-
-  if (
-    assessors.length === 0 &&
-    (graduate?.organization || graduate?.institution)
-  ) {
-    assessors = await User.find({ role: "assessor", isActive: true });
-  }
-
-  if (assessors.length > 0) {
-    await Notification.insertMany(
-      assessors.map((assessor) => ({
-        recipient: assessor._id,
-        title: "New Assessment Submitted",
-        message: `${graduate?.name || "A graduate"} submitted ${competency.title} for review.`,
-        type: "assessment",
-        link: "/assessor/assessments",
-      })),
-    );
-  }
+  await generateGraduateReport(graduate._id, user).catch(() => null);
 
   return populateAssessment(Assessment.findById(assessment._id));
 }
@@ -383,8 +417,8 @@ export async function previewRepositoryTaskReview(payload, user) {
     buildStaticReviewFallback({ payload, competency, selectedTask, error }),
   );
   // The executable assessment is best-effort: Docker, cloning, or dependency
-  // failures should lower confidence and require assessor validation, not block
-  // the graduate from seeing the static repository review.
+  // failures lower the automatic score but do not block the user from seeing
+  // static repository feedback.
   const repositoryAssessment = await assessGithubRepository({
     repositoryUrl: payload.githubRepositoryUrl,
     competencyId: competency._id,
@@ -416,7 +450,7 @@ export async function previewRepositoryTaskReview(payload, user) {
     recommendations: [
       "Check the backend terminal, Docker Desktop status, GitHub repository access, and instructor test configuration, then run repository review again.",
     ],
-    assessorValidationRequired: true,
+    assessorValidationRequired: false,
     errorMessage: error.message,
   }));
   const checklist = repositoryAssessmentToChecklist(repositoryAssessment);
@@ -440,7 +474,7 @@ export async function previewRepositoryTaskReview(payload, user) {
       proofLevel:
         repositoryAssessment.assessorValidationRequired === false
           ? "Verified by instructor automated tests"
-          : "Objective checks completed; assessor validation required",
+          : "Objective checks completed with limited automatic evidence",
       proofSummary:
         repositoryAssessment.verificationStatus === "verified"
           ? `Accuracy score is weighted from ${repositoryAssessment.passedWeight || 0}/${repositoryAssessment.totalWeight || 0} objective points across ${repositoryAssessment.passedTestCases}/${repositoryAssessment.totalTestCases} checks.`
@@ -457,17 +491,11 @@ export async function previewRepositoryTaskReview(payload, user) {
 export async function listAssessments(user, filters = {}) {
   const query = {};
 
-  if (user.role === "graduate") {
+  if (isLearnerRole(user.role)) {
     query.graduate = user._id;
   }
 
-  if (user.role === "assessor") {
-    query.status = filters.status || {
-      $in: ["submitted", "under_review", "reviewed"],
-    };
-  }
-
-  if (user.role === "org_admin") {
+  if (user.role === ROLES.ORGANIZATION_ADMIN) {
     if (!user.organization) {
       throw new AppError(
         "Organization administrator is not linked to an organization",
@@ -477,7 +505,7 @@ export async function listAssessments(user, filters = {}) {
     query.organization = user.organization._id || user.organization;
   }
 
-  if (filters.status && user.role !== "assessor") {
+  if (filters.status) {
     query.status = filters.status;
   }
 
@@ -489,7 +517,7 @@ export async function listAssessments(user, filters = {}) {
     Assessment.find(query).sort({ createdAt: -1 }),
   );
 
-  return user.role === "graduate"
+  return isLearnerRole(user.role)
     ? assessments.map(hideCorrectAnswersFromAssessment)
     : assessments;
 }
@@ -504,14 +532,14 @@ export async function getAssessmentById(assessmentId, user) {
   }
 
   if (
-    user.role === "graduate" &&
+    isLearnerRole(user.role) &&
     assessment.graduate._id.toString() !== user._id.toString()
   ) {
     throw new AppError("You can only view your own assessments", 403);
   }
 
   if (
-    user.role === "org_admin" &&
+    user.role === ROLES.ORGANIZATION_ADMIN &&
     String(assessment.organization?._id || assessment.organization) !==
       String(user.organization?._id || user.organization)
   ) {
@@ -521,7 +549,7 @@ export async function getAssessmentById(assessmentId, user) {
     );
   }
 
-  return user.role === "graduate"
+  return isLearnerRole(user.role)
     ? hideCorrectAnswersFromAssessment(assessment)
     : assessment;
 }
@@ -535,12 +563,12 @@ export async function updateAssessmentById(assessmentId, user, payload) {
 
   const isOwner = String(assessment.graduate) === String(user._id);
 
-  if (user.role === "graduate" && !isOwner) {
+  if (isLearnerRole(user.role) && !isOwner) {
     throw new AppError("You are not allowed to update this assessment", 403);
   }
 
   if (
-    user.role === "org_admin" &&
+    user.role === ROLES.ORGANIZATION_ADMIN &&
     String(assessment.organization) !==
       String(user.organization?._id || user.organization)
   ) {
@@ -550,14 +578,14 @@ export async function updateAssessmentById(assessmentId, user, payload) {
     );
   }
 
-  if (user.role === "graduate" && assessment.status === "reviewed") {
+  if (isLearnerRole(user.role) && assessment.status === "reviewed") {
     throw new AppError(
-      "Reviewed assessments cannot be edited by graduates",
+      "Reviewed assessments cannot be edited by learners",
       400,
     );
   }
 
-  const allowedUpdates = ["admin", "org_admin"].includes(user.role)
+  const allowedUpdates = [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ORGANIZATION_ADMIN].includes(user.role)
     ? ["evidence", "status", "assessorComment", "evidenceVerification"]
     : ["evidence", "status"];
   const updates = {};
@@ -583,12 +611,12 @@ export async function deleteAssessmentById(assessmentId, user) {
 
   const isOwner = String(assessment.graduate) === String(user._id);
 
-  if (user.role === "graduate" && !isOwner) {
+  if (isLearnerRole(user.role) && !isOwner) {
     throw new AppError("You are not allowed to delete this assessment", 403);
   }
 
   if (
-    user.role === "org_admin" &&
+    user.role === ROLES.ORGANIZATION_ADMIN &&
     String(assessment.organization) !==
       String(user.organization?._id || user.organization)
   ) {
@@ -598,15 +626,11 @@ export async function deleteAssessmentById(assessmentId, user) {
     );
   }
 
-  if (user.role === "graduate" && assessment.status === "reviewed") {
+  if (isLearnerRole(user.role) && assessment.status === "reviewed") {
     throw new AppError(
-      "Reviewed assessments cannot be deleted by graduates",
+      "Reviewed assessments cannot be deleted by learners",
       400,
     );
-  }
-
-  if (user.role === "assessor") {
-    throw new AppError("Assessors cannot delete assessments", 403);
   }
 
   await Assessment.findByIdAndDelete(assessmentId);
@@ -644,6 +668,8 @@ export async function reviewAssessment(assessmentId, assessorId, payload) {
   const analysis = analyzeCompetency(reviewScores, benchmark.requiredScore);
 
   assessment.assessor = assessorId;
+  assessment.reviewMode = "manual_legacy";
+  assessment.reviewedBySystem = false;
   assessment.scores = analysis.scores;
   assessment.benchmarkScore = analysis.benchmarkScore;
   assessment.skillGap = analysis.skillGap;
