@@ -5,6 +5,13 @@ import { AppError } from "../utils/errors.js";
 import { hashPassword } from "../utils/password.js";
 import { env } from "../config/env.js";
 import crypto from "node:crypto";
+import {
+  ROLES,
+  ORGANIZATION_SCOPED_ROLES,
+  canCreateRole,
+  canManageRole,
+  creatableRolesFor,
+} from "../constants/roles.js";
 
 const MANAGED_USER_POPULATE = "name district type status";
 
@@ -13,7 +20,7 @@ function generateTemporaryPassword() {
 }
 
 function assertOrganizationAdminHasOrganization(user) {
-  if (user.role === "org_admin" && !user.organization) {
+  if (user.role === ROLES.ORGANIZATION_ADMIN && !user.organization) {
     throw new AppError(
       "Organization administrator account is not linked to an organization",
       403,
@@ -26,7 +33,7 @@ function organizationIdOf(user) {
 }
 
 async function resolveOrganizationForManagedUser(actor, payload) {
-  if (actor.role === "org_admin") {
+  if (actor.role === ROLES.ORGANIZATION_ADMIN) {
     assertOrganizationAdminHasOrganization(actor);
     return Organization.findById(organizationIdOf(actor));
   }
@@ -48,25 +55,48 @@ async function resolveOrganizationForManagedUser(actor, payload) {
 }
 
 function assertCanManageRole(actor, targetRole) {
-  if (actor.role === "admin") return;
-
-  if (
-    actor.role === "org_admin" &&
-    ["graduate", "assessor", "org_admin"].includes(targetRole)
-  ) {
+  if (canManageRole(actor.role, targetRole)) {
     return;
   }
 
   throw new AppError("You are not allowed to manage this user role", 403);
 }
 
-async function getUserInManagedScope(userId, actor) {
-  const query = { _id: userId };
+function assertCanCreateRole(actor, targetRole) {
+  if (canCreateRole(actor.role, targetRole)) {
+    return;
+  }
 
-  if (actor.role === "org_admin") {
+  throw new AppError("You are not allowed to create this user role", 403);
+}
+
+function defaultCreatableRoleForActor(actor) {
+  const [firstRole] = creatableRolesFor(actor.role);
+  return firstRole || ROLES.ORGANIZATION_USER;
+}
+
+function applyManagedUserScope(query, actor) {
+  if (actor.role === ROLES.SUPER_ADMIN) {
+    return query;
+  }
+
+  if (actor.role === ROLES.ADMIN) {
+    query.role = ROLES.ORGANIZATION_ADMIN;
+    return query;
+  }
+
+  if (actor.role === ROLES.ORGANIZATION_ADMIN) {
     assertOrganizationAdminHasOrganization(actor);
     query.organization = organizationIdOf(actor);
+    query.role = ROLES.ORGANIZATION_USER;
   }
+
+  return query;
+}
+
+async function getUserInManagedScope(userId, actor) {
+  const query = { _id: userId };
+  applyManagedUserScope(query, actor);
 
   const user = await User.findOne(query).populate("organization", MANAGED_USER_POPULATE);
 
@@ -79,15 +109,16 @@ async function getUserInManagedScope(userId, actor) {
 
 export async function listManagedUsers(filters = {}, actor) {
   const query = {};
+  applyManagedUserScope(query, actor);
 
-  if (actor.role === "org_admin") {
-    assertOrganizationAdminHasOrganization(actor);
-    query.organization = organizationIdOf(actor);
-  } else if (filters.organization) {
+  if (actor.role === ROLES.SUPER_ADMIN && filters.organization) {
     query.organization = filters.organization;
   }
 
-  if (filters.role) query.role = filters.role;
+  if (filters.role) {
+    assertCanManageRole(actor, filters.role);
+    query.role = filters.role;
+  }
   if (filters.isActive !== undefined) {
     query.isActive = filters.isActive === "true";
   }
@@ -104,9 +135,15 @@ export async function getManagedUser(userId, actor) {
 }
 
 export async function createManagedUser(payload, actor) {
-  const { name, email, password, role = "graduate", institution } = payload;
+  const {
+    name,
+    email,
+    password,
+    role = defaultCreatableRoleForActor(actor),
+    institution,
+  } = payload;
 
-  assertCanManageRole(actor, role);
+  assertCanCreateRole(actor, role);
 
   if (!name || !email) {
     throw new AppError("Name and email are required", 400);
@@ -124,9 +161,9 @@ export async function createManagedUser(payload, actor) {
 
   const organization = await resolveOrganizationForManagedUser(actor, payload);
 
-  if (["org_admin", "assessor", "graduate"].includes(role) && !organization) {
+  if (ORGANIZATION_SCOPED_ROLES.includes(role) && !organization) {
     throw new AppError(
-      "Organization is required when creating a graduate, assessor, or organization administrator",
+      "Organization is required when creating an organization user or organization administrator",
       400,
     );
   }
@@ -158,7 +195,7 @@ export async function updateManagedUser(userId, payload, actor) {
   assertCanManageRole(actor, requestedRole);
 
   const allowedUpdates =
-    actor.role === "admin"
+    actor.role === ROLES.ADMIN || actor.role === ROLES.SUPER_ADMIN
       ? ["name", "role", "organization", "organizationId", "institution", "isActive"]
       : ["name", "institution", "isActive"];
   const updates = {};
