@@ -1,5 +1,6 @@
 import Competency from "../models/Competency.js";
 import { AppError } from "../utils/errors.js";
+import { isLearnerRole } from "../constants/roles.js";
 
 function hideCorrectAnswers(competency) {
   const data = competency.toObject ? competency.toObject() : competency;
@@ -21,7 +22,7 @@ function hideCorrectAnswers(competency) {
 }
 
 function formatCompetencyForRole(competency, role) {
-  return role === "graduate" ? hideCorrectAnswers(competency) : competency;
+  return isLearnerRole(role) ? hideCorrectAnswers(competency) : competency;
 }
 
 export async function listCompetenciesForRole(filters = {}, role) {
