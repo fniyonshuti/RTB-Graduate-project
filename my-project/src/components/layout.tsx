@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { Role } from '../types'
+import { roleLabel } from '../utils/roles'
 import { Badge, Button } from './common'
 
 type ViewKey =
@@ -24,21 +25,20 @@ type NavItem = {
 }
 
 const navItems: NavItem[] = [
-  { key: 'dashboard', label: 'Dashboard', icon: 'DB', roles: ['graduate', 'assessor', 'org_admin', 'admin'] },
-  { key: 'profile', label: 'Profile', icon: 'PF', roles: ['graduate'] },
-  { key: 'submit', label: 'Take Assessment', icon: 'TA', roles: ['graduate'] },
-  { key: 'assessments', label: 'Assessment History', icon: 'AH', roles: ['graduate'] },
-  { key: 'assessments', label: 'Assessment Reviews', icon: 'AR', roles: ['assessor'] },
-  { key: 'assessments', label: 'View Assessments', icon: 'VA', roles: ['org_admin', 'admin'] },
-  { key: 'results', label: 'Gap Results', icon: 'GR', roles: ['graduate'] },
-  { key: 'recommendations', label: 'Recommendations', icon: 'RC', roles: ['assessor'] },
-  { key: 'users', label: 'Users', icon: 'US', roles: ['org_admin', 'admin'] },
-  { key: 'organizations', label: 'Organizations', icon: 'OR', roles: ['admin'] },
-  { key: 'competencies', label: 'Competencies', icon: 'CP', roles: ['admin'] },
-  { key: 'benchmarks', label: 'RTB Benchmarks', icon: 'BM', roles: ['admin'] },
-  { key: 'reports', label: 'Reports', icon: 'RP', roles: ['graduate', 'assessor', 'org_admin', 'admin'] },
-  { key: 'notifications', label: 'Notifications', icon: 'NT', roles: ['graduate', 'assessor'] },
-  { key: 'notifications', label: 'Manage Notifications', icon: 'MN', roles: ['admin'] },
+  { key: 'dashboard', label: 'Dashboard', icon: 'DB', roles: ['normal_user', 'organization_user', 'graduate', 'org_admin', 'admin', 'super_admin'] },
+  { key: 'profile', label: 'Profile', icon: 'PF', roles: ['normal_user', 'organization_user', 'graduate'] },
+  { key: 'submit', label: 'Take Assessment', icon: 'TA', roles: ['normal_user', 'organization_user', 'graduate'] },
+  { key: 'assessments', label: 'Assessment History', icon: 'AH', roles: ['normal_user', 'organization_user', 'graduate'] },
+  { key: 'assessments', label: 'View Assessments', icon: 'VA', roles: ['org_admin', 'admin', 'super_admin'] },
+  { key: 'results', label: 'Gap Results', icon: 'GR', roles: ['normal_user', 'organization_user', 'graduate'] },
+  { key: 'recommendations', label: 'Recommendations', icon: 'RC', roles: ['normal_user', 'organization_user', 'graduate'] },
+  { key: 'users', label: 'Users', icon: 'US', roles: ['org_admin', 'admin', 'super_admin'] },
+  { key: 'organizations', label: 'Organizations', icon: 'OR', roles: ['admin', 'super_admin'] },
+  { key: 'competencies', label: 'Competencies', icon: 'CP', roles: ['admin', 'super_admin'] },
+  { key: 'benchmarks', label: 'RTB Benchmarks', icon: 'BM', roles: ['admin', 'super_admin'] },
+  { key: 'reports', label: 'Reports', icon: 'RP', roles: ['normal_user', 'organization_user', 'graduate', 'org_admin', 'admin', 'super_admin'] },
+  { key: 'notifications', label: 'Notifications', icon: 'NT', roles: ['normal_user', 'organization_user', 'graduate'] },
+  { key: 'notifications', label: 'Manage Notifications', icon: 'MN', roles: ['admin', 'super_admin'] },
 ]
 
 export function AppLayout({
@@ -91,7 +91,13 @@ export function AppLayout({
             <span>{user.institution || 'Skills Gap Analysis Tool'}</span>
           </div>
           <div className="topbar-actions">
-            <Badge tone="role">{user.role === 'org_admin' ? 'Organization Admin' : user.role}</Badge>
+            <Badge
+              aria-label={`Current account role: ${roleLabel(user.role)}`}
+              className="topbar-role"
+              tone="role"
+            >
+              {roleLabel(user.role)}
+            </Badge>
             <Button variant="ghost" onClick={onLogout}>
               Logout
             </Button>
