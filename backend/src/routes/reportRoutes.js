@@ -15,13 +15,13 @@ router.use(protect);
 
 router
   .route('/')
-  .get(authorize('graduate', 'assessor', 'org_admin', 'admin'), listReports)
-  .post(authorize('graduate', 'assessor', 'org_admin', 'admin'), createReport);
+  .get(authorize('learner', 'org_admin', 'admin'), listReports)
+  .post(authorize('learner', 'org_admin', 'admin'), createReport);
 
 router
   .route('/:id')
-  .get(authorize('graduate', 'assessor', 'org_admin', 'admin'), getReport)
-  .put(authorize('assessor', 'org_admin', 'admin'), updateReport)
-  .delete(authorize('graduate', 'assessor', 'org_admin', 'admin'), deleteReport);
+  .get(authorize('learner', 'org_admin', 'admin'), getReport)
+  .put(authorize('org_admin', 'admin'), updateReport)
+  .delete(authorize('learner', 'org_admin', 'admin'), deleteReport);
 
 export default router;
