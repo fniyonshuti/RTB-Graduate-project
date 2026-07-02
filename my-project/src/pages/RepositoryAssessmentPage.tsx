@@ -149,8 +149,8 @@ export function RepositoryAssessmentPage({
                 </strong>
               </div>
               <div>
-                <small>Assessor review</small>
-                <strong>{result.assessorReviewStatus || 'pending'}</strong>
+                <small>Automatic validation</small>
+                <strong>{result.automaticReviewStatus || 'completed'}</strong>
               </div>
             </div>
           </section>
@@ -179,7 +179,7 @@ export function RepositoryAssessmentPage({
           {result.assessorValidationRequired && (
             <div className="alert warning">
               Some requirements could not be fully proven automatically.
-              Assessor validation is required.
+              Add stronger automated tests or implementation evidence before resubmission.
             </div>
           )}
 
