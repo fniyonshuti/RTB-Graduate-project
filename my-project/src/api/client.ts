@@ -64,7 +64,7 @@ async function request<T>(path: string, options: RequestOptions = {}) {
     throw new Error(
       `Cannot connect to the backend API. Tried ${API_BASE_URLS.join(
         ' and ',
-      )}. Start the backend with "npm.cmd run dev" inside the backend folder, then refresh the page. Details: ${connectionErrors.join(
+      )}. From the project root, run "npm.cmd run dev" to start both frontend and backend, or run "npm.cmd run dev" inside the backend folder if the frontend is already open. Then refresh the page. Details: ${connectionErrors.join(
         ' | ',
       )}`,
     )
@@ -124,9 +124,7 @@ export const api = {
     name: string
     email: string
     password: string
-    role?: Role
     institution?: string
-    organizationId?: string
   }) => request<AuthPayload>('/auth/register', { method: 'POST', body }),
 
   me: (token: string) => request<User>('/auth/me', { token }),
