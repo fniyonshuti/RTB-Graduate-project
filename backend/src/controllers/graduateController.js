@@ -20,12 +20,12 @@ export const upsertMyProfile = asyncHandler(async (req, res) => {
 });
 
 export const listGraduateProfiles = asyncHandler(async (req, res) => {
-  const profiles = await listGraduateProfilesService();
+  const profiles = await listGraduateProfilesService(req.user);
   sendSuccess(res, 'Graduate profiles loaded', profiles);
 });
 
 export const getGraduateProfile = asyncHandler(async (req, res) => {
-  const profile = await getGraduateProfileByUserId(req.params.userId);
+  const profile = await getGraduateProfileByUserId(req.params.userId, req.user);
   sendSuccess(res, 'Graduate profile loaded', profile);
 });
 
