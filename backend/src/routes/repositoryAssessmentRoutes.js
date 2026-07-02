@@ -16,12 +16,12 @@ router.use(protect);
 router
   .route('/')
   .get(getRepositoryAssessments)
-  .post(authorize('graduate', 'assessor', 'admin'), createRepositoryAssessment);
+  .post(authorize('learner', 'admin'), createRepositoryAssessment);
 
 router
   .route('/:id')
   .get(getRepositoryAssessment)
-  .put(authorize('assessor', 'admin'), updateRepositoryAssessment)
+  .put(authorize('admin'), updateRepositoryAssessment)
   .delete(deleteRepositoryAssessment);
 
 export default router;
