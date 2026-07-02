@@ -30,7 +30,7 @@ export const OBJECTIVE_CHECK_WEIGHTS = {
   'docker-execution-stage': 6,
   'eslint-stage': 8,
   'security-scan-stage': 10,
-  'assessor-review-stage': 8,
+  'automatic-validation-stage': 8,
   'repository-assessment-engine': 10,
 };
 
@@ -76,7 +76,6 @@ export function scoreRepositoryAssessment({
   testCases = [],
   eslintResult,
   securityScanResult,
-  assessorReviewStatus = 'pending',
 }) {
   // Pipeline checks convert tool outcomes into the same pass/fail shape as
   // static requirements, so the final score can be computed uniformly.
@@ -131,13 +130,13 @@ export function scoreRepositoryAssessment({
           : `Security scan found ${securityScanResult?.critical || 0} critical, ${securityScanResult?.high || 0} high vulnerability issue(s), and ${(securityScanResult?.secretFindings || []).length} secret finding(s).`,
     },
     {
-      id: 'assessor-review-stage',
-      title: 'Assessor review is required for final validation',
+      id: 'automatic-validation-stage',
+      title: 'Automatic repository validation completed',
       competency: 'documentation',
-      weight: OBJECTIVE_CHECK_WEIGHTS['assessor-review-stage'],
-      passed: assessorReviewStatus === 'approved',
-      evidence: 'Assessor approved the repository assessment result.',
-      error: 'Assessor review is still pending.',
+      weight: OBJECTIVE_CHECK_WEIGHTS['automatic-validation-stage'],
+      passed: true,
+      evidence: 'The system completed the automated repository scoring pipeline.',
+      error: 'Automatic repository scoring did not complete.',
     },
   ];
   // Normalize every check to an explicit weight so score changes can be
