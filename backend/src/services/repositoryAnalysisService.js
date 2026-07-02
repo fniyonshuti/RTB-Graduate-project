@@ -755,12 +755,12 @@ export async function summarizeGitHubRepository(url = "") {
     const notes = [
       readmeFound
         ? "README file found for project explanation."
-        : "README file was not detected and should be checked by the assessor.",
+        : "README file was not detected and should be improved before resubmission.",
       supportedFiles.length > 0
         ? `${supportedFiles.length} supported code/documentation files detected.`
         : "No supported code files were detected by automatic analysis.",
       Array.isArray(commits) && commits.length > 0
-        ? `${commits.length} recent commit(s) available for assessor review.`
+        ? `${commits.length} recent commit(s) available for automatic evidence review.`
         : "Recent commit history could not be confirmed automatically.",
       `Repository quality score: ${evidenceScore.codeQualityScore}%.`,
       `Evidence completeness score: ${evidenceScore.evidenceCompletenessScore}%.`,
