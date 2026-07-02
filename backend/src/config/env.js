@@ -38,7 +38,7 @@ export const env = {
   host: process.env.HOST || '0.0.0.0',
   mongoUri: process.env.MONGO_URI || '',
   dbConnectTimeoutMs: numberEnv('DB_CONNECT_TIMEOUT_MS', 8000),
-  jwtSecret: process.env.JWT_SECRET || '',
+  jwtSecret: String(process.env.JWT_SECRET || '').trim(),
   jwtExpiresInSeconds: numberEnv('JWT_EXPIRES_IN_SECONDS', 60 * 60 * 24),
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   corsOrigins: listEnv('CORS_ORIGINS', [
@@ -89,6 +89,10 @@ export function validateRuntimeConfig() {
   }
 
   if (env.isProduction) {
+    if (env.mongoUri.includes('localhost') || env.mongoUri.includes('127.0.0.1')) {
+      errors.push('MONGO_URI must use a production database host in production');
+    }
+
     if (env.frontendUrl.includes('localhost')) {
       errors.push('FRONTEND_URL must not use localhost in production');
     }
@@ -102,7 +106,11 @@ export function validateRuntimeConfig() {
     }
 
     if (!env.githubToken) {
-      warnings.push('GITHUB_TOKEN is missing; GitHub API rate limits may block repository review');
+      errors.push('GITHUB_TOKEN is required in production for reliable repository review');
+    }
+
+    if (env.enableUnsafeLocalRepositoryExecution) {
+      errors.push('ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION must be false in production');
     }
 
     if (env.exposePasswordResetLinkInResponse) {
