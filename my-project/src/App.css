@@ -1219,6 +1219,18 @@ button {
   text-transform: capitalize;
 }
 
+.topbar-role {
+  background: #dbeafe;
+  border-color: #bfdbfe;
+  color: #075985;
+  font-size: 14px;
+  justify-content: center;
+  min-height: 40px;
+  min-width: 80px;
+  padding: 8px 16px;
+  white-space: nowrap;
+}
+
 .badge.gap-no {
   background: var(--success-soft);
   border-color: #bbf7d0;
