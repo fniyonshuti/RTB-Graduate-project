@@ -1,20 +1,15 @@
 import {
   getGraduateDashboard,
-  getAssessorDashboard,
   getAdminDashboard,
 } from '../services/dashboardService.js';
 import { asyncHandler } from '../utils/errors.js';
 import { sendSuccess } from '../utils/response.js';
+import { isLearnerRole } from '../constants/roles.js';
 
 export const getDashboard = asyncHandler(async (req, res) => {
-  if (req.user.role === 'graduate') {
+  if (isLearnerRole(req.user.role)) {
     const dashboard = await getGraduateDashboard(req.user._id);
-    return sendSuccess(res, 'Graduate dashboard loaded', dashboard);
-  }
-
-  if (req.user.role === 'assessor') {
-    const dashboard = await getAssessorDashboard(req.user._id);
-    return sendSuccess(res, 'Assessor dashboard loaded', dashboard);
+    return sendSuccess(res, 'User dashboard loaded', dashboard);
   }
 
   const dashboard = await getAdminDashboard(req.user);
