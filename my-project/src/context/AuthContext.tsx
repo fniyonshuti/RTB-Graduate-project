@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import { api } from '../api/client'
-import type { AuthPayload, Role } from '../types'
+import type { AuthPayload } from '../types'
 import { AuthContext, type AuthContextValue } from './auth-context'
 
 const STORAGE_KEY = 'rtb-skills-gap-auth'
@@ -80,9 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: string
       email: string
       password: string
-      role?: Role
       institution?: string
-      organizationId?: string
     }) => {
       const authPayload = await api.register(payload)
       persistAuth(authPayload)
