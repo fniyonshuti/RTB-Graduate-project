@@ -237,6 +237,20 @@ const assessmentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    reviewMode: {
+      type: String,
+      enum: ['automatic', 'manual_legacy'],
+      default: 'automatic',
+    },
+    reviewedBySystem: {
+      type: Boolean,
+      default: true,
+    },
+    scoringEngineVersion: {
+      type: String,
+      default: 'automatic-rubric-v1',
+      trim: true,
+    },
     evidence: {
       type: evidenceSchema,
       default: {},
