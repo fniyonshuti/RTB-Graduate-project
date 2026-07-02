@@ -10,6 +10,10 @@ export const protect = asyncHandler(async (req, res, next) => {
     throw new AppError('Authentication token is required', 401);
   }
 
+  if (token.length > 4096) {
+    throw new AppError('Authentication token is invalid', 401);
+  }
+
   const payload = verifyJwt(token);
   const user = await getActiveUserById(payload.sub);
 
