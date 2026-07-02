@@ -1,6 +1,7 @@
 import Notification from "../models/Notification.js";
 import User from "../models/User.js";
 import { AppError } from "../utils/errors.js";
+import { isAdminRole } from "../constants/roles.js";
 
 export function listNotificationsForUser(userId, filters = {}) {
   const query = { recipient: userId };
@@ -14,7 +15,7 @@ export function listNotificationsForUser(userId, filters = {}) {
 
 export async function getNotificationForUser(notificationId, user) {
   const query =
-    user.role === "admin"
+    isAdminRole(user.role)
       ? { _id: notificationId }
       : { _id: notificationId, recipient: user._id };
   const notification = await Notification.findOne(query).populate(
@@ -126,7 +127,7 @@ export async function updateManagedNotification(notificationId, payload) {
 
 export async function deleteNotificationForUser(notificationId, user) {
   const query =
-    user.role === "admin"
+    isAdminRole(user.role)
       ? { _id: notificationId }
       : { _id: notificationId, recipient: user._id };
   const notification = await Notification.findOneAndDelete(query);
