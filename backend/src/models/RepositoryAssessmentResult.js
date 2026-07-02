@@ -36,6 +36,10 @@ const repositoryAssessmentResultSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    organization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+    },
     competency: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Competency',
@@ -121,6 +125,11 @@ const repositoryAssessmentResultSchema = new mongoose.Schema(
       enum: ['pending', 'approved', 'returned'],
       default: 'pending',
     },
+    automaticReviewStatus: {
+      type: String,
+      enum: ['completed', 'failed'],
+      default: 'completed',
+    },
     recommendations: [String],
     assessorValidationRequired: {
       type: Boolean,
@@ -133,6 +142,7 @@ const repositoryAssessmentResultSchema = new mongoose.Schema(
 );
 
 repositoryAssessmentResultSchema.index({ graduate: 1, createdAt: -1 });
+repositoryAssessmentResultSchema.index({ organization: 1, createdAt: -1 });
 repositoryAssessmentResultSchema.index({ competency: 1, createdAt: -1 });
 
 export default mongoose.model(
