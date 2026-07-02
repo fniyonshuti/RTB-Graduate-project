@@ -1,6 +1,7 @@
 import Organization from '../models/Organization.js';
 import User from '../models/User.js';
 import { AppError } from '../utils/errors.js';
+import { ROLES } from '../constants/roles.js';
 
 function organizationIdOf(user) {
   return user?.organization?._id || user?.organization;
@@ -9,7 +10,7 @@ function organizationIdOf(user) {
 export function listOrganizations(filters = {}, user) {
   const query = {};
 
-  if (user?.role === 'org_admin') {
+  if (user?.role === ROLES.ORGANIZATION_ADMIN) {
     query._id = organizationIdOf(user);
   }
 
@@ -27,7 +28,7 @@ export function listPublicOrganizations() {
 export async function getOrganizationById(organizationId, user) {
   const query = { _id: organizationId };
 
-  if (user?.role === 'org_admin') {
+  if (user?.role === ROLES.ORGANIZATION_ADMIN) {
     query._id = organizationIdOf(user);
   }
 
