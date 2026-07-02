@@ -16,14 +16,14 @@ router.use(protect);
 
 router
   .route('/me')
-  .get(authorize('graduate'), getMyProfile)
-  .put(authorize('graduate'), upsertMyProfile)
-  .delete(authorize('graduate'), deleteMyProfile);
+  .get(authorize('learner'), getMyProfile)
+  .put(authorize('learner'), upsertMyProfile)
+  .delete(authorize('learner'), deleteMyProfile);
 
-router.get('/', authorize('assessor', 'admin'), listGraduateProfiles);
+router.get('/', authorize('org_admin', 'admin'), listGraduateProfiles);
 router
   .route('/:userId')
-  .get(authorize('assessor', 'admin'), getGraduateProfile)
+  .get(authorize('org_admin', 'admin'), getGraduateProfile)
   .delete(authorize('admin'), deleteGraduateProfile);
 
 export default router;
