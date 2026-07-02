@@ -7,7 +7,11 @@ function base64UrlEncode(value) {
 }
 
 function base64UrlDecode(value) {
-  return JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+  try {
+    return JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+  } catch {
+    throw new AppError('Invalid authentication token', 401);
+  }
 }
 
 export function signJwt(payload, expiresInSeconds = env.jwtExpiresInSeconds) {
@@ -52,12 +56,19 @@ export function verifyJwt(token) {
   }
 
   const [encodedHeader, encodedPayload, signature] = parts;
+  const header = base64UrlDecode(encodedHeader);
+
+  if (header.alg !== 'HS256' || header.typ !== 'JWT') {
+    throw new AppError('Invalid authentication token', 401);
+  }
+
   const expectedSignature = crypto
     .createHmac('sha256', secret)
     .update(`${encodedHeader}.${encodedPayload}`)
     .digest('base64url');
 
   if (
+    Buffer.byteLength(signature) !== Buffer.byteLength(expectedSignature) ||
     !crypto.timingSafeEqual(
       Buffer.from(signature),
       Buffer.from(expectedSignature)
