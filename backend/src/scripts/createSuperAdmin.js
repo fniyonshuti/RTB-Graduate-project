@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import connectDB from '../config/db.js';
 import User from '../models/User.js';
 import { hashPassword } from '../utils/password.js';
+import { ROLES } from '../constants/roles.js';
 
 dotenv.config();
 
@@ -44,7 +45,7 @@ async function createSuperAdmin() {
   );
 
   if (existingUser) {
-    if (existingUser.role !== 'admin' && !promoteExistingUser) {
+    if (existingUser.role !== ROLES.SUPER_ADMIN && !promoteExistingUser) {
       throw new Error(
         `User ${adminEmail} already exists with role "${existingUser.role}". Set SUPER_ADMIN_PROMOTE_EXISTING=true to promote this exact user.`,
       );
@@ -52,12 +53,12 @@ async function createSuperAdmin() {
 
     const updates = {
       name: existingUser.name || adminName,
-      role: 'admin',
+      role: ROLES.SUPER_ADMIN,
       institution: existingUser.institution || adminInstitution,
       isActive: true,
     };
 
-    if (resetExistingPassword || existingUser.role !== 'admin') {
+    if (resetExistingPassword || existingUser.role !== ROLES.SUPER_ADMIN) {
       Object.assign(updates, passwordFields());
     }
 
@@ -65,7 +66,7 @@ async function createSuperAdmin() {
 
     console.log('Superadmin account already exists and was updated safely.');
     console.log(`Email: ${adminEmail}`);
-    console.log(`Password reset: ${resetExistingPassword || existingUser.role !== 'admin' ? 'yes' : 'no'}`);
+    console.log(`Password reset: ${resetExistingPassword || existingUser.role !== ROLES.SUPER_ADMIN ? 'yes' : 'no'}`);
     return;
   }
 
@@ -73,7 +74,7 @@ async function createSuperAdmin() {
     name: adminName,
     email: adminEmail,
     ...passwordFields(),
-    role: 'admin',
+    role: ROLES.SUPER_ADMIN,
     institution: adminInstitution,
     isActive: true,
   });
