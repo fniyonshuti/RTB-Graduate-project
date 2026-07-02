@@ -76,8 +76,21 @@ export function SelectField({
   )
 }
 
-export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: string }) {
-  return <span className={`badge ${tone}`}>{children}</span>
+export function Badge({
+  children,
+  className = '',
+  tone = 'neutral',
+  ...props
+}: {
+  children: ReactNode
+  className?: string
+  tone?: string
+} & React.HTMLAttributes<HTMLSpanElement>) {
+  return (
+    <span className={`badge ${tone} ${className}`.trim()} {...props}>
+      {children}
+    </span>
+  )
 }
 
 export function GapBadge({ level }: { level: GapLevel }) {
