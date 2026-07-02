@@ -37,6 +37,7 @@ import type {
   User,
 } from "../types";
 import { formatDate, formatPercent, readableStatus } from "../utils/gapLevels";
+import { isLearnerRole, roleLabel } from "../utils/roles";
 
 type PageProps = {
   token: string;
@@ -135,7 +136,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
 
   if (isLoading) return <LoadingState message="Loading dashboard..." />;
 
-  if (role === "graduate") {
+  if (isLearnerRole(role)) {
     return (
       <GraduateDashboard
         data={data}
@@ -146,31 +147,20 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
     );
   }
 
-  const cards =
-    role === "assessor"
-      ? [
-          ["Pending Reviews", dashboardNumber(data, "pendingReviews")],
-          [
-            "Reviewed Assessments",
-            dashboardNumber(data, "reviewedAssessments"),
-          ],
-          ["High Gap Cases", dashboardNumber(data, "highGapCases")],
-          ["Current Role", "Assessor"],
-        ]
-      : [
-          ["Total Graduates", dashboardNumber(data, "totalGraduates")],
-          ["Total Assessors", dashboardNumber(data, "totalAssessors")],
-          ["Total Competencies", dashboardNumber(data, "totalCompetencies")],
-          [
-            "Average Skill Gap",
-            formatPercent(dashboardNumber(data, "averageSkillGap")),
-          ],
-        ];
+  const cards = [
+    ["Total Users", dashboardNumber(data, "totalGraduates")],
+    ["Organization Users", dashboardNumber(data, "totalOrganizationUsers")],
+    ["Organization Admins", dashboardNumber(data, "totalOrganizationAdmins")],
+    [
+      "Average Skill Gap",
+      formatPercent(dashboardNumber(data, "averageSkillGap")),
+    ],
+  ];
 
   return (
     <section className="page-stack">
       <PageHeader
-        title={`${role === "org_admin" ? "Organization Admin" : role.charAt(0).toUpperCase() + role.slice(1)} Dashboard`}
+        title={`${roleLabel(role)} Dashboard`}
         description="A clear overview of assessment progress, scores, gaps, and action areas."
         onRefresh={refresh}
       />
@@ -235,10 +225,10 @@ function GraduateDashboard({
     <section className="page-stack">
       <div className="dashboard-hero">
         <div>
-          <span className="eyebrow">Graduate workspace</span>
+          <span className="eyebrow">Assessment workspace</span>
           <h1>Know your ICT skill gaps and what to improve next.</h1>
           <p>
-            Submit practical evidence, wait for assessor review, then compare
+            Submit practical evidence, receive automatic scoring, then compare
             your score with RTB competency benchmarks.
           </p>
         </div>
@@ -294,7 +284,7 @@ function GraduateDashboard({
             <strong>{nextAction}</strong>
             <p>
               {hasReviewedResults
-                ? "Open your gap results, focus on moderate and high gap competencies, and follow the assessor recommendations."
+                ? "Open your gap results, focus on moderate and high gap competencies, and follow the automatic recommendations."
                 : "Start by selecting one ICT competency and submitting GitHub practical evidence plus quiz/theory answers."}
             </p>
             <div className="button-row">
@@ -324,7 +314,7 @@ function GraduateDashboard({
             />
             <WorkflowStep
               label="3"
-              text="Assessor verifies the GitHub task review and theory answers."
+              text="The system verifies the GitHub task review and theory answers automatically."
             />
             <WorkflowStep
               label="4"
@@ -358,7 +348,7 @@ function GraduateDashboard({
 
         <Card title="Latest recommendations">
           {latestRecommendations.length === 0 ? (
-            <EmptyState message="Recommendations appear here after an assessor reviews your evidence." />
+            <EmptyState message="Recommendations appear here after automatic scoring completes." />
           ) : (
             <div className="compact-list">
               {latestRecommendations.slice(0, 3).map((recommendation) => (
@@ -446,7 +436,7 @@ function GraduateProfileForm({
   return (
     <section className="page-stack">
       <PageHeader
-        title="Graduate Profile"
+        title="User Profile"
         description="Keep academic and contact details ready for assessment reports."
       />
       {error && <Alert type="error">{error}</Alert>}
@@ -654,7 +644,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
           answer: theoryAnswers[question._id] || "",
         })),
       });
-      setMessage("Assessment evidence submitted for assessor review.");
+      setMessage("Assessment completed. Automatic scores, gap results, recommendations, and report are ready.");
       setPracticalTask("");
       setGithubRepositoryUrl("");
       setEvidenceFiles([]);
@@ -719,7 +709,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     <section className="page-stack">
       <PageHeader
         title="Take Competency Assessment"
-        description="Complete one competency at a time. Your evidence is reviewed by an assessor before final gap results are calculated."
+        description="Complete one competency at a time. Repository evidence is scored automatically before final gap results are calculated."
       />
       {message && <Alert type="success">{message}</Alert>}
       {error && <Alert type="error">{error}</Alert>}
@@ -818,7 +808,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 <Alert type="info">
                   Practical evidence is based on a GitHub repository. The
                   system scans the repository against the selected task and
-                  shows a checklist score before you submit for assessor review.
+                  shows a checklist score before you submit for automatic scoring.
                 </Alert>
 
                 {availableTasks.length > 0 ? (
@@ -1327,7 +1317,7 @@ export function AssessmentsPage({ token, role }: PageProps) {
         title={
           role === "assessor"
             ? "Assessment Reviews"
-            : role === "admin"
+            : role === "admin" || role === "super_admin"
               ? "All Assessments"
               : "My Assessments"
         }
@@ -1337,7 +1327,7 @@ export function AssessmentsPage({ token, role }: PageProps) {
       {error && <Alert type="error">{error}</Alert>}
       <div className="status-summary-grid">
         <StatCard
-          helper="Waiting for assessor review"
+          helper="Automatic scoring in progress"
           label="Submitted"
           value={submittedCount}
         />
@@ -2493,7 +2483,7 @@ export function ReportsPage({ token, role }: PageProps) {
     setMessage("");
     await api.generateReport(
       token,
-      role === "graduate" ? undefined : graduateId,
+      isLearnerRole(role) ? undefined : graduateId,
     );
     setMessage("Report generated successfully.");
     await refresh();
@@ -2527,9 +2517,9 @@ export function ReportsPage({ token, role }: PageProps) {
         actions={<Button onClick={handleGenerate}>Generate Report</Button>}
         title="Report generation"
       >
-        {role !== "graduate" && (
+        {!isLearnerRole(role) && (
           <TextField
-            label="Graduate user ID"
+            label="Assessment user ID"
             value={graduateId}
             onChange={(event) => setGraduateId(event.target.value)}
           />
@@ -2956,9 +2946,11 @@ function AdminNotificationsPage({ token }: { token: string }) {
             }
           >
             <option value="all">All users</option>
-            <option value="graduate">Graduates</option>
-            <option value="assessor">Assessors</option>
+            <option value="normal_user">Normal Users</option>
+            <option value="organization_user">Organization Users</option>
+            <option value="org_admin">Organization Admins</option>
             <option value="admin">Admins</option>
+            <option value="super_admin">Super Admins</option>
           </SelectField>
           <TextField
             label="Specific user ID"
@@ -3039,11 +3031,17 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
     error: organizationError,
     refresh: refreshOrganizations,
   } = useAsyncData(() => api.organizations(token), [] as Organization[]);
+  const defaultRole =
+    role === "super_admin"
+      ? "admin"
+      : role === "admin"
+        ? "org_admin"
+        : "organization_user";
   const [form, setForm] = useState({
     name: "",
     email: "",
     password: "",
-    role: "graduate" as Role,
+    role: defaultRole as Role,
     organizationId: "",
   });
   const [message, setMessage] = useState("");
@@ -3051,9 +3049,11 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
   const [isSaving, setIsSaving] = useState(false);
 
   const creatableRoles =
-    role === "admin"
-      ? (["graduate", "assessor", "org_admin", "admin"] as Role[])
-      : (["graduate", "assessor", "org_admin"] as Role[]);
+    role === "super_admin"
+      ? (["admin"] as Role[])
+      : role === "admin"
+        ? (["org_admin"] as Role[])
+        : (["organization_user"] as Role[]);
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3065,8 +3065,8 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
       return;
     }
 
-    if (role === "admin" && form.role !== "admin" && !form.organizationId) {
-      setFormError("Select an organization for graduates, assessors, and organization admins.");
+    if (["organization_user", "org_admin"].includes(form.role) && role !== "org_admin" && !form.organizationId) {
+      setFormError("Select an organization for organization users and organization admins.");
       return;
     }
 
@@ -3083,7 +3083,7 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
         name: "",
         email: "",
         password: "",
-        role: "graduate",
+        role: defaultRole as Role,
         organizationId: "",
       });
       setMessage("User account created successfully.");
@@ -3124,8 +3124,10 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
         title="User Management"
         description={
           role === "admin"
-            ? "Create platform admins, organization admins, assessors, and graduates. Organization-based users must be linked to an institution."
-            : "Create organization admins, assessors, and graduates for your own institution only."
+            ? "Create organization admin accounts only."
+            : role === "super_admin"
+              ? "Create admin accounts. Admins create organization admins, and organization admins create organization users."
+              : "Create organization users for your own institution only."
         }
         onRefresh={refresh}
       />
@@ -3135,9 +3137,9 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
       {formError && <Alert type="error">{formError}</Alert>}
       <Card title="Create user account">
         <Alert type="info">
-          Graduate self-registration is public from the homepage. Admin and
-          assessor accounts are protected and must be created here by an
-          authorized administrator.
+          Normal user self-registration is public from the homepage. Admin,
+          super admin, organization admin, and organization user accounts are
+          protected and must be created by an authorized administrator.
         </Alert>
         <form className="form-grid" onSubmit={handleCreateUser}>
           <TextField
@@ -3167,11 +3169,11 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
           >
             {creatableRoles.map((item) => (
               <option key={item} value={item}>
-                {item === "org_admin" ? "Organization Admin" : item}
+                {roleLabel(item)}
               </option>
             ))}
           </SelectField>
-          {role === "admin" && form.role !== "admin" && (
+          {role !== "org_admin" && ["organization_user", "org_admin"].includes(form.role) && (
             <SelectField
               label="Organization"
               value={form.organizationId}
@@ -3224,7 +3226,7 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
                   <tr key={user.id}>
                     <td>{user.name}</td>
                     <td>{user.email}</td>
-                    <td>{user.role === "org_admin" ? "Organization Admin" : user.role}</td>
+                    <td>{roleLabel(user.role)}</td>
                     <td>{organizationName(user)}</td>
                     <td>{user.isActive === false ? "Inactive" : "Active"}</td>
                     <td>
@@ -3313,7 +3315,7 @@ export function OrganizationsPage({ token }: { token: string }) {
     <section className="page-stack">
       <PageHeader
         title="Organizations"
-        description="Create and manage TVET institutions that own assessors and graduates."
+        description="Create and manage organizations that own organization users and organization admins."
         onRefresh={refresh}
       />
       {error && <Alert type="error">{error}</Alert>}
