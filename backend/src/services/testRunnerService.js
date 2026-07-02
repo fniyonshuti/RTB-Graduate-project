@@ -147,7 +147,7 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
 
   if (analysis.projectType !== 'node') {
     // The execution engine currently knows how to run Node projects. Other
-    // stacks still receive static review and must be validated by an assessor.
+    // stacks still receive static review and score lower without executable proof.
     return {
       executionMode: 'static_only',
       totalTestCases: 0,
