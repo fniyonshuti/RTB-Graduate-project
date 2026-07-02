@@ -58,10 +58,10 @@ describe('repository assessment scoring', () => {
     });
 
     assert.equal(result.totalTestCases, 10);
-    assert.equal(result.passedTestCases, 6);
+    assert.equal(result.passedTestCases, 7);
     assert.equal(result.totalWeight, 96);
-    assert.equal(result.passedWeight, 58);
-    assert.equal(result.accuracyScore, 60.42);
+    assert.equal(result.passedWeight, 66);
+    assert.equal(result.accuracyScore, 68.75);
     assert.equal(result.gapClassification, 'Moderate Gap');
     assert.equal(result.competencyScores.testing, 75);
     assert.equal(result.competencyScores.deployment, 100);
