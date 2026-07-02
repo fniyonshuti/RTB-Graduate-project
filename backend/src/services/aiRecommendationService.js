@@ -82,11 +82,11 @@ function buildPrompt(context) {
     "You are an assessment recommendation engine for an ICT skills gap analysis system.",
     "Return only valid JSON. Do not wrap the JSON in markdown fences.",
     "Return a single JSON object with exactly these keys: message, actionItems, resources, priority.",
-    "The message must be a concise assessor-ready recommendation in plain language.",
+    "The message must be a concise learner-ready recommendation in plain language.",
     "actionItems must be an array of short improvement actions.",
     "resources must be an array of short resource suggestions or an empty array if none are needed.",
     "priority must be one of low, medium, or high.",
-    "Use the supplied RTB benchmark, final score, skill gap, weak areas, repository summary, and assessor comment.",
+    "Use the supplied RTB benchmark, final score, skill gap, weak areas, repository summary, and automatic review note.",
     "Keep the recommendation aligned to the selected competency and the evidence reviewed.",
     JSON.stringify(context, null, 2),
   ].join("\n");
