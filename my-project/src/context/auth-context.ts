@@ -1,5 +1,5 @@
 import { createContext } from 'react'
-import type { Role, User } from '../types'
+import type { User } from '../types'
 
 export type AuthContextValue = {
   user: User | null
@@ -12,9 +12,7 @@ export type AuthContextValue = {
     name: string
     email: string
     password: string
-    role?: Role
     institution?: string
-    organizationId?: string
   }) => Promise<void>
   logout: () => void
 }
