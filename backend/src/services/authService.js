@@ -1,11 +1,11 @@
 import User from '../models/User.js';
-import Organization from '../models/Organization.js';
 import crypto from 'node:crypto';
 import { env } from '../config/env.js';
 import { AppError } from '../utils/errors.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { signJwt } from '../utils/jwt.js';
 import { sendPasswordResetEmail } from './emailService.js';
+import { ROLES } from '../constants/roles.js';
 
 function hashResetToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -53,11 +53,11 @@ export async function getActiveUserById(userId) {
 }
 
 export async function registerUser(payload) {
-  const { name, email, password, organizationId } = payload;
+  const { name, email, password } = payload;
 
-  if (!name || !email || !password || !organizationId) {
+  if (!name || !email || !password) {
     throw new AppError(
-      'Name, email, password, and organization are required for graduate registration',
+      'Name, email, and password are required for registration',
       400,
     );
   }
@@ -71,29 +71,15 @@ export async function registerUser(payload) {
   }
 
   const { passwordHash, passwordSalt } = hashPassword(password);
-  const organization = await Organization.findOne({
-    _id: organizationId,
-    status: 'active',
-  });
-
-  if (!organization) {
-    throw new AppError(
-      'Selected organization is not available. Please choose an active organization.',
-      400,
-    );
-  }
 
   const user = await User.create({
     name,
     email,
     passwordHash,
     passwordSalt,
-    role: 'graduate',
-    organization: organization._id,
-    institution: organization.name,
+    role: ROLES.NORMAL_USER,
+    institution: payload.institution,
   });
-
-  await user.populate('organization', 'name district type status');
 
   const token = signJwt({ sub: user._id.toString(), role: user.role });
 
