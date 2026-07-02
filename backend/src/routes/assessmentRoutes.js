@@ -18,11 +18,11 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get("/results/me", authorize("graduate"), myResults);
+router.get("/results/me", authorize("learner"), myResults);
 
 router.post(
   "/repository-task-review",
-  authorize("graduate"),
+  authorize("learner"),
   requireFields("competency", "githubRepositoryUrl"),
   reviewRepositoryTask,
 );
@@ -30,16 +30,16 @@ router.post(
 router
   .route("/")
   .get(getAssessments)
-  .post(authorize("graduate"), requireFields("competency"), createAssessment);
+  .post(authorize("learner"), requireFields("competency"), createAssessment);
 
 router
   .route("/:id")
   .get(getAssessment)
-  .put(authorize("graduate", "admin", "org_admin"), updateAssessment)
-  .delete(authorize("graduate", "admin", "org_admin"), deleteAssessment);
+  .put(authorize("learner", "admin", "org_admin"), updateAssessment)
+  .delete(authorize("learner", "admin", "org_admin"), deleteAssessment);
 router.put(
   "/:id/review",
-  authorize("assessor", "admin"),
+  authorize("admin"),
   requireFields(
     "practicalTaskScore",
     "quizScore",
@@ -49,7 +49,7 @@ router.put(
 
 router.post(
   "/:id/recommendation-preview",
-  authorize("assessor", "admin"),
+  authorize("admin"),
   requireFields(
     "practicalTaskScore",
     "quizScore",
