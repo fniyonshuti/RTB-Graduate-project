@@ -7,10 +7,11 @@ import {
 } from '../services/reportService.js';
 import { asyncHandler } from '../utils/errors.js';
 import { sendSuccess } from '../utils/response.js';
+import { isLearnerRole } from '../constants/roles.js';
 
 export const createReport = asyncHandler(async (req, res) => {
   const graduateId =
-    req.user.role === 'graduate' ? req.user._id : req.body.graduateId;
+    isLearnerRole(req.user.role) ? req.user._id : req.body.graduateId;
   const report = await generateGraduateReport(graduateId, req.user);
   sendSuccess(res, 'Report generated successfully', report, 201);
 });
