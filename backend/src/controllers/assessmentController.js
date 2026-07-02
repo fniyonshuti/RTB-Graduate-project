@@ -13,8 +13,8 @@ import { asyncHandler } from "../utils/errors.js";
 import { sendSuccess } from "../utils/response.js";
 
 export const createAssessment = asyncHandler(async (req, res) => {
-  const assessment = await submitAssessment(req.user._id, req.body);
-  sendSuccess(res, "Assessment submitted successfully", assessment, 201);
+  const assessment = await submitAssessment(req.user, req.body);
+  sendSuccess(res, "Assessment scored automatically", assessment, 201);
 });
 
 export const reviewRepositoryTask = asyncHandler(async (req, res) => {
