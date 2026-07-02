@@ -3,8 +3,11 @@ import {
   listAssessments,
   getAssessmentById,
   reviewAssessment,
+  updateAssessmentById,
+  deleteAssessmentById,
   getGraduateResults,
   previewRecommendationDraft,
+  previewRepositoryTaskReview,
 } from "../services/assessmentService.js";
 import { asyncHandler } from "../utils/errors.js";
 import { sendSuccess } from "../utils/response.js";
@@ -12,6 +15,11 @@ import { sendSuccess } from "../utils/response.js";
 export const createAssessment = asyncHandler(async (req, res) => {
   const assessment = await submitAssessment(req.user._id, req.body);
   sendSuccess(res, "Assessment submitted successfully", assessment, 201);
+});
+
+export const reviewRepositoryTask = asyncHandler(async (req, res) => {
+  const review = await previewRepositoryTaskReview(req.body, req.user);
+  sendSuccess(res, "Repository task review completed", review);
 });
 
 export const getAssessments = asyncHandler(async (req, res) => {
@@ -22,6 +30,16 @@ export const getAssessments = asyncHandler(async (req, res) => {
 export const getAssessment = asyncHandler(async (req, res) => {
   const assessment = await getAssessmentById(req.params.id, req.user);
   sendSuccess(res, "Assessment loaded", assessment);
+});
+
+export const updateAssessment = asyncHandler(async (req, res) => {
+  const assessment = await updateAssessmentById(req.params.id, req.user, req.body);
+  sendSuccess(res, "Assessment updated", assessment);
+});
+
+export const deleteAssessment = asyncHandler(async (req, res) => {
+  const assessment = await deleteAssessmentById(req.params.id, req.user);
+  sendSuccess(res, "Assessment deleted", assessment);
 });
 
 export const review = asyncHandler(async (req, res) => {

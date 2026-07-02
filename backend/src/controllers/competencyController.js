@@ -1,5 +1,6 @@
 import {
   createCompetency as createCompetencyService,
+  deactivateCompetencyById,
   getCompetencyForRole,
   listCompetenciesForRole,
   updateCompetencyById,
@@ -25,4 +26,9 @@ export const createCompetency = asyncHandler(async (req, res) => {
 export const updateCompetency = asyncHandler(async (req, res) => {
   const competency = await updateCompetencyById(req.params.id, req.body);
   sendSuccess(res, 'Competency updated', competency);
+});
+
+export const deleteCompetency = asyncHandler(async (req, res) => {
+  const competency = await deactivateCompetencyById(req.params.id);
+  sendSuccess(res, 'Competency deactivated', competency);
 });

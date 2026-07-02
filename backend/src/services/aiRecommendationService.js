@@ -39,8 +39,21 @@ async function fetchGeminiJson(url, body) {
 
   if (!response.ok) {
     const errorBody = await response.text();
+    const normalizedError = errorBody.toLowerCase();
+
+    if (
+      response.status === 429 ||
+      normalizedError.includes("resource_exhausted") ||
+      normalizedError.includes("quota")
+    ) {
+      throw new AppError(
+        "Gemini recommendation quota is temporarily exhausted. Wait a few seconds, then click Generate Gemini recommendation again.",
+        429,
+      );
+    }
+
     throw new AppError(
-      `Gemini recommendation API returned ${response.status}: ${errorBody || response.statusText}`,
+      `Gemini recommendation API returned ${response.status}. Check your Gemini API key, model, and request configuration.`,
       response.status,
     );
   }

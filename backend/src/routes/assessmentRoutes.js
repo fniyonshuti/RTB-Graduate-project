@@ -4,8 +4,11 @@ import {
   getAssessments,
   getAssessment,
   review,
+  updateAssessment,
+  deleteAssessment,
   myResults,
   previewReviewRecommendation,
+  reviewRepositoryTask,
 } from "../controllers/assessmentController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { authorize } from "../middleware/roleMiddleware.js";
@@ -17,20 +20,29 @@ router.use(protect);
 
 router.get("/results/me", authorize("graduate"), myResults);
 
+router.post(
+  "/repository-task-review",
+  authorize("graduate"),
+  requireFields("competency", "githubRepositoryUrl"),
+  reviewRepositoryTask,
+);
+
 router
   .route("/")
   .get(getAssessments)
   .post(authorize("graduate"), requireFields("competency"), createAssessment);
 
-router.get("/:id", getAssessment);
+router
+  .route("/:id")
+  .get(getAssessment)
+  .put(authorize("graduate", "admin", "org_admin"), updateAssessment)
+  .delete(authorize("graduate", "admin", "org_admin"), deleteAssessment);
 router.put(
   "/:id/review",
   authorize("assessor", "admin"),
   requireFields(
     "practicalTaskScore",
     "quizScore",
-    "portfolioScore",
-    "selfAssessmentScore",
   ),
   review,
 );
@@ -41,8 +53,6 @@ router.post(
   requireFields(
     "practicalTaskScore",
     "quizScore",
-    "portfolioScore",
-    "selfAssessmentScore",
   ),
   previewReviewRecommendation,
 );

@@ -1,36 +1,118 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Button,
   SelectField,
   TextField,
 } from "../components/common";
-import { useAuth } from "../context/AuthContext";
-import type { Role } from "../types";
+import { api } from "../api/client";
+import { useAuth } from "../context/useAuth";
+import type { Organization } from "../types";
 import heroImage from "../assets/hero.png";
+
+function getInitialAuthState() {
+  const params = new URLSearchParams(window.location.search);
+  const resetToken = params.get("resetToken") || params.get("token") || "";
+
+  return {
+    mode: resetToken ? ("reset" as const) : ("login" as const),
+    resetToken,
+    showAuthPanel: Boolean(resetToken),
+  };
+}
 
 export function AuthPages() {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [showAuthPanel, setShowAuthPanel] = useState(false);
+  const [initialAuthState] = useState(getInitialAuthState);
+  const [mode, setMode] = useState<"login" | "register" | "forgot" | "reset">(
+    initialAuthState.mode,
+  );
+  const [showAuthPanel, setShowAuthPanel] = useState(
+    initialAuthState.showAuthPanel,
+  );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<Role>("graduate");
-  const [institution, setInstitution] = useState("");
+  const [organizationId, setOrganizationId] = useState("");
+  const [resetToken, setResetToken] = useState(initialAuthState.resetToken);
+  const [newPassword, setNewPassword] = useState("");
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [isLoadingOrganizations, setIsLoadingOrganizations] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (mode !== "register" || !showAuthPanel) return;
+
+    let isCurrent = true;
+
+    async function loadOrganizations() {
+      await Promise.resolve();
+      if (!isCurrent) return;
+
+      setIsLoadingOrganizations(true);
+
+      try {
+        const publicOrganizations = await api.publicOrganizations();
+        if (isCurrent) setOrganizations(publicOrganizations);
+      } catch (caughtError) {
+        if (!isCurrent) return;
+
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Failed to load organizations",
+        );
+      } finally {
+        if (isCurrent) setIsLoadingOrganizations(false);
+      }
+    }
+
+    void loadOrganizations();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [mode, showAuthPanel]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setMessage("");
     setIsSubmitting(true);
 
     try {
       if (mode === "login") {
         await login(email, password);
+      } else if (mode === "register") {
+        if (!organizationId) {
+          throw new Error("Please select your organization.");
+        }
+
+        await register({ name, email, password, organizationId });
+      } else if (mode === "forgot") {
+        const result = await api.forgotPassword(email);
+        if (result.emailStatus === "resend_domain_verification_required") {
+          setMessage(
+            result.resetLink
+              ? `${result.message} For local testing, use this reset link: ${result.resetLink}. To send email to any recipient, verify your domain in Resend and set EMAIL_FROM to that verified domain.`
+              : result.emailMessage || result.message,
+          );
+        } else {
+          setMessage(
+            result.resetLink
+              ? `${result.message} Reset link for testing: ${result.resetLink}`
+              : result.message,
+          );
+        }
       } else {
-        await register({ name, email, password, role, institution });
+        await api.resetPassword(resetToken, newPassword);
+        setMessage("Password reset successfully. Sign in with your new password.");
+        setMode("login");
+        setPassword("");
+        setNewPassword("");
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
     } catch (caughtError) {
       setError(
@@ -144,16 +226,29 @@ export function AuthPages() {
               </button>
               <div className="auth-window__heading">
                 <span className="eyebrow">Account access</span>
-                <h2>{mode === "login" ? "Sign in" : "Create account"}</h2>
+                <h2>
+                  {mode === "login"
+                    ? "Sign in"
+                    : mode === "register"
+                      ? "Create account"
+                      : mode === "forgot"
+                        ? "Forgot password"
+                        : "Reset password"}
+                </h2>
                 <p>
                   {mode === "login"
                     ? "Enter your credentials to open your role-based dashboard."
-                    : "Create an account as a graduate, assessor, or administrator."}
+                    : mode === "register"
+                      ? "Public registration is for graduates only. Select your TVET organization to connect your assessments with the right institution."
+                      : mode === "forgot"
+                        ? "Enter your email to generate a secure expiring password reset link."
+                        : "Set a new password using the secure reset token."}
                 </p>
               </div>
 
               <form className="form-stack auth-form" onSubmit={handleSubmit}>
                 {error && <Alert type="error">{error}</Alert>}
+                {message && <Alert type="success">{message}</Alert>}
                 {mode === "register" && (
                   <>
                     <TextField
@@ -163,50 +258,93 @@ export function AuthPages() {
                       required
                     />
                     <SelectField
-                      label="Role"
-                      value={role}
-                      onChange={(event) => setRole(event.target.value as Role)}
+                      label="Organization"
+                      value={organizationId}
+                      onChange={(event) => setOrganizationId(event.target.value)}
+                      required
                     >
-                      <option value="graduate">Graduate</option>
-                      <option value="assessor">Assessor</option>
-                      <option value="admin">Admin</option>
+                      <option value="">
+                        {isLoadingOrganizations
+                          ? "Loading organizations..."
+                          : "Select your organization"}
+                      </option>
+                      {organizations.map((organization) => (
+                        <option key={organization._id} value={organization._id}>
+                          {organization.name}
+                        </option>
+                      ))}
                     </SelectField>
-                    <TextField
-                      label="Institution"
-                      value={institution}
-                      onChange={(event) => setInstitution(event.target.value)}
-                    />
+                    {!isLoadingOrganizations && organizations.length === 0 && (
+                      <Alert type="info">
+                        No active organizations are available yet. Ask the platform
+                        administrator to register your TVET institution first.
+                      </Alert>
+                    )}
                   </>
                 )}
-                <TextField
-                  label="Email"
-                  placeholder="graduate@skills-gap.local"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                />
-                <TextField
-                  label="Password"
-                  placeholder="Enter your password"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                />
+                {mode !== "reset" && (
+                  <TextField
+                    label="Email"
+                    placeholder="graduate@skills-gap.local"
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    required
+                  />
+                )}
+                {mode === "reset" && (
+                  <TextField
+                    label="Reset token"
+                    value={resetToken}
+                    onChange={(event) => setResetToken(event.target.value)}
+                    required
+                  />
+                )}
+                {mode !== "forgot" && (
+                  <TextField
+                    label={mode === "reset" ? "New password" : "Password"}
+                    placeholder={mode === "reset" ? "Create a new password" : "Enter your password"}
+                    type="password"
+                    value={mode === "reset" ? newPassword : password}
+                    onChange={(event) =>
+                      mode === "reset"
+                        ? setNewPassword(event.target.value)
+                        : setPassword(event.target.value)
+                    }
+                    required
+                  />
+                )}
                 <Button disabled={isSubmitting} type="submit">
                   {isSubmitting
                     ? "Please wait..."
                     : mode === "login"
                       ? "Sign in"
-                      : "Create account"}
+                      : mode === "register"
+                        ? "Create account"
+                        : mode === "forgot"
+                          ? "Send reset link"
+                          : "Reset password"}
                 </Button>
+                {mode === "login" && (
+                  <button
+                    className="text-link-button"
+                    type="button"
+                    onClick={() => {
+                      setError("");
+                      setMessage("");
+                      setMode("forgot");
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                )}
                 <p className="auth-switch">
                   {mode === "login" ? "No account yet?" : "Already have an account?"}
                   <button
                     type="button"
                     onClick={() => {
                       setError("");
+                      setMessage("");
                       setMode(mode === "login" ? "register" : "login");
                     }}
                   >
@@ -229,7 +367,7 @@ export function AuthPages() {
           <p>
             The system supports the full skills gap workflow: graduate profile
             management, competency assessment, practical evidence submission,
-            assessor rubric review, RTB benchmark comparison, recommendations,
+            GitHub task review, RTB benchmark comparison, recommendations,
             reports, notifications, and dashboards.
           </p>
         </div>
@@ -239,7 +377,7 @@ export function AuthPages() {
             <strong>Graduates</strong>
             <p>
               Register, manage a profile, select competencies, submit practical
-              tasks, answer theory questions, upload portfolio evidence, and view
+              GitHub evidence, answer theory questions, and view
               skill gap results.
             </p>
           </article>
@@ -247,8 +385,8 @@ export function AuthPages() {
             <span className="info-icon">02</span>
             <strong>Assessors</strong>
             <p>
-              Review submitted evidence, score practical work and portfolio
-              artifacts using rubrics, approve quiz/theory results, and provide
+              Review submitted evidence, verify practical GitHub task results,
+              approve quiz/theory results, and provide
               competency-specific recommendations.
             </p>
           </article>
@@ -270,7 +408,7 @@ export function AuthPages() {
             <h2>From assessment to evidence-based action</h2>
             <p>
               The system measures real practical ability by combining practical
-              tasks, quiz/theory answers, portfolio evidence, and self-assessment
+              GitHub project evidence and quiz/theory answers
               into a final weighted competency score.
             </p>
           </div>
@@ -285,11 +423,11 @@ export function AuthPages() {
             </div>
             <div>
               <span />
-              Graduate submits practical task work, theory answers, and portfolio evidence
+              Graduate submits GitHub practical evidence and theory answers
             </div>
             <div>
               <span />
-              Assessor reviews evidence, assigns rubric scores, and adds recommendations
+              Assessor verifies GitHub task and theory evidence, then approves recommendations
             </div>
             <div>
               <span />
@@ -304,8 +442,7 @@ export function AuthPages() {
           <article className="feature-card">
             <strong>Weighted assessment model</strong>
             <p>
-              Final score uses Practical/GitHub Project 60%, Quiz/Theory 20%,
-              Portfolio 15%, and Self Assessment 5%.
+              Final score uses Practical/GitHub Project 70% and Quiz/Theory 30%.
             </p>
           </article>
           <article className="feature-card">

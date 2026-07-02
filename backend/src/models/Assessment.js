@@ -54,9 +54,68 @@ const evidenceSchema = new mongoose.Schema(
           count: Number,
         },
       ],
+      setupFileFound: Boolean,
+      testFileFound: Boolean,
+      packageScripts: mongoose.Schema.Types.Mixed,
+      testScriptFound: Boolean,
+      buildScriptFound: Boolean,
+      ciWorkflowFound: Boolean,
+      ciRunFound: Boolean,
+      ciRunName: String,
+      ciRunStatus: String,
+      ciRunConclusion: String,
+      ciRunUrl: String,
+      ciRunUpdatedAt: String,
+      ciPassing: Boolean,
       codeQualityScore: Number,
       evidenceCompletenessScore: Number,
       riskFlags: [String],
+      taskReview: {
+        taskId: mongoose.Schema.Types.ObjectId,
+        taskTitle: String,
+        score: Number,
+        pointsEarned: Number,
+        pointsPossible: Number,
+        passedCount: Number,
+        failedCount: Number,
+        checklist: [
+          {
+            key: String,
+            label: String,
+            passed: Boolean,
+            weight: Number,
+            evidence: String,
+            advice: String,
+          },
+        ],
+        taskKeywords: [String],
+        matchedTaskKeywords: [String],
+        taskKeywordMatchRate: Number,
+        implementationReview: {
+          sourceFilesReviewed: Number,
+          implementationKeywordMatches: [String],
+          implementationKeywordRate: Number,
+          expectedFunctionalAreas: [String],
+          detectedFunctionalAreas: [String],
+          missingFunctionalAreas: [String],
+          functionalCoverageRate: Number,
+          expectedActions: [String],
+          matchedActions: [String],
+          actionCoverageRate: Number,
+          hasRuntimeIntegration: Number,
+          implementationEvidenceScore: Number,
+        },
+        automatedProofSignals: Number,
+        automatedProofPassed: Boolean,
+        proofLevel: String,
+        proofSummary: String,
+        repositoryAssessmentResultId: mongoose.Schema.Types.ObjectId,
+        competencyScores: mongoose.Schema.Types.Mixed,
+        recommendations: [String],
+        feedback: [String],
+        reviewedAt: Date,
+        summary: String,
+      },
       sampledSourceFiles: [
         {
           path: String,
@@ -106,14 +165,6 @@ const evidenceSchema = new mongoose.Schema(
         },
       },
     ],
-    portfolioLink: {
-      type: String,
-      trim: true,
-    },
-    projectDescription: {
-      type: String,
-      trim: true,
-    },
     fileUrls: [
       {
         type: String,
@@ -141,67 +192,18 @@ const evidenceSchema = new mongoose.Schema(
         },
       },
     ],
-    selfAssessmentScore: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
   },
   { _id: false }
 );
 
 const scoresSchema = new mongoose.Schema(
   {
-    rubricScores: [
-      {
-        criterionId: {
-          type: mongoose.Schema.Types.ObjectId,
-        },
-        name: {
-          type: String,
-          trim: true,
-        },
-        description: {
-          type: String,
-          trim: true,
-        },
-        weight: {
-          type: Number,
-          min: 0,
-          max: 100,
-        },
-        score: {
-          type: Number,
-          min: 0,
-          max: 100,
-        },
-        weightedScore: {
-          type: Number,
-          min: 0,
-          max: 100,
-        },
-        comment: {
-          type: String,
-          trim: true,
-        },
-      },
-    ],
     practicalTaskScore: {
       type: Number,
       min: 0,
       max: 100,
     },
     quizScore: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
-    portfolioScore: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
-    selfAssessmentScore: {
       type: Number,
       min: 0,
       max: 100,
@@ -221,6 +223,10 @@ const assessmentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+    },
+    organization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
     },
     competency: {
       type: mongoose.Schema.Types.ObjectId,
@@ -279,10 +285,6 @@ const assessmentSchema = new mongoose.Schema(
         type: Boolean,
         default: false,
       },
-      portfolioReviewed: {
-        type: Boolean,
-        default: false,
-      },
       theoryReviewed: {
         type: Boolean,
         default: false,
@@ -300,6 +302,7 @@ const assessmentSchema = new mongoose.Schema(
 );
 
 assessmentSchema.index({ graduate: 1, competency: 1 });
+assessmentSchema.index({ organization: 1, status: 1, createdAt: -1 });
 assessmentSchema.index({ assessor: 1, status: 1 });
 assessmentSchema.index({ status: 1, createdAt: -1 });
 

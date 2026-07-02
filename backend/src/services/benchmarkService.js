@@ -13,6 +13,19 @@ export function listBenchmarks(filters = {}) {
     .sort({ createdAt: -1 });
 }
 
+export async function getBenchmarkById(benchmarkId) {
+  const benchmark = await Benchmark.findById(benchmarkId).populate(
+    "competency",
+    "title code category",
+  );
+
+  if (!benchmark) {
+    throw new AppError("Benchmark was not found", 404);
+  }
+
+  return benchmark;
+}
+
 export async function createBenchmark(payload, createdBy) {
   const competency = await Competency.findById(payload.competency);
 
@@ -38,6 +51,20 @@ export async function updateBenchmarkById(benchmarkId, payload) {
     new: true,
     runValidators: true,
   }).populate("competency", "title code category");
+
+  if (!benchmark) {
+    throw new AppError("Benchmark was not found", 404);
+  }
+
+  return benchmark;
+}
+
+export async function deactivateBenchmarkById(benchmarkId) {
+  const benchmark = await Benchmark.findByIdAndUpdate(
+    benchmarkId,
+    { isActive: false },
+    { new: true, runValidators: true },
+  ).populate("competency", "title code category");
 
   if (!benchmark) {
     throw new AppError("Benchmark was not found", 404);

@@ -1,4 +1,15 @@
-export type Role = 'graduate' | 'assessor' | 'admin'
+export type Role = 'graduate' | 'assessor' | 'org_admin' | 'admin'
+
+export type Organization = {
+  _id: string
+  name: string
+  district?: string
+  type?: 'tvet_institution' | 'training_center' | 'other'
+  contactEmail?: string
+  phone?: string
+  address?: string
+  status?: 'active' | 'inactive'
+}
 
 export type GapLevel =
   | 'No Gap'
@@ -21,8 +32,10 @@ export type User = {
   name: string
   email: string
   role: Role
+  organization?: Organization | string
   institution?: string
   isActive?: boolean
+  mustChangePassword?: boolean
 }
 
 export type ApiResponse<T> = {
@@ -45,8 +58,6 @@ export type Competency = {
   expectedEvidence?: string
   practicalTasks?: PracticalTask[]
   theoryQuestions?: TheoryQuestion[]
-  portfolioRequirements?: PortfolioRequirement[]
-  rubricCriteria?: RubricCriterion[]
   isActive?: boolean
 }
 
@@ -57,6 +68,11 @@ export type PracticalTask = {
   deliverables?: string
   estimatedMinutes?: number
   maxScore?: number
+  automatedTestCommand?: string
+  automatedTestFiles?: {
+    path?: string
+    content?: string
+  }[]
 }
 
 export type TheoryQuestion = {
@@ -67,21 +83,6 @@ export type TheoryQuestion = {
   correctAnswer?: string
   expectedAnswer?: string
   points: number
-}
-
-export type PortfolioRequirement = {
-  _id: string
-  title: string
-  description: string
-  required: boolean
-}
-
-export type RubricCriterion = {
-  _id: string
-  name: string
-  description: string
-  weight: number
-  maxScore: number
 }
 
 export type Benchmark = {
@@ -129,26 +130,12 @@ export type Assessment = {
       pointsAwarded: number
       pointsPossible: number
     }[]
-    portfolioLink?: string
-    projectDescription?: string
     fileUrls?: string[]
     evidenceFiles?: EvidenceFile[]
-    selfAssessmentScore?: number
   }
   scores: {
-    rubricScores?: {
-      criterionId?: string
-      name?: string
-      description?: string
-      weight?: number
-      score?: number
-      weightedScore?: number
-      comment?: string
-    }[]
     practicalTaskScore?: number
     quizScore?: number
-    portfolioScore?: number
-    selfAssessmentScore?: number
     finalScore?: number
   }
   benchmarkScore?: number
@@ -159,12 +146,56 @@ export type Assessment = {
   evidenceVerification?: {
     githubReviewed?: boolean
     practicalEvidenceReviewed?: boolean
-    portfolioReviewed?: boolean
     theoryReviewed?: boolean
     authenticityNotes?: string
   }
   createdAt?: string
   reviewedAt?: string
+}
+
+export type RepositoryTaskReview = {
+  taskId?: string
+  taskTitle?: string
+  score: number
+  pointsEarned: number
+  pointsPossible: number
+  passedCount: number
+  failedCount: number
+  checklist: {
+    key: string
+    label: string
+    passed: boolean
+    weight: number
+    evidence?: string
+    advice?: string
+  }[]
+  taskKeywords?: string[]
+  matchedTaskKeywords?: string[]
+  taskKeywordMatchRate?: number
+  implementationReview?: {
+    sourceFilesReviewed?: number
+    implementationKeywordMatches?: string[]
+    implementationKeywordRate?: number
+    expectedFunctionalAreas?: string[]
+    detectedFunctionalAreas?: string[]
+    missingFunctionalAreas?: string[]
+    functionalCoverageRate?: number
+    expectedActions?: string[]
+    matchedActions?: string[]
+    actionCoverageRate?: number
+    hasRuntimeIntegration?: number
+    implementationEvidenceScore?: number
+  }
+  automatedProofSignals?: number
+  automatedProofPassed?: boolean
+  proofLevel?: string
+  proofSummary?: string
+  repositoryAssessmentResultId?: string
+  competencyScores?: Record<string, number>
+  recommendations?: string[]
+  feedback?: string[]
+  reviewedAt?: string
+  summary?: string
 }
 
 export type RepositorySummary = {
@@ -191,9 +222,23 @@ export type RepositorySummary = {
     extension?: string
     count?: number
   }[]
+  setupFileFound?: boolean
+  testFileFound?: boolean
+  packageScripts?: Record<string, string>
+  testScriptFound?: boolean
+  buildScriptFound?: boolean
+  ciWorkflowFound?: boolean
+  ciRunFound?: boolean
+  ciRunName?: string
+  ciRunStatus?: string
+  ciRunConclusion?: string
+  ciRunUrl?: string
+  ciRunUpdatedAt?: string
+  ciPassing?: boolean
   codeQualityScore?: number
   evidenceCompletenessScore?: number
   riskFlags?: string[]
+  taskReview?: RepositoryTaskReview
   sampledSourceFiles?: {
     path?: string
     language?: string
@@ -203,6 +248,72 @@ export type RepositorySummary = {
   topLevelItems?: string[]
   codeQualityNotes?: string[]
   summaryText?: string
+}
+
+export type RepositoryAssessmentResult = {
+  _id: string
+  repositoryUrl: string
+  owner?: string
+  repo?: string
+  verificationStatus: 'verified' | 'failed'
+  executionMode: 'docker' | 'local' | 'static_only' | 'failed'
+  projectType?: string
+  detectedTechnologies: string[]
+  totalTestCases: number
+  passedTestCases: number
+  accuracyScore: number
+  gapClassification: 'Excellent' | 'Competent' | 'Moderate Gap' | 'High Gap' | string
+  competencyScores: Record<
+    'frontend' | 'backend' | 'database' | 'authentication' | 'testing' | 'documentation' | 'deployment',
+    number
+  >
+  passedRequirements: {
+    id?: string
+    title?: string
+    competency?: string
+    passed?: boolean
+    evidence?: string
+    error?: string
+  }[]
+  failedRequirements: {
+    id?: string
+    title?: string
+    competency?: string
+    passed?: boolean
+    evidence?: string
+    error?: string
+  }[]
+  eslintResult?: {
+    available?: boolean
+    success?: boolean
+    errors?: number
+    warnings?: number
+    output?: string
+  }
+  securityScanResult?: {
+    available?: boolean
+    success?: boolean
+    high?: number
+    critical?: number
+    total?: number
+    secretFindings?: string[]
+    output?: string
+  }
+  assessorReviewStatus?: 'pending' | 'approved' | 'returned'
+  commandResults?: {
+    name?: string
+    command?: string
+    success?: boolean
+    exitCode?: number
+    stdout?: string
+    stderr?: string
+    durationMs?: number
+  }[]
+  recommendations: string[]
+  assessorValidationRequired: boolean
+  securityNotes: string[]
+  errorMessage?: string
+  createdAt?: string
 }
 
 export type Recommendation = {

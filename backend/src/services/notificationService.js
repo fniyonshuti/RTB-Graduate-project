@@ -12,6 +12,23 @@ export function listNotificationsForUser(userId, filters = {}) {
   return Notification.find(query).sort({ createdAt: -1 });
 }
 
+export async function getNotificationForUser(notificationId, user) {
+  const query =
+    user.role === "admin"
+      ? { _id: notificationId }
+      : { _id: notificationId, recipient: user._id };
+  const notification = await Notification.findOne(query).populate(
+    "recipient",
+    "name email role institution",
+  );
+
+  if (!notification) {
+    throw new AppError("Notification was not found", 404);
+  }
+
+  return notification;
+}
+
 export async function markNotificationReadForUser(notificationId, userId) {
   const notification = await Notification.findOneAndUpdate(
     { _id: notificationId, recipient: userId },
@@ -55,7 +72,7 @@ export async function createManagedNotification(payload) {
     throw new AppError("Title and message are required", 400);
   }
 
-  let recipients = [];
+  let recipients;
 
   if (recipientId) {
     const user = await User.findById(recipientId);
@@ -84,4 +101,39 @@ export async function createManagedNotification(payload) {
       link,
     })),
   );
+}
+
+export async function updateManagedNotification(notificationId, payload) {
+  const allowedUpdates = ["title", "message", "type", "link", "isRead"];
+  const updates = {};
+
+  allowedUpdates.forEach((field) => {
+    if (payload[field] !== undefined) updates[field] = payload[field];
+  });
+
+  const notification = await Notification.findByIdAndUpdate(
+    notificationId,
+    updates,
+    { new: true, runValidators: true },
+  ).populate("recipient", "name email role institution");
+
+  if (!notification) {
+    throw new AppError("Notification was not found", 404);
+  }
+
+  return notification;
+}
+
+export async function deleteNotificationForUser(notificationId, user) {
+  const query =
+    user.role === "admin"
+      ? { _id: notificationId }
+      : { _id: notificationId, recipient: user._id };
+  const notification = await Notification.findOneAndDelete(query);
+
+  if (!notification) {
+    throw new AppError("Notification was not found", 404);
+  }
+
+  return notification;
 }

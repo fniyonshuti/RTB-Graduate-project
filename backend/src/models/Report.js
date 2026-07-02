@@ -12,6 +12,10 @@ const reportSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    organization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+    },
     title: {
       type: String,
       required: true,
@@ -66,5 +70,6 @@ const reportSchema = new mongoose.Schema(
 );
 
 reportSchema.index({ graduate: 1, createdAt: -1 });
+reportSchema.index({ organization: 1, createdAt: -1 });
 
 export default mongoose.model('Report', reportSchema);

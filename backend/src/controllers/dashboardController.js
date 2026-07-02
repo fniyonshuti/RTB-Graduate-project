@@ -17,6 +17,6 @@ export const getDashboard = asyncHandler(async (req, res) => {
     return sendSuccess(res, 'Assessor dashboard loaded', dashboard);
   }
 
-  const dashboard = await getAdminDashboard();
+  const dashboard = await getAdminDashboard(req.user);
   return sendSuccess(res, 'Admin dashboard loaded', dashboard);
 });

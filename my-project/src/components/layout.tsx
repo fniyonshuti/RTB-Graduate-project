@@ -11,6 +11,7 @@ type ViewKey =
   | 'reports'
   | 'notifications'
   | 'users'
+  | 'organizations'
   | 'competencies'
   | 'benchmarks'
   | 'recommendations'
@@ -23,27 +24,22 @@ type NavItem = {
 }
 
 const navItems: NavItem[] = [
-  { key: 'dashboard', label: 'Dashboard', icon: 'DB', roles: ['graduate', 'assessor', 'admin'] },
+  { key: 'dashboard', label: 'Dashboard', icon: 'DB', roles: ['graduate', 'assessor', 'org_admin', 'admin'] },
   { key: 'profile', label: 'Profile', icon: 'PF', roles: ['graduate'] },
   { key: 'submit', label: 'Take Assessment', icon: 'TA', roles: ['graduate'] },
   { key: 'assessments', label: 'Assessment History', icon: 'AH', roles: ['graduate'] },
   { key: 'assessments', label: 'Assessment Reviews', icon: 'AR', roles: ['assessor'] },
-  { key: 'assessments', label: 'View Assessments', icon: 'VA', roles: ['admin'] },
+  { key: 'assessments', label: 'View Assessments', icon: 'VA', roles: ['org_admin', 'admin'] },
   { key: 'results', label: 'Gap Results', icon: 'GR', roles: ['graduate'] },
   { key: 'recommendations', label: 'Recommendations', icon: 'RC', roles: ['assessor'] },
-  { key: 'users', label: 'Users', icon: 'US', roles: ['admin'] },
+  { key: 'users', label: 'Users', icon: 'US', roles: ['org_admin', 'admin'] },
+  { key: 'organizations', label: 'Organizations', icon: 'OR', roles: ['admin'] },
   { key: 'competencies', label: 'Competencies', icon: 'CP', roles: ['admin'] },
   { key: 'benchmarks', label: 'RTB Benchmarks', icon: 'BM', roles: ['admin'] },
-  { key: 'reports', label: 'Reports', icon: 'RP', roles: ['graduate', 'assessor', 'admin'] },
+  { key: 'reports', label: 'Reports', icon: 'RP', roles: ['graduate', 'assessor', 'org_admin', 'admin'] },
   { key: 'notifications', label: 'Notifications', icon: 'NT', roles: ['graduate', 'assessor'] },
   { key: 'notifications', label: 'Manage Notifications', icon: 'MN', roles: ['admin'] },
 ]
-
-export function getDefaultView(role: Role): ViewKey {
-  if (role === 'admin') return 'dashboard'
-  if (role === 'assessor') return 'dashboard'
-  return 'dashboard'
-}
 
 export function AppLayout({
   children,
@@ -95,7 +91,7 @@ export function AppLayout({
             <span>{user.institution || 'Skills Gap Analysis Tool'}</span>
           </div>
           <div className="topbar-actions">
-            <Badge tone="role">{user.role}</Badge>
+            <Badge tone="role">{user.role === 'org_admin' ? 'Organization Admin' : user.role}</Badge>
             <Button variant="ghost" onClick={onLogout}>
               Logout
             </Button>

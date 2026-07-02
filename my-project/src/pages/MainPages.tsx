@@ -1,8 +1,16 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { api } from "../api/client";
 import type { ViewKey } from "../components/layout";
 import {
   Alert,
+  Badge,
   Button,
   Card,
   EmptyState,
@@ -21,7 +29,9 @@ import type {
   DashboardData,
   GraduateProfile,
   NotificationItem,
+  Organization,
   Recommendation,
+  RepositoryTaskReview,
   Report,
   Role,
   User,
@@ -44,20 +54,22 @@ type AsyncState<T> = {
 };
 
 function useAsyncData<T>(load: () => Promise<T>, initialData: T) {
+  const loadRef = useRef(load);
+  const initialDataRef = useRef(initialData);
   const [state, setState] = useState<AsyncState<T>>({
     data: initialData,
     isLoading: true,
     error: "",
   });
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setState((current) => ({ ...current, isLoading: true, error: "" }));
     try {
-      const data = await load();
+      const data = await loadRef.current();
       setState({ data, isLoading: false, error: "" });
     } catch (caughtError) {
       setState({
-        data: initialData,
+        data: initialDataRef.current,
         isLoading: false,
         error:
           caughtError instanceof Error
@@ -65,10 +77,39 @@ function useAsyncData<T>(load: () => Promise<T>, initialData: T) {
             : "Failed to load data",
       });
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void refresh();
+    loadRef.current = load;
+    initialDataRef.current = initialData;
+  }, [initialData, load]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadInitialData() {
+      try {
+        const data = await loadRef.current();
+        if (isCurrent) setState({ data, isLoading: false, error: "" });
+      } catch (caughtError) {
+        if (!isCurrent) return;
+
+        setState({
+          data: initialDataRef.current,
+          isLoading: false,
+          error:
+            caughtError instanceof Error
+              ? caughtError.message
+              : "Failed to load data",
+        });
+      }
+    }
+
+    void loadInitialData();
+
+    return () => {
+      isCurrent = false;
+    };
   }, []);
 
   return { ...state, refresh };
@@ -129,7 +170,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
   return (
     <section className="page-stack">
       <PageHeader
-        title={`${role.charAt(0).toUpperCase() + role.slice(1)} Dashboard`}
+        title={`${role === "org_admin" ? "Organization Admin" : role.charAt(0).toUpperCase() + role.slice(1)} Dashboard`}
         description="A clear overview of assessment progress, scores, gaps, and action areas."
         onRefresh={refresh}
       />
@@ -151,7 +192,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
       <Card title="Assessment Engine">
         <div className="engine-strip">
           <span>Evidence submission</span>
-          <span>Rubric scoring</span>
+          <span>GitHub task review</span>
           <span>Weighted score</span>
           <span>RTB benchmark</span>
           <span>Gap recommendation</span>
@@ -254,7 +295,7 @@ function GraduateDashboard({
             <p>
               {hasReviewedResults
                 ? "Open your gap results, focus on moderate and high gap competencies, and follow the assessor recommendations."
-                : "Start by selecting one ICT competency and submitting practical work, theory answers, portfolio evidence, and self-assessment."}
+                : "Start by selecting one ICT competency and submitting GitHub practical evidence plus quiz/theory answers."}
             </p>
             <div className="button-row">
               <Button
@@ -279,11 +320,11 @@ function GraduateDashboard({
             />
             <WorkflowStep
               label="2"
-              text="Submit practical task details, quiz answers, portfolio evidence, and self-score."
+              text="Submit GitHub practical evidence and quiz/theory answers."
             />
             <WorkflowStep
               label="3"
-              text="Assessor reviews evidence using the rubric and records scores."
+              text="Assessor verifies the GitHub task review and theory answers."
             />
             <WorkflowStep
               label="4"
@@ -339,10 +380,8 @@ function GraduateDashboard({
 
       <Card title="How your final score is calculated">
         <div className="score-weight-grid">
-          <WeightBox label="Practical / GitHub project" value="60%" />
-          <WeightBox label="Quiz / theory" value="20%" />
-          <WeightBox label="Portfolio evidence" value="15%" />
-          <WeightBox label="Self-assessment" value="5%" />
+          <WeightBox label="Practical / GitHub project" value="70%" />
+          <WeightBox label="Quiz / theory" value="30%" />
         </div>
       </Card>
     </section>
@@ -372,12 +411,29 @@ export function GraduateProfilePage({ token }: { token: string }) {
     () => api.profile(token),
     null,
   );
-  const [profile, setProfile] = useState<GraduateProfile>({});
-  const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    if (data) setProfile(data);
-  }, [data]);
+  if (isLoading) return <LoadingState message="Loading profile..." />;
+
+  return (
+    <GraduateProfileForm
+      error={error}
+      initialProfile={data || {}}
+      token={token}
+    />
+  );
+}
+
+function GraduateProfileForm({
+  error,
+  initialProfile,
+  token,
+}: {
+  error: string;
+  initialProfile: GraduateProfile;
+  token: string;
+}) {
+  const [profile, setProfile] = useState<GraduateProfile>(initialProfile);
+  const [message, setMessage] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -386,8 +442,6 @@ export function GraduateProfilePage({ token }: { token: string }) {
     setProfile(savedProfile);
     setMessage("Profile saved successfully.");
   }
-
-  if (isLoading) return <LoadingState message="Loading profile..." />;
 
   return (
     <section className="page-stack">
@@ -484,9 +538,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [competency, setCompetency] = useState("");
   const [practicalTaskId, setPracticalTaskId] = useState("");
-  const [practicalSubmissionMode, setPracticalSubmissionMode] = useState<
-    "direct_test" | "file_upload" | "mixed"
-  >("direct_test");
   const [practicalTask, setPracticalTask] = useState("");
   const [githubRepositoryUrl, setGithubRepositoryUrl] = useState("");
   const [evidenceFiles, setEvidenceFiles] = useState<
@@ -495,9 +546,14 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const [theoryAnswers, setTheoryAnswers] = useState<Record<string, string>>(
     {},
   );
-  const [portfolioLink, setPortfolioLink] = useState("");
-  const [projectDescription, setProjectDescription] = useState("");
-  const [selfAssessmentScore, setSelfAssessmentScore] = useState(0);
+  const [repositoryTaskReview, setRepositoryTaskReview] =
+    useState<{
+      competency: string;
+      githubRepositoryUrl: string;
+      practicalTaskId: string;
+      taskReview: RepositoryTaskReview;
+    } | null>(null);
+  const [isReviewingRepository, setIsReviewingRepository] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const selectedCompetency = competencies.find(
@@ -507,8 +563,15 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const selectedTask =
     availableTasks.find((task) => task._id === practicalTaskId) ||
     availableTasks[0];
+  const reviewedRepositoryUrl = githubRepositoryUrl.trim();
+  const activeRepositoryTaskReview =
+    repositoryTaskReview &&
+    repositoryTaskReview.competency === competency &&
+    repositoryTaskReview.githubRepositoryUrl === reviewedRepositoryUrl &&
+    repositoryTaskReview.practicalTaskId === (selectedTask?._id || "")
+      ? repositoryTaskReview.taskReview
+      : null;
   const theoryQuestions = selectedCompetency?.theoryQuestions || [];
-  const portfolioRequirements = selectedCompetency?.portfolioRequirements || [];
   const answeredTheoryCount = theoryQuestions.filter(
     (question) => (theoryAnswers[question._id] || "").trim().length > 0,
   ).length;
@@ -520,23 +583,17 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     practicalTask,
     evidenceFiles.length > 0 ? String(evidenceFiles.length) : "",
     answeredTheoryCount > 0 ? String(answeredTheoryCount) : "",
-    portfolioLink,
-    projectDescription,
   ].filter((value) => value.trim().length > 0).length;
   const canContinueToEvidence = Boolean(competency);
   const practicalEvidenceReady =
-    githubRepositoryUrl.trim().length > 0 &&
-    (practicalSubmissionMode === "direct_test"
-      ? practicalTask.trim().length > 0
-      : practicalSubmissionMode === "file_upload"
-        ? evidenceFiles.length > 0
-        : practicalTask.trim().length > 0 && evidenceFiles.length > 0);
+    reviewedRepositoryUrl.length > 0 && Boolean(activeRepositoryTaskReview);
   const canReview =
     practicalEvidenceReady &&
-    requiredTheoryAnswered &&
-    selfAssessmentScore >= 0;
+    requiredTheoryAnswered;
   const canSubmit =
-    Boolean(competency) && practicalEvidenceReady && requiredTheoryAnswered;
+    Boolean(competency) &&
+    practicalEvidenceReady &&
+    requiredTheoryAnswered;
 
   async function handleEvidenceFiles(files: FileList | null) {
     if (!files) return;
@@ -586,29 +643,24 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     try {
       await api.submitAssessment(token, {
         competency,
-        practicalSubmissionMode,
+        practicalSubmissionMode: "mixed",
         practicalTaskId: selectedTask?._id,
         practicalTask,
         githubRepositoryUrl,
         evidenceFiles,
+        repositoryTaskReview: activeRepositoryTaskReview || undefined,
         theoryAnswers: theoryQuestions.map((question) => ({
           questionId: question._id,
           answer: theoryAnswers[question._id] || "",
         })),
-        portfolioLink,
-        projectDescription,
-        selfAssessmentScore,
       });
       setMessage("Assessment evidence submitted for assessor review.");
       setPracticalTask("");
       setGithubRepositoryUrl("");
-      setPracticalSubmissionMode("direct_test");
       setEvidenceFiles([]);
       setPracticalTaskId("");
       setTheoryAnswers({});
-      setPortfolioLink("");
-      setProjectDescription("");
-      setSelfAssessmentScore(0);
+      setRepositoryTaskReview(null);
       setCompetency("");
       setCurrentStep(1);
     } catch (caughtError) {
@@ -617,6 +669,47 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
           ? caughtError.message
           : "Submission failed",
       );
+    }
+  }
+
+  async function handleRepositoryTaskReview() {
+    setError("");
+    setMessage("");
+
+    if (!selectedCompetency || !selectedTask) {
+      setError("Select a competency and practical task before reviewing.");
+      return;
+    }
+
+    if (!githubRepositoryUrl.trim()) {
+      setError("Enter a GitHub repository URL before reviewing the task.");
+      return;
+    }
+
+    setIsReviewingRepository(true);
+
+    try {
+      const result = await api.reviewRepositoryTask(token, {
+        competency: selectedCompetency._id,
+        practicalTaskId: selectedTask._id,
+        githubRepositoryUrl,
+      });
+
+      setRepositoryTaskReview({
+        competency: selectedCompetency._id,
+        githubRepositoryUrl: reviewedRepositoryUrl,
+        practicalTaskId: selectedTask._id,
+        taskReview: result.taskReview,
+      });
+      setMessage("Repository task review completed. Check the task score and checklist.");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Repository review failed",
+      );
+    } finally {
+      setIsReviewingRepository(false);
     }
   }
 
@@ -650,12 +743,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 active={currentStep === 3}
                 done={currentStep > 3}
                 label="3"
-                text="Self-assess"
-              />
-              <StepItem
-                active={currentStep === 4}
-                done={false}
-                label="4"
                 text="Review & submit"
               />
             </div>
@@ -664,16 +751,10 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
           <Card title="Scoring model">
             <div className="score-weight-list">
               <span>
-                <strong>60%</strong> Practical/GitHub project
+                <strong>70%</strong> Practical/GitHub project
               </span>
               <span>
-                <strong>20%</strong> Quiz / theory
-              </span>
-              <span>
-                <strong>15%</strong> Portfolio evidence
-              </span>
-              <span>
-                <strong>5%</strong> Self-assessment
+                <strong>30%</strong> Quiz / theory
               </span>
             </div>
           </Card>
@@ -710,9 +791,8 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                     <div>
                       <span>Assessment package</span>
                       <p>
-                        {availableTasks.length} practical task(s),{" "}
-                        {theoryQuestions.length} theory question(s), and{" "}
-                        {portfolioRequirements.length} portfolio requirement(s).
+                        {availableTasks.length} practical task(s) and{" "}
+                        {theoryQuestions.length} theory question(s).
                       </p>
                     </div>
                   </div>
@@ -736,9 +816,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
             <Card title="Complete the practical test and theory questions">
               <div className="form-stack">
                 <Alert type="info">
-                  This is a real assessment submission. You can take the
-                  practical test directly in the system, submit a GitHub
-                  repository URL, upload completed work, or submit both.
+                  Practical evidence is based on a GitHub repository. The
+                  system scans the repository against the selected task and
+                  shows a checklist score before you submit for assessor review.
                 </Alert>
 
                 {availableTasks.length > 0 ? (
@@ -761,11 +841,36 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 )}
 
                 {selectedTask && (
-                  <div className="real-test-card">
-                    <div className="compact-meta">
-                      <strong>{selectedTask.title}</strong>
-                      <span>{selectedTask.estimatedMinutes || 60} minutes</span>
+                  <div className="task-review-card">
+                    <div className="task-review-header">
+                      <div>
+                        <span className="task-number">Practical task</span>
+                        <h3>{selectedTask.title}</h3>
+                      </div>
+                      <span className="mandatory-pill">mandatory</span>
                     </div>
+                    {activeRepositoryTaskReview && (
+                      <div className="task-score-strip">
+                        <span>
+                          Score: {formatPercent(activeRepositoryTaskReview.score)}
+                        </span>
+                        <em>
+                          Checks completed:{" "}
+                          {formatPercent(
+                            (activeRepositoryTaskReview.passedCount /
+                              Math.max(
+                                activeRepositoryTaskReview.checklist.length,
+                                1,
+                              )) *
+                              100,
+                          )}
+                        </em>
+                        <strong>
+                          {activeRepositoryTaskReview.pointsEarned}/
+                          {activeRepositoryTaskReview.pointsPossible} pts
+                        </strong>
+                      </div>
+                    )}
                     <p>{selectedTask.instructions}</p>
                     {selectedTask.deliverables && (
                       <div>
@@ -773,112 +878,224 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                         <p>{selectedTask.deliverables}</p>
                       </div>
                     )}
-                  </div>
-                )}
-
-                <div className="submission-mode-grid">
-                  <button
-                    className={
-                      practicalSubmissionMode === "direct_test" ? "active" : ""
-                    }
-                    onClick={() => setPracticalSubmissionMode("direct_test")}
-                    type="button"
-                  >
-                    Take test here
-                    <span>Write the solution directly in the system.</span>
-                  </button>
-                  <button
-                    className={
-                      practicalSubmissionMode === "file_upload" ? "active" : ""
-                    }
-                    onClick={() => setPracticalSubmissionMode("file_upload")}
-                    type="button"
-                  >
-                    Upload evidence
-                    <span>
-                      Attach screenshots, code, PDFs, or exported work.
-                    </span>
-                  </button>
-                  <button
-                    className={
-                      practicalSubmissionMode === "mixed" ? "active" : ""
-                    }
-                    onClick={() => setPracticalSubmissionMode("mixed")}
-                    type="button"
-                  >
-                    Use both
-                    <span>Write a summary and attach proof.</span>
-                  </button>
-                </div>
-
-                {practicalSubmissionMode !== "file_upload" && (
-                  <TextArea
-                    label="Practical task answer / work summary"
-                    rows={6}
-                    value={practicalTask}
-                    onChange={(event) => setPracticalTask(event.target.value)}
-                    placeholder="Explain exactly what you completed, commands used, files created, test results, or deployment link."
-                  />
-                )}
-
-                <TextField
-                  label="GitHub repository URL"
-                  type="url"
-                  value={githubRepositoryUrl}
-                  onChange={(event) =>
-                    setGithubRepositoryUrl(event.target.value)
-                  }
-                  placeholder="https://github.com/username/project"
-                  required
-                />
-
-                {practicalSubmissionMode !== "direct_test" && (
-                  <div className="upload-panel">
-                    <label className="file-drop">
-                      <span>Upload practical evidence files</span>
-                      <input
-                        multiple
-                        onChange={(event) =>
-                          void handleEvidenceFiles(event.target.files)
+                    <TextField
+                      label="GitHub repository evidence URL"
+                      type="url"
+                      value={githubRepositoryUrl}
+                      onChange={(event) =>
+                        setGithubRepositoryUrl(event.target.value)
+                      }
+                      placeholder="https://github.com/username/project"
+                      required
+                    />
+                    <div className="button-row">
+                      <Button
+                        disabled={
+                          isReviewingRepository ||
+                          !githubRepositoryUrl.trim()
                         }
-                        type="file"
-                      />
-                    </label>
-                    <small>
-                      Accepted evidence: screenshots, PDF documents, source
-                      files, exported reports, or images. Maximum 2MB per file.
-                    </small>
-                    {evidenceFiles.length > 0 && (
-                      <div className="uploaded-file-list">
-                        {evidenceFiles.map((file) => (
-                          <div
-                            className="uploaded-file"
-                            key={`${file.name}-${file.size}`}
-                          >
-                            <div>
-                              <strong>{file.name}</strong>
-                              <span>
-                                {Math.round((file.size || 0) / 1024)} KB
-                              </span>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              onClick={() =>
-                                setEvidenceFiles((current) =>
-                                  current.filter(
-                                    (item) => item.dataUrl !== file.dataUrl,
-                                  ),
-                                )
+                        variant="secondary"
+                        onClick={() => void handleRepositoryTaskReview()}
+                      >
+                        {isReviewingRepository
+                          ? "Reviewing repository..."
+                          : "Review repository"}
+                      </Button>
+                      <Button
+                        disabled={!activeRepositoryTaskReview}
+                        variant="ghost"
+                        onClick={() =>
+                          document
+                            .getElementById("repository-review-result")
+                            ?.scrollIntoView({ behavior: "smooth" })
+                        }
+                      >
+                        View results
+                      </Button>
+                    </div>
+                    {activeRepositoryTaskReview && (
+                      <div
+                        className="repository-review-result"
+                        id="repository-review-result"
+                      >
+                        <div className="compact-meta">
+                          <strong>Automatic review result</strong>
+                          <span>
+                            {activeRepositoryTaskReview.passedCount}/
+                            {activeRepositoryTaskReview.checklist.length} passed
+                          </span>
+                        </div>
+                        {activeRepositoryTaskReview.implementationReview && (
+                          <div className="assessor-note">
+                            <strong>Implementation evidence</strong>
+                            {activeRepositoryTaskReview.proofLevel && (
+                              <p>
+                                Proof level:{" "}
+                                <strong>{activeRepositoryTaskReview.proofLevel}</strong>
+                              </p>
+                            )}
+                            {activeRepositoryTaskReview.proofSummary && (
+                              <p>{activeRepositoryTaskReview.proofSummary}</p>
+                            )}
+                            <p>
+                              Source files reviewed:{" "}
+                              {
+                                activeRepositoryTaskReview.implementationReview
+                                  .sourceFilesReviewed
                               }
-                            >
-                              Remove
-                            </Button>
+                              . Implementation evidence score:{" "}
+                              {formatPercent(
+                                activeRepositoryTaskReview.implementationReview
+                                  .implementationEvidenceScore || 0,
+                              )}
+                              . Functional coverage:{" "}
+                              {formatPercent(
+                                activeRepositoryTaskReview.implementationReview
+                                  .functionalCoverageRate || 0,
+                              )}
+                              .
+                            </p>
+                            <p>
+                              Detected:{" "}
+                              {activeRepositoryTaskReview.implementationReview
+                                .detectedFunctionalAreas?.length
+                                ? activeRepositoryTaskReview.implementationReview.detectedFunctionalAreas.join(
+                                    ", ",
+                                  )
+                                : "No strong implementation signals detected."}
+                            </p>
+                            {activeRepositoryTaskReview.implementationReview
+                              .missingFunctionalAreas?.length ? (
+                              <p>
+                                Missing:{" "}
+                                {activeRepositoryTaskReview.implementationReview.missingFunctionalAreas.join(
+                                  ", ",
+                                )}
+                              </p>
+                            ) : null}
                           </div>
-                        ))}
+                        )}
+                        <div className="task-checklist">
+                          {activeRepositoryTaskReview.checklist.map((item) => (
+                            <div
+                              className={`task-check ${
+                                item.passed ? "passed" : "failed"
+                              }`}
+                              key={item.key}
+                            >
+                              <span>{item.passed ? "Passed" : "Failed"}</span>
+                              <div>
+                                <strong>{item.label}</strong>
+                                <p>{item.evidence}</p>
+                                {!item.passed && item.advice && (
+                                  <small>{item.advice}</small>
+                                )}
+                              </div>
+                              <em>{item.weight} pts</em>
+                            </div>
+                          ))}
+                        </div>
+                        {activeRepositoryTaskReview.competencyScores && (
+                          <div className="assessor-note">
+                            <strong>Competency score breakdown</strong>
+                            <div className="result-grid">
+                              {Object.entries(
+                                activeRepositoryTaskReview.competencyScores,
+                              ).map(([key, value]) => (
+                                <div key={key}>
+                                  <small>{key}</small>
+                                  <strong>{formatPercent(value || 0)}</strong>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {activeRepositoryTaskReview.recommendations?.length ? (
+                          <div className="assessor-note warning-note">
+                            <strong>Repository recommendations</strong>
+                            <ul>
+                              {activeRepositoryTaskReview.recommendations.map(
+                                (item) => (
+                                  <li key={item}>{item}</li>
+                                ),
+                              )}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {activeRepositoryTaskReview.feedback?.length ? (
+                          <div className="assessor-note warning-note">
+                            <strong>Improve before submission</strong>
+                            <ul>
+                              {activeRepositoryTaskReview.feedback.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : (
+                          <Alert type="success">
+                            All repository checklist items passed for this task.
+                          </Alert>
+                        )}
                       </div>
                     )}
                   </div>
                 )}
+
+                <TextArea
+                  label="Supporting explanation"
+                  rows={5}
+                  value={practicalTask}
+                  onChange={(event) => setPracticalTask(event.target.value)}
+                  placeholder="Optional: explain what you completed, commands used, files created, test results, or deployment link."
+                />
+
+                <div className="upload-panel">
+                  <label className="file-drop">
+                    <span>Upload project files or folders</span>
+                    <input
+                      multiple
+                      {...({ webkitdirectory: "" } as Record<string, string>)}
+                      onChange={(event) =>
+                        void handleEvidenceFiles(event.target.files)
+                      }
+                      type="file"
+                    />
+                  </label>
+                  <small>
+                    Optional supporting evidence: project folder, screenshots,
+                    PDFs, exported work, source files, or images. Maximum 2MB
+                    per file.
+                  </small>
+                  {evidenceFiles.length > 0 && (
+                    <div className="uploaded-file-list">
+                      {evidenceFiles.map((file) => (
+                        <div
+                          className="uploaded-file"
+                          key={`${file.name}-${file.size}`}
+                        >
+                          <div>
+                            <strong>{file.name}</strong>
+                            <span>
+                              {Math.round((file.size || 0) / 1024)} KB
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            onClick={() =>
+                              setEvidenceFiles((current) =>
+                                current.filter(
+                                  (item) => item.dataUrl !== file.dataUrl,
+                                ),
+                              )
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 <div className="question-list">
                   <div className="section-heading">
@@ -940,43 +1157,11 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                   )}
                 </div>
 
-                <TextField
-                  label="Portfolio or project link"
-                  value={portfolioLink}
-                  onChange={(event) => setPortfolioLink(event.target.value)}
-                  placeholder="https://github.com/username/project or portfolio URL"
-                />
-                {portfolioRequirements.length > 0 && (
-                  <div className="requirement-list">
-                    <div className="section-heading">
-                      <strong>Portfolio requirements</strong>
-                      <span>Assessor will verify these</span>
-                    </div>
-                    {portfolioRequirements.map((requirement) => (
-                      <div className="requirement-item" key={requirement._id}>
-                        <strong>
-                          {requirement.title}
-                          {requirement.required ? " (required)" : ""}
-                        </strong>
-                        <p>{requirement.description}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <TextArea
-                  label="Project description"
-                  rows={4}
-                  value={projectDescription}
-                  onChange={(event) =>
-                    setProjectDescription(event.target.value)
-                  }
-                  placeholder="Explain the project goal, tools used, your role, and the final outcome."
-                />
                 <div className="evidence-readiness">
                   <strong>
-                    {Math.min(evidenceCount, 6)}/6 evidence sections completed
+                    {Math.min(evidenceCount, 4)}/4 evidence sections completed
                   </strong>
-                  <ProgressBar value={Math.min(evidenceCount, 6) * (100 / 6)} />
+                  <ProgressBar value={Math.min(evidenceCount, 4) * 25} />
                 </div>
                 <div className="button-row">
                   <Button variant="secondary" onClick={() => setCurrentStep(1)}>
@@ -986,39 +1171,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                     disabled={!canReview}
                     onClick={() => setCurrentStep(3)}
                   >
-                    Continue to Self-Assessment
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {currentStep === 3 && (
-            <Card title="Self-assessment">
-              <div className="form-stack">
-                <Alert type="info">
-                  Be honest. This score has the smallest weight, but it helps
-                  the assessor understand your confidence level.
-                </Alert>
-                <TextField
-                  label="Self-assessment score"
-                  max={100}
-                  min={0}
-                  type="number"
-                  value={selfAssessmentScore}
-                  onChange={(event) =>
-                    setSelfAssessmentScore(Number(event.target.value))
-                  }
-                />
-                <div className="self-score-preview">
-                  <ProgressBar value={selfAssessmentScore} />
-                  <span>{formatPercent(selfAssessmentScore)}</span>
-                </div>
-                <div className="button-row">
-                  <Button variant="secondary" onClick={() => setCurrentStep(2)}>
-                    Back
-                  </Button>
-                  <Button onClick={() => setCurrentStep(4)}>
                     Review Submission
                   </Button>
                 </div>
@@ -1026,7 +1178,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
             </Card>
           )}
 
-          {currentStep === 4 && (
+          {currentStep === 3 && (
             <Card title="Review before submission">
               <div className="review-summary">
                 <ReviewLine
@@ -1039,7 +1191,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 />
                 <ReviewLine
                   label="Submission mode"
-                  value={practicalSubmissionMode.replace("_", " ")}
+                  value="GitHub review + upload evidence"
                 />
                 <ReviewLine
                   label="Practical answer"
@@ -1048,6 +1200,14 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 <ReviewLine
                   label="GitHub repository"
                   value={githubRepositoryUrl || "Not provided"}
+                />
+                <ReviewLine
+                  label="Automatic repository task score"
+                  value={
+                    activeRepositoryTaskReview
+                      ? `${formatPercent(activeRepositoryTaskReview.score)} (${activeRepositoryTaskReview.passedCount}/${activeRepositoryTaskReview.checklist.length} checks passed)`
+                      : "Repository task review not completed"
+                  }
                 />
                 <ReviewLine
                   label="Uploaded evidence"
@@ -1061,21 +1221,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                   label="Theory answers"
                   value={`${answeredTheoryCount}/${theoryQuestions.length} answered`}
                 />
-                <ReviewLine
-                  label="Portfolio link"
-                  value={portfolioLink || "Not provided"}
-                />
-                <ReviewLine
-                  label="Project description"
-                  value={projectDescription || "Not provided"}
-                />
-                <ReviewLine
-                  label="Self-assessment"
-                  value={formatPercent(selfAssessmentScore)}
-                />
               </div>
               <div className="button-row">
-                <Button variant="secondary" onClick={() => setCurrentStep(3)}>
+                <Button variant="secondary" onClick={() => setCurrentStep(2)}>
                   Back
                 </Button>
                 <Button disabled={!canSubmit} type="submit">
@@ -1126,6 +1274,8 @@ export function AssessmentsPage({ token, role }: PageProps) {
     [] as Assessment[],
   );
   const [selected, setSelected] = useState<Assessment | null>(null);
+  const [statusFilter, setStatusFilter] = useState("submitted");
+  const [assessmentSearch, setAssessmentSearch] = useState("");
 
   if (isLoading) return <LoadingState message="Loading assessments..." />;
 
@@ -1138,6 +1288,38 @@ export function AssessmentsPage({ token, role }: PageProps) {
   const returnedCount = data.filter(
     (item) => item.status === "returned",
   ).length;
+  const normalizedSearch = assessmentSearch.trim().toLowerCase();
+  const filteredAssessments = data.filter((assessment) => {
+    const matchesStatus =
+      statusFilter === "all" || assessment.status === statusFilter;
+    const matchesSearch =
+      normalizedSearch.length === 0 ||
+      [
+        assessment.competency.title,
+        assessment.competency.code,
+        assessment.graduate.name,
+        assessment.graduate.email,
+      ]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(normalizedSearch));
+
+    return matchesStatus && matchesSearch;
+  });
+  const queueStatusOptions = [
+    { label: "Submitted", value: "submitted", count: submittedCount },
+    { label: "Reviewed", value: "reviewed", count: reviewedCount },
+    { label: "Returned", value: "returned", count: returnedCount },
+    { label: "All", value: "all", count: data.length },
+  ];
+
+  function selectAssessmentForReview(assessment: Assessment) {
+    setSelected(assessment);
+    window.setTimeout(() => {
+      document
+        .getElementById("assessment-review")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }
 
   return (
     <section className="page-stack">
@@ -1170,54 +1352,197 @@ export function AssessmentsPage({ token, role }: PageProps) {
           value={returnedCount}
         />
       </div>
-      <Card title="Assessment list">
-        {data.length === 0 ? (
-          <EmptyState message="No assessments found." />
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Competency</th>
-                  <th>Graduate</th>
-                  <th>Status</th>
-                  <th>Final Score</th>
-                  <th>Gap</th>
-                  <th>Submitted</th>
-                  {role === "assessor" && <th>Action</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((assessment) => (
-                  <tr key={assessment._id}>
-                    <td>{assessment.competency.title}</td>
-                    <td>{assessment.graduate.name}</td>
-                    <td>{readableStatus(assessment.status)}</td>
-                    <td>{formatPercent(assessment.scores.finalScore)}</td>
-                    <td>
-                      <GapBadge level={assessment.gapLevel} />
-                    </td>
-                    <td>{formatDate(assessment.createdAt)}</td>
-                    {role === "assessor" && (
-                      <td>
-                        <Button
-                          variant="secondary"
-                          onClick={() => setSelected(assessment)}
+      {role === "assessor" ? (
+        <Card title="Assessment review queue">
+          {data.length === 0 ? (
+            <EmptyState message="No assessments found." />
+          ) : (
+            <div className="assessor-queue">
+              <div className="assessment-toolbar">
+                <div className="status-filter-group">
+                  {queueStatusOptions.map((option) => (
+                    <button
+                      className={statusFilter === option.value ? "active" : ""}
+                      key={option.value}
+                      type="button"
+                      onClick={() => setStatusFilter(option.value)}
+                    >
+                      <span>{option.label}</span>
+                      <strong>{option.count}</strong>
+                    </button>
+                  ))}
+                </div>
+                <TextField
+                  label="Search"
+                  placeholder="Search graduate, email, competency..."
+                  value={assessmentSearch}
+                  onChange={(event) => setAssessmentSearch(event.target.value)}
+                />
+              </div>
+              <div className="assessor-queue-layout">
+                <div className="assessment-queue-list">
+                  <div className="section-heading">
+                    <strong>
+                      {filteredAssessments.length} assessment
+                      {filteredAssessments.length === 1 ? "" : "s"} found
+                    </strong>
+                    <span>Click a card to open the review workspace</span>
+                  </div>
+                  {filteredAssessments.length === 0 ? (
+                    <EmptyState message="No assessments match the selected filter." />
+                  ) : (
+                    filteredAssessments.map((assessment) => {
+                      const taskReview =
+                        assessment.evidence.repositorySummary?.taskReview;
+                      const isSelected = selected?._id === assessment._id;
+
+                      return (
+                        <button
+                          className={`assessment-queue-card ${
+                            isSelected ? "active" : ""
+                          }`}
+                          key={assessment._id}
+                          type="button"
+                          onClick={() => selectAssessmentForReview(assessment)}
                         >
-                          Review
-                        </Button>
-                      </td>
-                    )}
+                          <div className="queue-card-main">
+                            <div>
+                              <Badge tone="neutral">
+                                {readableStatus(assessment.status)}
+                              </Badge>
+                              <h3>{assessment.competency.title}</h3>
+                              <p>{assessment.graduate.name}</p>
+                            </div>
+                            <span>{formatDate(assessment.createdAt)}</span>
+                          </div>
+                          <div className="queue-card-metrics">
+                            <span>
+                              <strong>
+                                {taskReview
+                                  ? formatPercent(taskReview.score)
+                                  : "Pending"}
+                              </strong>
+                              GitHub task
+                            </span>
+                            <span>
+                              <strong>
+                                {formatPercent(assessment.scores.quizScore)}
+                              </strong>
+                              Theory
+                            </span>
+                            <span>
+                              <strong>
+                                {formatPercent(assessment.scores.finalScore)}
+                              </strong>
+                              Final
+                            </span>
+                          </div>
+                          <small>
+                            {taskReview
+                              ? `${taskReview.passedCount}/${taskReview.checklist.length} repository checks passed`
+                              : "Repository checklist will appear after graduate review submission."}
+                          </small>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+                <aside className="assessment-selection-panel">
+                  {selected ? (
+                    <>
+                      <span className="eyebrow">Selected review</span>
+                      <h3>{selected.competency.title}</h3>
+                      <p>
+                        {selected.graduate.name} submitted this assessment on{" "}
+                        {formatDate(selected.createdAt)}.
+                      </p>
+                      <div className="selection-metrics">
+                        <span>
+                          <strong>
+                            {formatPercent(
+                              selected.evidence.repositorySummary?.taskReview
+                                ?.score,
+                            )}
+                          </strong>
+                          GitHub task score
+                        </span>
+                        <span>
+                          <strong>
+                            {formatPercent(selected.scores.quizScore)}
+                          </strong>
+                          Theory score
+                        </span>
+                      </div>
+                      <Button
+                        onClick={() =>
+                          document
+                            .getElementById("assessment-review")
+                            ?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            })
+                        }
+                      >
+                        Continue Review
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="eyebrow">No assessment selected</span>
+                      <h3>Choose a submission</h3>
+                      <p>
+                        Select a card from the queue to inspect GitHub task and
+                        theory evidence, verify authenticity, and approve the final
+                        recommendation.
+                      </p>
+                    </>
+                  )}
+                </aside>
+              </div>
+            </div>
+          )}
+        </Card>
+      ) : (
+        <Card title="Assessment list">
+          {data.length === 0 ? (
+            <EmptyState message="No assessments found." />
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Competency</th>
+                    <th>Graduate</th>
+                    <th>Status</th>
+                    <th>Final Score</th>
+                    <th>Gap</th>
+                    <th>Submitted</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+                </thead>
+                <tbody>
+                  {data.map((assessment) => (
+                    <tr key={assessment._id}>
+                      <td>{assessment.competency.title}</td>
+                      <td>{assessment.graduate.name}</td>
+                      <td>{readableStatus(assessment.status)}</td>
+                      <td>{formatPercent(assessment.scores.finalScore)}</td>
+                      <td>
+                        <GapBadge level={assessment.gapLevel} />
+                      </td>
+                      <td>{formatDate(assessment.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
       {role === "assessor" && selected && (
         <ReviewAssessmentPanel
           assessment={selected}
+          key={selected._id}
+          onClose={() => setSelected(null)}
           onReviewed={() => {
             setSelected(null);
             void refresh();
@@ -1232,161 +1557,152 @@ export function AssessmentsPage({ token, role }: PageProps) {
 function ReviewAssessmentPanel({
   assessment,
   token,
+  onClose,
   onReviewed,
 }: {
   assessment: Assessment;
   token: string;
+  onClose: () => void;
   onReviewed: () => void;
 }) {
-  const rubricCriteria = assessment.competency.rubricCriteria || [];
   const theoryAnswers = assessment.evidence.theoryAnswers || [];
-  const [rubricScores, setRubricScores] = useState(() =>
-    rubricCriteria.map((criterion) => ({
-      criterionId: criterion._id,
-      name: criterion.name,
-      score: 0,
-      comment: "",
-    })),
-  );
-  const [practicalTaskScore, setPracticalTaskScore] = useState(0);
-  const [quizScore, setQuizScore] = useState(0);
-  const [portfolioScore, setPortfolioScore] = useState(0);
-  const [selfAssessmentScore, setSelfAssessmentScore] = useState(
-    assessment.evidence.selfAssessmentScore || 0,
-  );
+  const quizScore = assessment.scores.quizScore || 0;
   const [assessorComment, setAssessorComment] = useState("");
   const [message, setMessage] = useState("");
   const [actionItems, setActionItems] = useState("");
+  const [draftPreview, setDraftPreview] = useState<Awaited<
+    ReturnType<typeof api.previewAssessmentRecommendation>
+  > | null>(null);
   const [error, setError] = useState("");
   const [evidenceVerification, setEvidenceVerification] = useState({
     githubReviewed: false,
     practicalEvidenceReviewed: false,
-    portfolioReviewed: false,
     theoryReviewed: false,
     authenticityNotes: "",
   });
   const [draftStatus, setDraftStatus] = useState(
     "Loading Gemini draft recommendation...",
   );
+  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
 
-  useEffect(() => {
-    setQuizScore(assessment.scores.quizScore || 0);
-  }, [assessment.scores.quizScore]);
-
-  useEffect(() => {
-    setRubricScores(
-      rubricCriteria.map((criterion) => ({
-        criterionId: criterion._id,
-        name: criterion.name,
-        score:
-          assessment.scores.rubricScores?.find(
-            (score) => score.criterionId === criterion._id,
-          )?.score || 0,
-        comment:
-          assessment.scores.rubricScores?.find(
-            (score) => score.criterionId === criterion._id,
-          )?.comment || "",
-      })),
-    );
-  }, [assessment.scores.rubricScores, rubricCriteria]);
-
-  const rubricPracticalScore = useMemo(() => {
-    if (rubricCriteria.length === 0) return practicalTaskScore;
-
-    const totalWeight = rubricCriteria.reduce(
-      (sum, criterion) => sum + (Number(criterion.weight) || 0),
-      0,
-    );
-
-    if (totalWeight === 0) return practicalTaskScore;
-
-    const weightedScore = rubricCriteria.reduce((sum, criterion) => {
-      const item = rubricScores.find(
-        (score) => score.criterionId === criterion._id,
-      );
-      return sum + (Number(item?.score) || 0) * (Number(criterion.weight) || 0);
-    }, 0);
-
-    return Math.round((weightedScore / totalWeight) * 100) / 100;
-  }, [practicalTaskScore, rubricCriteria, rubricScores]);
-
+  const repositoryTaskReview = assessment.evidence.repositorySummary?.taskReview;
   const effectivePracticalScore =
-    rubricCriteria.length > 0 ? rubricPracticalScore : practicalTaskScore;
-
+    repositoryTaskReview?.score ?? assessment.scores.practicalTaskScore ?? 0;
   const previewScore = useMemo(
     () =>
-      effectivePracticalScore * 0.6 +
-      quizScore * 0.2 +
-      portfolioScore * 0.15 +
-      selfAssessmentScore * 0.05,
-    [effectivePracticalScore, portfolioScore, quizScore, selfAssessmentScore],
+      effectivePracticalScore * 0.7 +
+      quizScore * 0.3,
+    [effectivePracticalScore, quizScore],
   );
+  const repositoryQuality =
+    assessment.evidence.repositorySummary?.codeQualityScore || 0;
+  const repositoryCompleteness =
+    assessment.evidence.repositorySummary?.evidenceCompletenessScore || 0;
+  const verificationCount = [
+    evidenceVerification.githubReviewed,
+    evidenceVerification.practicalEvidenceReviewed,
+    evidenceVerification.theoryReviewed,
+  ].filter(Boolean).length;
+
+  async function loadGeminiDraft() {
+    await Promise.resolve();
+    setIsGeneratingDraft(true);
+    setDraftStatus("Generating Gemini recommendation from performance data...");
+
+    try {
+      const draft = await api.previewAssessmentRecommendation(
+        token,
+        assessment._id,
+        {
+          practicalTaskScore: effectivePracticalScore,
+          quizScore,
+          assessorComment,
+          evidenceVerification,
+        },
+      );
+
+      setMessage(draft.recommendation.message);
+      setActionItems(draft.recommendation.actionItems.join("\n"));
+      setDraftPreview(draft);
+      setDraftStatus(
+        `${draft.recommendation.provider} recommendation loaded from ${draft.recommendation.model}`,
+      );
+    } catch (caughtError) {
+      setDraftPreview(null);
+      setDraftStatus(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Gemini draft unavailable. Generate a Gemini recommendation before saving the review.",
+      );
+    } finally {
+      setIsGeneratingDraft(false);
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      async function loadInitialGeminiDraft() {
+        setIsGeneratingDraft(true);
+        setDraftStatus("Generating Gemini recommendation from performance data...");
 
-    async function loadDraft() {
-      try {
-        const draft = await api.previewAssessmentRecommendation(
-          token,
-          assessment._id,
-          {
-            rubricScores,
-            practicalTaskScore: effectivePracticalScore,
-            quizScore,
-            portfolioScore,
-            selfAssessmentScore,
-            assessorComment,
-            evidenceVerification,
-          },
-        );
+        try {
+          const draft = await api.previewAssessmentRecommendation(
+            token,
+            assessment._id,
+            {
+              practicalTaskScore: effectivePracticalScore,
+              quizScore,
+              assessorComment: "",
+              evidenceVerification: {
+                githubReviewed: false,
+                practicalEvidenceReviewed: false,
+                theoryReviewed: false,
+                authenticityNotes: "",
+              },
+            },
+          );
 
-        if (cancelled) return;
-
-        setMessage(draft.recommendation.message);
-        setActionItems(draft.recommendation.actionItems.join("\n"));
-        setDraftStatus(
-          `${draft.recommendation.provider} draft loaded from ${draft.recommendation.model}`,
-        );
-      } catch (caughtError) {
-        if (!cancelled) {
+          setMessage(draft.recommendation.message);
+          setActionItems(draft.recommendation.actionItems.join("\n"));
+          setDraftPreview(draft);
+          setDraftStatus(
+            `${draft.recommendation.provider} recommendation loaded from ${draft.recommendation.model}`,
+          );
+        } catch (caughtError) {
+          setDraftPreview(null);
           setDraftStatus(
             caughtError instanceof Error
               ? caughtError.message
-              : "AI draft unavailable, using manual recommendation editing.",
+              : "Gemini draft unavailable. Generate a Gemini recommendation before saving the review.",
           );
+        } finally {
+          setIsGeneratingDraft(false);
         }
       }
-    }
 
-    void loadDraft();
+      void loadInitialGeminiDraft();
+    }, 0);
 
     return () => {
-      cancelled = true;
+      window.clearTimeout(timeoutId);
     };
-  }, [
-    assessment._id,
-    assessorComment,
-    effectivePracticalScore,
-    evidenceVerification,
-    portfolioScore,
-    quizScore,
-    rubricScores,
-    selfAssessmentScore,
-    token,
-  ]);
+  }, [assessment._id, effectivePracticalScore, quizScore, token]);
 
   async function handleReview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
 
+    if (!draftPreview) {
+      setError(
+        "Generate a Gemini recommendation before saving the review. Recommendations must come from Gemini performance analysis.",
+      );
+      return;
+    }
+
     try {
       await api.reviewAssessment(token, assessment._id, {
-        rubricScores,
         practicalTaskScore: effectivePracticalScore,
         quizScore,
-        portfolioScore,
-        selfAssessmentScore,
         assessorComment,
         evidenceVerification,
         recommendation: {
@@ -1395,6 +1711,17 @@ function ReviewAssessmentPanel({
             .split("\n")
             .map((item) => item.trim())
             .filter(Boolean),
+          resources: draftPreview.recommendation.resources,
+          geminiDraft: {
+            message: draftPreview.recommendation.message,
+            actionItems: draftPreview.recommendation.actionItems,
+            resources: draftPreview.recommendation.resources,
+            priority: draftPreview.recommendation.priority,
+            provider: draftPreview.recommendation.provider,
+            model: draftPreview.recommendation.model,
+            prompt: draftPreview.recommendation.prompt,
+            rawResponse: draftPreview.recommendation.rawResponse,
+          },
         },
       });
       onReviewed();
@@ -1406,10 +1733,83 @@ function ReviewAssessmentPanel({
   }
 
   return (
-    <Card title={`Review ${assessment.competency.title}`}>
+    <section className="review-workspace" id="assessment-review">
+      <div className="review-workspace-hero">
+        <div>
+          <span className="eyebrow">Assessment review</span>
+          <h2>{assessment.competency.title}</h2>
+          <p>
+            Review the GitHub practical task, theory answers,
+            and final recommendation before submitting the official gap result.
+          </p>
+          <div className="review-identity">
+            <span>{assessment.graduate.name}</span>
+            <span>{readableStatus(assessment.status)}</span>
+            <span>Submitted {formatDate(assessment.createdAt)}</span>
+          </div>
+        </div>
+        <div className="review-score-summary">
+          <div>
+            <span>GitHub task</span>
+            <strong>
+              {repositoryTaskReview
+                ? formatPercent(repositoryTaskReview.score)
+                : "Pending"}
+            </strong>
+          </div>
+          <div>
+            <span>Practical</span>
+            <strong>{formatPercent(effectivePracticalScore)}</strong>
+          </div>
+          <div>
+            <span>Theory</span>
+            <strong>{formatPercent(quizScore)}</strong>
+          </div>
+          <div>
+            <span>Final preview</span>
+            <strong>{formatPercent(previewScore)}</strong>
+          </div>
+        </div>
+      </div>
+      <div className="review-nav-bar">
+        <div>
+          <a href="#submitted-evidence">Evidence</a>
+          <a href="#score-summary">Scores</a>
+          <a href="#evidence-verification">Verification</a>
+          <a href="#review-recommendation">Recommendation</a>
+        </div>
+        <Button variant="ghost" onClick={onClose}>
+          Back to list
+        </Button>
+      </div>
       <div className="review-grid">
-        <div className="evidence-box">
-          <h3>Submitted Evidence</h3>
+        <div className="evidence-box review-panel" id="submitted-evidence">
+          <div className="review-section-title">
+            <span>01</span>
+            <div>
+              <h3>Submitted evidence</h3>
+              <p>Use these artifacts to confirm that the work is real and aligned with the selected practical task.</p>
+            </div>
+          </div>
+          <div className="review-overview-grid">
+            <div>
+              <span>Repository quality</span>
+              <strong>{formatPercent(repositoryQuality)}</strong>
+              <ProgressBar value={repositoryQuality} />
+            </div>
+            <div>
+              <span>Evidence completeness</span>
+              <strong>{formatPercent(repositoryCompleteness)}</strong>
+              <ProgressBar value={repositoryCompleteness} />
+            </div>
+            <div>
+              <span>Theory answers</span>
+              <strong>
+                {theoryAnswers.length}/{assessment.competency.theoryQuestions?.length || theoryAnswers.length || 0}
+              </strong>
+              <small>Submitted responses</small>
+            </div>
+          </div>
           <div className="assessor-evidence-section">
             <strong>Assigned practical test</strong>
             <p>
@@ -1461,24 +1861,32 @@ function ReviewAssessmentPanel({
                     )}
                   </ul>
                 ) : null}
-                <div className="quality-grid">
-                  <StatCard
-                    helper="Automatic signal from README, source files, commits, config, and tests."
-                    label="Repository Quality"
-                    value={formatPercent(
-                      assessment.evidence.repositorySummary?.codeQualityScore ||
-                        0,
+                {assessment.evidence.repositorySummary?.ciRunFound && (
+                  <div className="assessor-note">
+                    <strong>GitHub Actions proof</strong>
+                    <p>
+                      Latest run:{" "}
+                      {assessment.evidence.repositorySummary.ciRunName ||
+                        "Workflow run"}
+                      . Status:{" "}
+                      {assessment.evidence.repositorySummary.ciRunStatus ||
+                        "unknown"}
+                      . Conclusion:{" "}
+                      {assessment.evidence.repositorySummary.ciRunConclusion ||
+                        "unknown"}
+                      .
+                    </p>
+                    {assessment.evidence.repositorySummary.ciRunUrl && (
+                      <a
+                        href={assessment.evidence.repositorySummary.ciRunUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open GitHub Actions run
+                      </a>
                     )}
-                  />
-                  <StatCard
-                    helper="Automatic signal showing how complete the project evidence is."
-                    label="Evidence Completeness"
-                    value={formatPercent(
-                      assessment.evidence.repositorySummary
-                        ?.evidenceCompletenessScore || 0,
-                    )}
-                  />
-                </div>
+                  </div>
+                )}
                 {assessment.evidence.repositorySummary?.riskFlags?.length ? (
                   <div className="assessor-note warning-note">
                     <strong>Evidence risk flags</strong>
@@ -1491,6 +1899,124 @@ function ReviewAssessmentPanel({
                     </ul>
                   </div>
                 ) : null}
+                {assessment.evidence.repositorySummary?.taskReview && (
+                  <div className="assessor-note">
+                    <strong>Automatic task review</strong>
+                        <p>
+                          {
+                            assessment.evidence.repositorySummary.taskReview
+                              .summary
+                          }
+                        </p>
+                        {assessment.evidence.repositorySummary.taskReview
+                          .proofLevel && (
+                          <p>
+                            Proof level:{" "}
+                            <strong>
+                              {
+                                assessment.evidence.repositorySummary.taskReview
+                                  .proofLevel
+                              }
+                            </strong>
+                          </p>
+                        )}
+                        {assessment.evidence.repositorySummary.taskReview
+                          .implementationReview && (
+                      <div className="assessor-note">
+                        <strong>Implementation evidence</strong>
+                        <p>
+                          Source files reviewed:{" "}
+                          {
+                            assessment.evidence.repositorySummary.taskReview
+                              .implementationReview.sourceFilesReviewed
+                          }
+                          . Implementation evidence score:{" "}
+                          {formatPercent(
+                            assessment.evidence.repositorySummary.taskReview
+                              .implementationReview.implementationEvidenceScore ||
+                              0,
+                          )}
+                          . Functional coverage:{" "}
+                          {formatPercent(
+                            assessment.evidence.repositorySummary.taskReview
+                              .implementationReview.functionalCoverageRate ||
+                              0,
+                          )}
+                          .
+                        </p>
+                        <p>
+                          Detected:{" "}
+                          {assessment.evidence.repositorySummary.taskReview
+                            .implementationReview.detectedFunctionalAreas
+                            ?.length
+                            ? assessment.evidence.repositorySummary.taskReview.implementationReview.detectedFunctionalAreas.join(
+                                ", ",
+                              )
+                            : "No strong implementation signals detected."}
+                        </p>
+                        {assessment.evidence.repositorySummary.taskReview
+                          .implementationReview.missingFunctionalAreas
+                          ?.length ? (
+                          <p>
+                            Missing:{" "}
+                            {assessment.evidence.repositorySummary.taskReview.implementationReview.missingFunctionalAreas.join(
+                              ", ",
+                            )}
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
+                    <div className="task-checklist">
+                      {assessment.evidence.repositorySummary.taskReview.checklist.map(
+                        (item) => (
+                          <div
+                            className={`task-check ${
+                              item.passed ? "passed" : "failed"
+                            }`}
+                            key={item.key}
+                          >
+                            <span>{item.passed ? "Passed" : "Failed"}</span>
+                            <div>
+                              <strong>{item.label}</strong>
+                              <p>{item.evidence}</p>
+                            </div>
+                            <em>{item.weight} pts</em>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                    {assessment.evidence.repositorySummary.taskReview
+                      .competencyScores && (
+                      <div className="assessor-note">
+                        <strong>Competency score breakdown</strong>
+                        <div className="result-grid">
+                          {Object.entries(
+                            assessment.evidence.repositorySummary.taskReview
+                              .competencyScores,
+                          ).map(([key, value]) => (
+                            <div key={key}>
+                              <small>{key}</small>
+                              <strong>{formatPercent(value || 0)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {assessment.evidence.repositorySummary.taskReview
+                      .recommendations?.length ? (
+                      <div className="assessor-note warning-note">
+                        <strong>Repository recommendations</strong>
+                        <ul>
+                          {assessment.evidence.repositorySummary.taskReview.recommendations.map(
+                            (item) => (
+                              <li key={item}>{item}</li>
+                            ),
+                          )}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
                 {assessment.evidence.repositorySummary?.readmeExcerpt && (
                   <div className="assessor-note">
                     <strong>README excerpt</strong>
@@ -1549,18 +2075,6 @@ function ReviewAssessmentPanel({
             )}
           </div>
           <div className="assessor-evidence-section">
-            <strong>Project / portfolio description</strong>
-            <p>
-              {assessment.evidence.projectDescription ||
-                "No project description provided."}
-            </p>
-          </div>
-          {assessment.evidence.portfolioLink && (
-            <a href={assessment.evidence.portfolioLink} target="_blank">
-              Open portfolio evidence
-            </a>
-          )}
-          <div className="assessor-evidence-section">
             <strong>Theory answers</strong>
             {theoryAnswers.length === 0 ? (
               <p>No structured theory answers submitted.</p>
@@ -1578,131 +2092,137 @@ function ReviewAssessmentPanel({
               </div>
             )}
           </div>
-          {rubricCriteria.length > 0 && (
-            <div className="assessor-evidence-section">
-              <strong>Rubric criteria</strong>
-              <div className="rubric-list">
-                {rubricCriteria.map((criterion) => (
-                  <div className="rubric-item" key={criterion._id}>
-                    <div className="compact-meta">
-                      <strong>{criterion.name}</strong>
-                      <span>{criterion.weight}%</span>
-                    </div>
-                    <p>{criterion.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
-        <form className="form-stack" onSubmit={handleReview}>
+        <form className="form-stack review-panel review-form-panel" onSubmit={handleReview}>
           {error && <Alert type="error">{error}</Alert>}
-          <Alert type="info">{draftStatus}</Alert>
-          {rubricCriteria.length > 0 ? (
-            <div className="assessor-evidence-section">
-              <strong>RTB-aligned rubric scoring</strong>
-              <p>
-                Score each criterion from 0 to 100. The practical/GitHub score
-                is calculated from the rubric weights.
-              </p>
-              <div className="rubric-score-list">
-                {rubricCriteria.map((criterion) => {
-                  const current = rubricScores.find(
-                    (score) => score.criterionId === criterion._id,
-                  );
-
-                  return (
-                    <div className="rubric-score-card" key={criterion._id}>
-                      <div className="compact-meta">
-                        <strong>{criterion.name}</strong>
-                        <span>{criterion.weight}% weight</span>
-                      </div>
-                      <p>{criterion.description}</p>
-                      <TextField
-                        label="Criterion score"
-                        max={100}
-                        min={0}
-                        type="number"
-                        value={current?.score || 0}
-                        onChange={(event) =>
-                          setRubricScores((items) =>
-                            items.map((item) =>
-                              item.criterionId === criterion._id
-                                ? {
-                                    ...item,
-                                    score: Number(event.target.value),
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                      />
-                      <TextArea
-                        label="Criterion comment"
-                        rows={2}
-                        value={current?.comment || ""}
-                        onChange={(event) =>
-                          setRubricScores((items) =>
-                            items.map((item) =>
-                              item.criterionId === criterion._id
-                                ? { ...item, comment: event.target.value }
-                                : item,
-                            ),
-                          )
-                        }
-                      />
-                    </div>
-                  );
-                })}
+          <div className="recommendation-approval-panel" id="review-recommendation">
+            <div className="review-section-title">
+              <span>03</span>
+              <div>
+                <h3>Approve Gemini recommendation</h3>
+                <p>Gemini uses the GitHub task score, theory score, benchmark, gap level, and assessor notes to draft practical guidance.</p>
               </div>
-              <StatCard
-                helper="Calculated from the rubric criteria and used as the practical/GitHub score."
-                label="Rubric Practical Score"
-                value={formatPercent(rubricPracticalScore)}
-              />
             </div>
-          ) : null}
-          <div className="form-grid">
-            {rubricCriteria.length === 0 ? (
-              <TextField
-                label="Practical task score"
-                max={100}
-                min={0}
-                type="number"
-                value={practicalTaskScore}
-                onChange={(event) =>
-                  setPracticalTaskScore(Number(event.target.value))
-                }
-              />
-            ) : null}
-            <TextField
-              label="Quiz score"
-              max={100}
-              min={0}
-              type="number"
-              value={quizScore}
-              onChange={(event) => setQuizScore(Number(event.target.value))}
+            <div className="recommendation-action-row">
+              <Alert type={draftPreview ? "success" : "info"}>
+                {draftStatus}
+              </Alert>
+              <Button
+                disabled={isGeneratingDraft}
+                variant="secondary"
+                onClick={() => void loadGeminiDraft()}
+              >
+                {isGeneratingDraft
+                  ? "Generating..."
+                  : "Generate Gemini recommendation"}
+              </Button>
+            </div>
+            {draftPreview ? (
+              <div className="gemini-recommendation-card">
+                <div className="gemini-recommendation-header">
+                  <div>
+                    <span className="eyebrow">Gemini performance-based draft</span>
+                    <strong>{draftPreview.recommendation.message}</strong>
+                  </div>
+                  <Badge tone="role">
+                    {draftPreview.recommendation.priority} priority
+                  </Badge>
+                </div>
+                <div className="gemini-performance-grid">
+                  <span>
+                    <strong>{formatPercent(effectivePracticalScore)}</strong>
+                    GitHub task
+                  </span>
+                  <span>
+                    <strong>{formatPercent(quizScore)}</strong>
+                    Theory
+                  </span>
+                  <span>
+                    <strong>{formatPercent(draftPreview.finalScore)}</strong>
+                    Final score
+                  </span>
+                  <span>
+                    <strong>{formatPercent(draftPreview.skillGap)}</strong>
+                    Skill gap
+                  </span>
+                </div>
+                <div className="compact-meta recommendation-meta">
+                  <Badge tone="neutral">{draftPreview.gapLevel}</Badge>
+                  <span>
+                    RTB benchmark: {formatPercent(draftPreview.benchmarkScore)}
+                  </span>
+                  <span>
+                    Source: {draftPreview.recommendation.provider} /{" "}
+                    {draftPreview.recommendation.model}
+                  </span>
+                </div>
+                {draftPreview.recommendation.actionItems.length > 0 && (
+                  <div className="gemini-list-block">
+                    <strong>Suggested action items</strong>
+                    <ul>
+                      {draftPreview.recommendation.actionItems.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {draftPreview.recommendation.resources.length > 0 && (
+                  <div className="gemini-list-block">
+                    <strong>Suggested resources</strong>
+                    <ul>
+                      {draftPreview.recommendation.resources.map((resource) => (
+                        <li key={resource}>{resource}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="gemini-recommendation-card muted">
+                <span className="eyebrow">Gemini draft</span>
+                <strong>Recommendation draft is not available yet.</strong>
+                <p>
+                  Confirm Gemini configuration and assessment scores, then use the
+                  generate button again. The review cannot be saved until Gemini
+                  returns a recommendation.
+                </p>
+              </div>
+            )}
+            <TextArea
+              label="Approved recommendation message"
+              rows={3}
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
             />
-            <TextField
-              label="Portfolio score"
-              max={100}
-              min={0}
-              type="number"
-              value={portfolioScore}
-              onChange={(event) =>
-                setPortfolioScore(Number(event.target.value))
-              }
+            <TextArea
+              label="Action items, one per line"
+              rows={4}
+              value={actionItems}
+              onChange={(event) => setActionItems(event.target.value)}
             />
-            <TextField
-              label="Self-assessment score"
-              max={100}
-              min={0}
-              type="number"
-              value={selfAssessmentScore}
-              onChange={(event) =>
-                setSelfAssessmentScore(Number(event.target.value))
-              }
-            />
+          </div>
+          <div className="review-section-title" id="score-summary">
+            <span>02</span>
+            <div>
+              <h3>Assessment scores</h3>
+              <p>The system assesses only GitHub practical task and theory/quiz. Practical/GitHub carries 70% and theory/quiz carries 30%.</p>
+            </div>
+          </div>
+          <div className="assessment-score-cards">
+            <div>
+              <span>GitHub practical task</span>
+              <strong>{formatPercent(effectivePracticalScore)}</strong>
+              <p>
+                {repositoryTaskReview
+                  ? `${repositoryTaskReview.passedCount}/${repositoryTaskReview.checklist.length} repository checks passed.`
+                  : "No repository task review score is available."}
+              </p>
+            </div>
+            <div>
+              <span>Theory / quiz</span>
+              <strong>{formatPercent(quizScore)}</strong>
+              <p>Calculated from submitted theory answers.</p>
+            </div>
           </div>
           <StatCard
             helper="Preview only. Final result is calculated by the backend."
@@ -1715,13 +2235,15 @@ function ReviewAssessmentPanel({
             value={assessorComment}
             onChange={(event) => setAssessorComment(event.target.value)}
           />
-          <div className="assessor-evidence-section">
-            <strong>Evidence verification</strong>
+          <div className="assessor-evidence-section" id="evidence-verification">
+            <div className="section-heading">
+              <strong>Evidence verification</strong>
+              <span>{verificationCount}/3 checked</span>
+            </div>
             <div className="check-grid">
               {[
                 ["githubReviewed", "GitHub project reviewed"],
                 ["practicalEvidenceReviewed", "Practical evidence reviewed"],
-                ["portfolioReviewed", "Portfolio evidence reviewed"],
                 ["theoryReviewed", "Theory answers reviewed"],
               ].map(([key, label]) => (
                 <label className="check-row" key={key}>
@@ -1755,24 +2277,19 @@ function ReviewAssessmentPanel({
                   authenticityNotes: event.target.value,
                 }))
               }
-            />
+              />
           </div>
-          <TextArea
-            label="Recommendation message"
-            rows={3}
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-          />
-          <TextArea
-            label="Action items, one per line"
-            rows={4}
-            value={actionItems}
-            onChange={(event) => setActionItems(event.target.value)}
-          />
-          <Button type="submit">Save Review</Button>
+          <div className="review-submit-bar">
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button disabled={!draftPreview || isGeneratingDraft} type="submit">
+              Save Review
+            </Button>
+          </div>
         </form>
       </div>
-    </Card>
+    </section>
   );
 }
 
@@ -1855,19 +2372,18 @@ export function GapResultsPage({ token }: { token: string }) {
                       </div>
                     )}
                   </div>
-                  {assessment.scores.rubricScores?.length ? (
-                    <div className="assessor-note">
-                      <strong>Rubric scoring</strong>
-                      <ul>
-                        {assessment.scores.rubricScores.map((score) => (
-                          <li key={score.criterionId || score.name}>
-                            {score.name}: {formatPercent(score.score)} (
-                            {score.weight}% weight)
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
+                  <div className="assessor-note">
+                    <strong>Assessment score breakdown</strong>
+                    <ul>
+                      <li>
+                        GitHub practical task:{" "}
+                        {formatPercent(assessment.scores.practicalTaskScore)}
+                      </li>
+                      <li>
+                        Theory / quiz: {formatPercent(assessment.scores.quizScore)}
+                      </li>
+                    </ul>
+                  </div>
                   <div className="assessor-note">
                     <strong>Evidence verification</strong>
                     <p>
@@ -1879,9 +2395,6 @@ export function GapResultsPage({ token }: { token: string }) {
                             assessment.evidenceVerification
                               .practicalEvidenceReviewed
                               ? "Practical reviewed"
-                              : "",
-                            assessment.evidenceVerification.portfolioReviewed
-                              ? "Portfolio reviewed"
                               : "",
                             assessment.evidenceVerification.theoryReviewed
                               ? "Theory reviewed"
@@ -2122,13 +2635,10 @@ function buildReportHtml(report: Report) {
               `<li>${escapeHtml(file.path)} (${escapeHtml(file.language)}): ${escapeHtml(file.excerpt || "")}</li>`,
           )
           .join("") || "<li>No sampled source file excerpts available.</li>";
-      const rubricScores =
-        assessment.scores.rubricScores
-          ?.map(
-            (score) =>
-              `<li>${escapeHtml(score.name)}: ${escapeHtml(formatPercent(score.score))} (${escapeHtml(score.weight)}% weight) ${score.comment ? `- ${escapeHtml(score.comment)}` : ""}</li>`,
-          )
-          .join("") || "<li>No rubric criterion scores recorded.</li>";
+      const scoreBreakdown = `
+        <li>GitHub practical task: ${escapeHtml(formatPercent(assessment.scores.practicalTaskScore))}</li>
+        <li>Theory / quiz: ${escapeHtml(formatPercent(assessment.scores.quizScore))}</li>
+      `;
       const riskFlags =
         summary?.riskFlags
           ?.map((flag) => `<li>${escapeHtml(flag)}</li>`)
@@ -2140,9 +2650,6 @@ function buildReportHtml(report: Report) {
               : "",
             assessment.evidenceVerification.practicalEvidenceReviewed
               ? "Practical evidence reviewed"
-              : "",
-            assessment.evidenceVerification.portfolioReviewed
-              ? "Portfolio evidence reviewed"
               : "",
             assessment.evidenceVerification.theoryReviewed
               ? "Theory answers reviewed"
@@ -2162,8 +2669,8 @@ function buildReportHtml(report: Report) {
         <p><strong>README:</strong> ${escapeHtml(summary?.readmeExcerpt || "No README excerpt available.")}</p>
         <h4>Repository risk flags</h4>
         <ul>${riskFlags}</ul>
-        <h4>Rubric scores</h4>
-        <ul>${rubricScores}</ul>
+        <h4>Assessment score breakdown</h4>
+        <ul>${scoreBreakdown}</ul>
         <h4>Sampled source files</h4>
         <ul>${sampledFiles}</ul>
       </section>`;
@@ -2262,6 +2769,10 @@ export function NotificationsPage({ token, role }: PageProps) {
     return <AdminNotificationsPage token={token} />;
   }
 
+  return <GraduateNotificationsPage token={token} />;
+}
+
+function GraduateNotificationsPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.notifications(token),
     [] as NotificationItem[],
@@ -2510,11 +3021,100 @@ function AdminNotificationsPage({ token }: { token: string }) {
   );
 }
 
-export function UsersPage({ token }: { token: string }) {
+function organizationName(user: User) {
+  if (user.organization && typeof user.organization === "object") {
+    return user.organization.name;
+  }
+
+  return user.institution || "N/A";
+}
+
+export function UsersPage({ token, role }: { token: string; role: Role }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.users(token),
     [] as User[],
   );
+  const {
+    data: organizations,
+    error: organizationError,
+    refresh: refreshOrganizations,
+  } = useAsyncData(() => api.organizations(token), [] as Organization[]);
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "graduate" as Role,
+    organizationId: "",
+  });
+  const [message, setMessage] = useState("");
+  const [formError, setFormError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const creatableRoles =
+    role === "admin"
+      ? (["graduate", "assessor", "org_admin", "admin"] as Role[])
+      : (["graduate", "assessor", "org_admin"] as Role[]);
+
+  async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    setFormError("");
+
+    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+      setFormError("Name, email, and password are required.");
+      return;
+    }
+
+    if (role === "admin" && form.role !== "admin" && !form.organizationId) {
+      setFormError("Select an organization for graduates, assessors, and organization admins.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await api.createUser(token, {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        role: form.role,
+        organizationId: form.organizationId || undefined,
+      });
+      setForm({
+        name: "",
+        email: "",
+        password: "",
+        role: "graduate",
+        organizationId: "",
+      });
+      setMessage("User account created successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error ? caughtError.message : "Failed to create user",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleResetTemporaryPassword(user: User) {
+    setMessage("");
+    setFormError("");
+
+    try {
+      const result = await api.resetUserTemporaryPassword(token, user.id);
+      setMessage(
+        `Temporary password for ${result.user.name}: ${result.temporaryPassword}. It expires on ${formatDate(result.expiresAt)} and must be changed after login.`,
+      );
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to reset temporary password",
+      );
+    }
+  }
 
   if (isLoading) return <LoadingState message="Loading users..." />;
 
@@ -2522,10 +3122,86 @@ export function UsersPage({ token }: { token: string }) {
     <section className="page-stack">
       <PageHeader
         title="User Management"
-        description="View graduate, assessor, and admin accounts."
+        description={
+          role === "admin"
+            ? "Create platform admins, organization admins, assessors, and graduates. Organization-based users must be linked to an institution."
+            : "Create organization admins, assessors, and graduates for your own institution only."
+        }
         onRefresh={refresh}
       />
       {error && <Alert type="error">{error}</Alert>}
+      {organizationError && role === "admin" && <Alert type="error">{organizationError}</Alert>}
+      {message && <Alert type="success">{message}</Alert>}
+      {formError && <Alert type="error">{formError}</Alert>}
+      <Card title="Create user account">
+        <Alert type="info">
+          Graduate self-registration is public from the homepage. Admin and
+          assessor accounts are protected and must be created here by an
+          authorized administrator.
+        </Alert>
+        <form className="form-grid" onSubmit={handleCreateUser}>
+          <TextField
+            label="Full name"
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            required
+          />
+          <TextField
+            label="Email"
+            type="email"
+            value={form.email}
+            onChange={(event) => setForm({ ...form, email: event.target.value })}
+            required
+          />
+          <TextField
+            label="Temporary password"
+            type="password"
+            value={form.password}
+            onChange={(event) => setForm({ ...form, password: event.target.value })}
+            required
+          />
+          <SelectField
+            label="Role"
+            value={form.role}
+            onChange={(event) => setForm({ ...form, role: event.target.value as Role })}
+          >
+            {creatableRoles.map((item) => (
+              <option key={item} value={item}>
+                {item === "org_admin" ? "Organization Admin" : item}
+              </option>
+            ))}
+          </SelectField>
+          {role === "admin" && form.role !== "admin" && (
+            <SelectField
+              label="Organization"
+              value={form.organizationId}
+              onChange={(event) =>
+                setForm({ ...form, organizationId: event.target.value })
+              }
+              required
+            >
+              <option value="">Select organization</option>
+              {organizations
+                .filter((organization) => organization.status !== "inactive")
+                .map((organization) => (
+                  <option key={organization._id} value={organization._id}>
+                    {organization.name}
+                  </option>
+                ))}
+            </SelectField>
+          )}
+          <div className="form-actions">
+            <Button disabled={isSaving} type="submit">
+              {isSaving ? "Creating user..." : "Create user"}
+            </Button>
+            {role === "admin" && (
+              <Button variant="secondary" onClick={refreshOrganizations}>
+                Refresh organizations
+              </Button>
+            )}
+          </div>
+        </form>
+      </Card>
       <Card title="Users">
         {data.length === 0 ? (
           <EmptyState message="No users found." />
@@ -2537,7 +3213,10 @@ export function UsersPage({ token }: { token: string }) {
                   <th>Name</th>
                   <th>Email</th>
                   <th>Role</th>
-                  <th>Institution</th>
+                  <th>Organization</th>
+                  <th>Status</th>
+                  <th>Security</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -2545,8 +3224,173 @@ export function UsersPage({ token }: { token: string }) {
                   <tr key={user.id}>
                     <td>{user.name}</td>
                     <td>{user.email}</td>
-                    <td>{user.role}</td>
-                    <td>{user.institution || "N/A"}</td>
+                    <td>{user.role === "org_admin" ? "Organization Admin" : user.role}</td>
+                    <td>{organizationName(user)}</td>
+                    <td>{user.isActive === false ? "Inactive" : "Active"}</td>
+                    <td>
+                      {user.mustChangePassword ? "Temporary password" : "Password set"}
+                    </td>
+                    <td>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void handleResetTemporaryPassword(user)}
+                      >
+                        Reset password
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+export function OrganizationsPage({ token }: { token: string }) {
+  const { data, isLoading, error, refresh } = useAsyncData(
+    () => api.organizations(token),
+    [] as Organization[],
+  );
+  const [form, setForm] = useState({
+    name: "",
+    district: "Kicukiro",
+    type: "tvet_institution" as Organization["type"],
+    contactEmail: "",
+    phone: "",
+    address: "",
+  });
+  const [message, setMessage] = useState("");
+  const [formError, setFormError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function handleCreateOrganization(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    setFormError("");
+
+    if (!form.name.trim()) {
+      setFormError("Organization name is required.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await api.createOrganization(token, {
+        name: form.name.trim(),
+        district: form.district.trim(),
+        type: form.type,
+        contactEmail: form.contactEmail.trim(),
+        phone: form.phone.trim(),
+        address: form.address.trim(),
+      });
+      setForm({
+        name: "",
+        district: "Kicukiro",
+        type: "tvet_institution",
+        contactEmail: "",
+        phone: "",
+        address: "",
+      });
+      setMessage("Organization created successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to create organization",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  if (isLoading) return <LoadingState message="Loading organizations..." />;
+
+  return (
+    <section className="page-stack">
+      <PageHeader
+        title="Organizations"
+        description="Create and manage TVET institutions that own assessors and graduates."
+        onRefresh={refresh}
+      />
+      {error && <Alert type="error">{error}</Alert>}
+      {message && <Alert type="success">{message}</Alert>}
+      {formError && <Alert type="error">{formError}</Alert>}
+      <Card title="Create organization">
+        <form className="form-grid" onSubmit={handleCreateOrganization}>
+          <TextField
+            label="Organization name"
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            required
+          />
+          <TextField
+            label="District"
+            value={form.district}
+            onChange={(event) => setForm({ ...form, district: event.target.value })}
+          />
+          <SelectField
+            label="Organization type"
+            value={form.type}
+            onChange={(event) =>
+              setForm({ ...form, type: event.target.value as Organization["type"] })
+            }
+          >
+            <option value="tvet_institution">TVET Institution</option>
+            <option value="training_center">Training Center</option>
+            <option value="other">Other</option>
+          </SelectField>
+          <TextField
+            label="Contact email"
+            type="email"
+            value={form.contactEmail}
+            onChange={(event) =>
+              setForm({ ...form, contactEmail: event.target.value })
+            }
+          />
+          <TextField
+            label="Phone"
+            value={form.phone}
+            onChange={(event) => setForm({ ...form, phone: event.target.value })}
+          />
+          <TextField
+            label="Address"
+            value={form.address}
+            onChange={(event) => setForm({ ...form, address: event.target.value })}
+          />
+          <div className="form-actions">
+            <Button disabled={isSaving} type="submit">
+              {isSaving ? "Creating organization..." : "Create organization"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+      <Card title="Registered organizations">
+        {data.length === 0 ? (
+          <EmptyState message="No organizations found." />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>District</th>
+                  <th>Type</th>
+                  <th>Contact</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((organization) => (
+                  <tr key={organization._id}>
+                    <td>{organization.name}</td>
+                    <td>{organization.district || "N/A"}</td>
+                    <td>{organization.type || "N/A"}</td>
+                    <td>{organization.contactEmail || organization.phone || "N/A"}</td>
+                    <td>{organization.status || "active"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -2572,70 +3416,18 @@ export function CompetenciesPage({ token }: { token: string }) {
     practicalTaskTitle: "",
     practicalTaskInstructions: "",
     practicalTaskDeliverables: "",
+    practicalTaskTestCommand: "",
+    practicalTaskTestFilePath: "",
+    practicalTaskTestFileContent: "",
     theoryQuestion: "",
     theoryOptions: "",
     theoryCorrectAnswer: "",
-    portfolioRequirementTitle: "",
-    portfolioRequirementDescription: "",
-    rubricName: "",
-    rubricDescription: "",
-    rubricWeight: 100,
   });
   const [message, setMessage] = useState("");
+  const [formError, setFormError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await api.createCompetency(token, {
-      code: form.code,
-      title: form.title,
-      category: form.category,
-      description: form.description,
-      expectedEvidence: form.expectedEvidence,
-      practicalTasks: form.practicalTaskTitle
-        ? [
-            {
-              title: form.practicalTaskTitle,
-              instructions: form.practicalTaskInstructions,
-              deliverables: form.practicalTaskDeliverables,
-              estimatedMinutes: 60,
-              maxScore: 100,
-            },
-          ]
-        : [],
-      theoryQuestions: form.theoryQuestion
-        ? [
-            {
-              question: form.theoryQuestion,
-              type: "multiple_choice",
-              options: form.theoryOptions
-                .split("\n")
-                .map((option) => option.trim())
-                .filter(Boolean),
-              correctAnswer: form.theoryCorrectAnswer,
-              points: 1,
-            },
-          ]
-        : [],
-      portfolioRequirements: form.portfolioRequirementTitle
-        ? [
-            {
-              title: form.portfolioRequirementTitle,
-              description: form.portfolioRequirementDescription,
-              required: true,
-            },
-          ]
-        : [],
-      rubricCriteria: form.rubricName
-        ? [
-            {
-              name: form.rubricName,
-              description: form.rubricDescription,
-              weight: form.rubricWeight,
-              maxScore: 100,
-            },
-          ]
-        : [],
-    });
+  function resetCompetencyForm() {
     setForm({
       code: "",
       title: "",
@@ -2645,17 +3437,143 @@ export function CompetenciesPage({ token }: { token: string }) {
       practicalTaskTitle: "",
       practicalTaskInstructions: "",
       practicalTaskDeliverables: "",
+      practicalTaskTestCommand: "",
+      practicalTaskTestFilePath: "",
+      practicalTaskTestFileContent: "",
       theoryQuestion: "",
       theoryOptions: "",
       theoryCorrectAnswer: "",
-      portfolioRequirementTitle: "",
-      portfolioRequirementDescription: "",
-      rubricName: "",
-      rubricDescription: "",
-      rubricWeight: 100,
     });
-    setMessage("Competency created successfully.");
-    await refresh();
+  }
+
+  function validateCompetencyForm() {
+    const code = form.code.trim();
+    const title = form.title.trim();
+    const category = form.category.trim();
+    const hasPracticalTask = Boolean(form.practicalTaskTitle.trim());
+    // Hidden instructor tests are optional, but partial configuration would
+    // make repository execution ambiguous, so require all three fields together.
+    const hasAnyInstructorTestField = Boolean(
+      form.practicalTaskTestCommand.trim() ||
+        form.practicalTaskTestFilePath.trim() ||
+        form.practicalTaskTestFileContent.trim(),
+    );
+    const hasCompleteInstructorTest =
+      Boolean(form.practicalTaskTestCommand.trim()) &&
+      Boolean(form.practicalTaskTestFilePath.trim()) &&
+      Boolean(form.practicalTaskTestFileContent.trim());
+    const hasTheoryQuestion = Boolean(form.theoryQuestion.trim());
+    const theoryOptions = form.theoryOptions
+      .split("\n")
+      .map((option) => option.trim())
+      .filter(Boolean);
+
+    if (!code || !title || !category) {
+      return "Code, title, and category are required.";
+    }
+
+    if (hasPracticalTask && !form.practicalTaskInstructions.trim()) {
+      return "Task instructions are required when a practical task is added.";
+    }
+
+    if (hasAnyInstructorTestField && !hasCompleteInstructorTest) {
+      return "Instructor test command, file path, and file content must all be provided together.";
+    }
+
+    if (hasTheoryQuestion && !form.theoryCorrectAnswer.trim()) {
+      return "Correct answer is required when a theory question is added.";
+    }
+
+    if (hasTheoryQuestion && theoryOptions.length < 2) {
+      return "Add at least two multiple-choice options for the theory question.";
+    }
+
+    if (
+      hasTheoryQuestion &&
+      !theoryOptions.some(
+        (option) =>
+          option.toLowerCase() === form.theoryCorrectAnswer.trim().toLowerCase(),
+      )
+    ) {
+      return "Correct answer must match one of the multiple-choice options.";
+    }
+
+    return "";
+  }
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    setFormError("");
+
+    const validationMessage = validateCompetencyForm();
+    if (validationMessage) {
+      setFormError(validationMessage);
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const theoryOptions = form.theoryOptions
+        .split("\n")
+        .map((option) => option.trim())
+        .filter(Boolean);
+
+      await api.createCompetency(token, {
+        code: form.code.trim(),
+        title: form.title.trim(),
+        category: form.category.trim(),
+        description: form.description.trim(),
+        expectedEvidence: form.expectedEvidence.trim(),
+        practicalTasks: form.practicalTaskTitle.trim()
+          ? [
+              {
+                title: form.practicalTaskTitle.trim(),
+                instructions: form.practicalTaskInstructions.trim(),
+                deliverables: form.practicalTaskDeliverables.trim(),
+                estimatedMinutes: 60,
+                maxScore: 100,
+                // These hidden tests are injected into a graduate repository
+                // during review to verify the exact practical task behavior.
+                automatedTestCommand: form.practicalTaskTestCommand.trim(),
+                automatedTestFiles:
+                  form.practicalTaskTestFilePath.trim() &&
+                  form.practicalTaskTestFileContent.trim()
+                    ? [
+                        {
+                          path: form.practicalTaskTestFilePath.trim(),
+                          content: form.practicalTaskTestFileContent,
+                        },
+                      ]
+                    : [],
+              },
+            ]
+          : [],
+        theoryQuestions: form.theoryQuestion.trim()
+          ? [
+              {
+                question: form.theoryQuestion.trim(),
+                type: "multiple_choice",
+                options: theoryOptions,
+                correctAnswer: form.theoryCorrectAnswer.trim(),
+                points: 1,
+              },
+            ]
+          : [],
+      });
+      resetCompetencyForm();
+      setMessage("Competency created successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to create competency",
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   if (isLoading) return <LoadingState message="Loading competencies..." />;
@@ -2668,6 +3586,7 @@ export function CompetenciesPage({ token }: { token: string }) {
         onRefresh={refresh}
       />
       {error && <Alert type="error">{error}</Alert>}
+      {formError && <Alert type="error">{formError}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
       <Card title="Add real assessment competency">
         <form className="form-grid" onSubmit={handleCreate}>
@@ -2709,6 +3628,11 @@ export function CompetenciesPage({ token }: { token: string }) {
           />
           <div className="full-span form-subsection">
             <h3>Practical test</h3>
+            <p className="form-help">
+              Add a practical GitHub task and optional hidden instructor tests.
+              Hidden tests make repository scores more realistic because they
+              prove whether submitted code solves the task.
+            </p>
             <div className="form-grid">
               <TextField
                 label="Task title"
@@ -2740,10 +3664,50 @@ export function CompetenciesPage({ token }: { token: string }) {
                   }
                 />
               </div>
+              <TextField
+                label="Instructor test command"
+                value={form.practicalTaskTestCommand}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    practicalTaskTestCommand: event.target.value,
+                  })
+                }
+                placeholder="npm test -- --runInBand tests/instructor-task.test.js"
+              />
+              <TextField
+                label="Instructor test file path"
+                value={form.practicalTaskTestFilePath}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    practicalTaskTestFilePath: event.target.value,
+                  })
+                }
+                placeholder="tests/instructor-task.test.js"
+              />
+              <div className="full-span">
+                <TextArea
+                  label="Instructor test file content"
+                  rows={8}
+                  value={form.practicalTaskTestFileContent}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      practicalTaskTestFileContent: event.target.value,
+                    })
+                  }
+                  placeholder="Add Jest, Supertest, or Playwright tests that prove the practical task works."
+                />
+              </div>
             </div>
           </div>
           <div className="full-span form-subsection">
             <h3>Theory question</h3>
+            <p className="form-help">
+              Add at least two options and make the correct answer match one
+              option exactly.
+            </p>
             <div className="form-grid">
               <TextField
                 label="Question"
@@ -2771,89 +3735,70 @@ export function CompetenciesPage({ token }: { token: string }) {
               </div>
             </div>
           </div>
-          <div className="full-span form-subsection">
-            <h3>Portfolio and rubric</h3>
-            <div className="form-grid">
-              <TextField
-                label="Portfolio requirement"
-                value={form.portfolioRequirementTitle}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    portfolioRequirementTitle: event.target.value,
-                  })
-                }
-              />
-              <TextField
-                label="Rubric criterion"
-                value={form.rubricName}
-                onChange={(event) =>
-                  setForm({ ...form, rubricName: event.target.value })
-                }
-              />
-              <TextArea
-                label="Portfolio requirement description"
-                rows={3}
-                value={form.portfolioRequirementDescription}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    portfolioRequirementDescription: event.target.value,
-                  })
-                }
-              />
-              <TextArea
-                label="Rubric criterion description"
-                rows={3}
-                value={form.rubricDescription}
-                onChange={(event) =>
-                  setForm({ ...form, rubricDescription: event.target.value })
-                }
-              />
-              <TextField
-                label="Rubric weight"
-                max={100}
-                min={0}
-                type="number"
-                value={form.rubricWeight}
-                onChange={(event) =>
-                  setForm({ ...form, rubricWeight: Number(event.target.value) })
-                }
-              />
-            </div>
+          <div className="full-span button-row">
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "Saving competency..." : "Add Competency"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                resetCompetencyForm();
+                setFormError("");
+                setMessage("");
+              }}
+              disabled={isSaving}
+            >
+              Clear Form
+            </Button>
           </div>
-          <Button type="submit">Add Competency</Button>
         </form>
       </Card>
       <Card title="Current competencies">
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Title</th>
-                <th>Category</th>
-                <th>Expected Evidence</th>
-                <th>Assessment Content</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((item) => (
-                <tr key={item._id}>
-                  <td>{item.code}</td>
-                  <td>{item.title}</td>
-                  <td>{item.category}</td>
-                  <td>{item.expectedEvidence || "N/A"}</td>
-                  <td>
-                    {item.practicalTasks?.length || 0} task(s),{" "}
-                    {item.theoryQuestions?.length || 0} question(s),{" "}
-                    {item.rubricCriteria?.length || 0} rubric item(s)
-                  </td>
+        {data.length === 0 ? (
+          <EmptyState message="No competencies have been added yet." />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Title</th>
+                  <th>Category</th>
+                  <th>Expected Evidence</th>
+                  <th>Assessment Content</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {data.map((item) => {
+                  const taskCount = item.practicalTasks?.length || 0;
+                  const hiddenTestCount =
+                    item.practicalTasks?.filter(
+                      (task) =>
+                        task.automatedTestCommand ||
+                        task.automatedTestFiles?.length,
+                    ).length || 0;
+
+                  return (
+                    <tr key={item._id}>
+                      <td>{item.code}</td>
+                      <td>{item.title}</td>
+                      <td>{item.category}</td>
+                      <td>{item.expectedEvidence || "N/A"}</td>
+                      <td>
+                        {taskCount} GitHub task(s),{" "}
+                        {item.theoryQuestions?.length || 0} theory question(s)
+                        {hiddenTestCount > 0
+                          ? `, ${hiddenTestCount} hidden test set(s)`
+                          : ""}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </section>
   );

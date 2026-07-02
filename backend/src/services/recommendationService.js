@@ -1,20 +1,17 @@
 import Recommendation from "../models/Recommendation.js";
 import { getPriorityFromGap } from "../utils/gapClassifier.js";
+import { AppError } from "../utils/errors.js";
 import { generateAiRecommendationDraft } from "./aiRecommendationService.js";
 
 const SCORE_AREA_LABELS = {
   practicalTaskScore: "Practical/GitHub project",
   quizScore: "Theory questions",
-  portfolioScore: "Portfolio evidence",
-  selfAssessmentScore: "Self-assessment confidence",
 };
 
 export function getWeakAssessmentAreas(scores = {}) {
   return Object.entries({
     practicalTaskScore: scores.practicalTaskScore,
     quizScore: scores.quizScore,
-    portfolioScore: scores.portfolioScore,
-    selfAssessmentScore: scores.selfAssessmentScore,
   })
     .filter(([, score]) => Number(score) < 70)
     .sort(([, first], [, second]) => Number(first) - Number(second))
@@ -22,6 +19,8 @@ export function getWeakAssessmentAreas(scores = {}) {
 }
 
 function buildRepositorySummaryText(repositorySummary = {}) {
+  // Keep the AI prompt compact by turning the repository analysis into a single
+  // evidence summary instead of sending the full raw repository payload.
   const sampledFiles = Array.isArray(repositorySummary.sampledSourceFiles)
     ? repositorySummary.sampledSourceFiles
         .map((file) =>
@@ -58,26 +57,13 @@ function buildRepositorySummaryText(repositorySummary = {}) {
   return parts.join(" ");
 }
 
-function buildRubricSummary(rubricScores = []) {
-  return rubricScores
-    .map((criterion) =>
-      [
-        criterion.name,
-        `score ${criterion.score}%`,
-        `weight ${criterion.weight}%`,
-        criterion.comment ? `comment: ${criterion.comment}` : "",
-      ]
-        .filter(Boolean)
-        .join(" - "),
-    )
-    .join(" | ");
-}
-
 export function buildRecommendationContext({
   assessment,
   competency,
   assessorComment,
 }) {
+  // Gemini receives assessment facts and repository evidence, but scoring and
+  // pass/fail decisions are already made by deterministic services.
   return {
     competencyTitle: competency.title,
     competencyCode: competency.code,
@@ -87,7 +73,10 @@ export function buildRecommendationContext({
     gapLevel: assessment.gapLevel,
     weakAreas: getWeakAssessmentAreas(assessment.scores),
     assessorComment: assessorComment || assessment.assessorComment || "",
-    rubricScores: buildRubricSummary(assessment.scores?.rubricScores || []),
+    assessmentScores: {
+      githubPracticalTaskScore: assessment.scores?.practicalTaskScore,
+      theoryQuizScore: assessment.scores?.quizScore,
+    },
     evidenceVerification: assessment.evidenceVerification || {},
     repositorySummary: buildRepositorySummaryText(
       assessment.evidence?.repositorySummary,
@@ -122,52 +111,90 @@ export function listRecommendationsForUser(user, filters = {}) {
     .sort({ createdAt: -1 });
 }
 
-export function generateDraftActionItems(assessment) {
-  const weakAreas = getWeakAssessmentAreas(assessment.scores);
+export async function getRecommendationForUser(recommendationId, user) {
+  const query =
+    user.role === "graduate"
+      ? { _id: recommendationId, graduate: user._id }
+      : { _id: recommendationId };
+  const recommendation = await Recommendation.findOne(query)
+    .populate("graduate", "name email institution")
+    .populate("competency", "title code category")
+    .populate("assessor", "name email institution");
 
-  if (assessment.gapLevel === "No Gap") {
-    return [
-      "Maintain competency through advanced project practice.",
-      "Keep portfolio evidence updated for future employment opportunities.",
-    ];
+  if (!recommendation) {
+    throw new AppError("Recommendation was not found", 404);
   }
 
-  const actions = weakAreas.map(
-    (area) =>
-      `Improve ${area.toLowerCase()} through targeted practice and assessor feedback.`,
-  );
+  return recommendation;
+}
 
-  if (assessment.gapLevel === "High Gap") {
-    actions.push(
-      "Schedule guided lab sessions and repeat the competency assessment after practice.",
-    );
+export async function updateRecommendationById(recommendationId, payload) {
+  const allowedUpdates = [
+    "message",
+    "actionItems",
+    "resources",
+    "priority",
+    "isApproved",
+  ];
+  const updates = {};
+
+  allowedUpdates.forEach((field) => {
+    if (payload[field] !== undefined) updates[field] = payload[field];
+  });
+
+  const recommendation = await Recommendation.findByIdAndUpdate(
+    recommendationId,
+    updates,
+    { new: true, runValidators: true },
+  )
+    .populate("graduate", "name email institution")
+    .populate("competency", "title code category")
+    .populate("assessor", "name email institution");
+
+  if (!recommendation) {
+    throw new AppError("Recommendation was not found", 404);
   }
 
-  return actions.length > 0
-    ? actions
-    : [
-        "Review assessor comments and complete additional RTB-aligned practice tasks.",
-      ];
+  return recommendation;
+}
+
+export async function deleteRecommendationById(recommendationId) {
+  const recommendation =
+    await Recommendation.findByIdAndDelete(recommendationId);
+
+  if (!recommendation) {
+    throw new AppError("Recommendation was not found", 404);
+  }
+
+  return recommendation;
 }
 
 export async function upsertAssessmentRecommendation({
   assessment,
-  competency,
   assessorId,
   recommendation = {},
 }) {
-  const priority =
-    recommendation.priority || getPriorityFromGap(assessment.gapLevel);
-  const draft = await generateDraftRecommendation({ assessment, competency });
+  const draft = recommendation.geminiDraft;
+
+  if (!draft || draft.provider !== "gemini" || !draft.message) {
+    throw new AppError(
+      "A Gemini-generated recommendation draft is required before saving the review.",
+      400,
+    );
+  }
+
+  const priority = draft.priority || getPriorityFromGap(assessment.gapLevel);
   const approvedMessage = recommendation.message || draft.message;
   const approvedActionItems =
     recommendation.actionItems?.length > 0
       ? recommendation.actionItems
       : draft.actionItems?.length > 0
         ? draft.actionItems
-        : generateDraftActionItems(assessment);
+        : [];
   const approvedResources =
-    recommendation.resources?.length > 0 ? recommendation.resources : draft.resources;
+    recommendation.resources?.length > 0
+      ? recommendation.resources
+      : draft.resources;
 
   return Recommendation.findOneAndUpdate(
     { assessment: assessment._id },
@@ -184,12 +211,71 @@ export async function upsertAssessmentRecommendation({
       priority,
       aiProvider: draft.provider,
       aiModel: draft.model,
-      aiPrompt: draft.prompt,
-      aiRawResponse: draft.rawResponse,
+      aiPrompt: draft.prompt || "",
+      aiRawResponse: draft.rawResponse || "",
       approvedBy: assessorId,
       approvedAt: new Date(),
       isApproved: true,
     },
     { new: true, upsert: true, runValidators: true },
   );
+}
+
+export function buildRepositoryAssessmentRecommendations(result = {}) {
+  const recommendations = [];
+  const failedRequirements = result.failedRequirements || [];
+  const competencyScores = result.competencyScores || {};
+
+  if (result.assessorValidationRequired) {
+    recommendations.push(
+      "Add objective automated tests or request assessor validation for requirements that cannot be verified automatically.",
+    );
+  }
+
+  if (competencyScores.frontend < 70) {
+    recommendations.push(
+      "Improve frontend evidence by adding working pages, forms, event handlers, and clear user feedback for the practical task.",
+    );
+  }
+
+  if (competencyScores.backend < 70) {
+    recommendations.push(
+      "Improve backend evidence by adding real API routes, controllers, services, validation, and clear responses for the required task.",
+    );
+  }
+
+  if (competencyScores.database < 70) {
+    recommendations.push(
+      "Improve database evidence by using proper MongoDB/Mongoose schemas and CRUD operations connected to the task workflow.",
+    );
+  }
+
+  if (competencyScores.authentication < 70) {
+    recommendations.push(
+      "Strengthen authentication by implementing secure registration, login, password hashing, JWT handling, and protected routes where required.",
+    );
+  }
+
+  if (competencyScores.testing < 70) {
+    recommendations.push(
+      "Add Jest, Supertest, Playwright, or Cypress tests that prove the task works from API and user-interface levels.",
+    );
+  }
+
+  if (failedRequirements.length > 0) {
+    recommendations.push(
+      `Fix failed requirements: ${failedRequirements
+        .map((item) => item.title)
+        .slice(0, 5)
+        .join("; ")}.`,
+    );
+  }
+
+  if (result.eslintResult?.errors > 0) {
+    recommendations.push(
+      "Resolve ESLint errors because they reduce code quality and may indicate broken or unsafe implementation.",
+    );
+  }
+
+  return [...new Set(recommendations)];
 }

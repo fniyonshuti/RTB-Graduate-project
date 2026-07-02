@@ -1,19 +1,19 @@
 # Skills Gap Analysis Tool for TVET ICT Graduates in Kicukiro District
 
-A full-stack web application for assessing the practical ICT competencies of TVET graduates and comparing their performance against RTB-aligned competency benchmarks. The system supports graduate evidence submission, GitHub project analysis, theory questions, portfolio evidence, assessor rubric scoring, weighted score calculation, gap classification, recommendations, reports, notifications, and role-based dashboards.
+A full-stack web application for assessing the practical ICT competencies of TVET graduates and comparing their performance against RTB-aligned competency benchmarks. The system supports graduate evidence submission, GitHub project analysis, theory questions, weighted score calculation, gap classification, recommendations, reports, notifications, and role-based dashboards.
 
 ## Project Overview
 
 This capstone project helps TVET institutions and assessors identify the gap between the ICT skills graduates currently demonstrate and the competency level expected by RTB standards.
 
-The system is designed around realistic assessment evidence instead of self-reporting only. A graduate submits a GitHub repository or practical project, answers theory questions, adds portfolio evidence, and provides a small self-assessment score. An assessor reviews the evidence using RTB-aligned rubrics, approves scores, and the system calculates the final competency result.
+The system is designed around realistic assessment evidence. A graduate submits a GitHub repository or practical project and answers theory questions. The system scans the repository, calculates the GitHub task score, scores theory answers, and lets the assessor verify the evidence and approve the recommendation.
 
 ## Main Users
 
 | Role | Main Responsibilities |
 | --- | --- |
-| Graduate | Register, complete profile, select competency, submit practical/GitHub evidence, answer theory questions, upload portfolio evidence, view gap results, recommendations, reports, and notifications. |
-| Assessor | View submitted assessments, review GitHub/practical work, review theory and portfolio evidence, assign rubric scores, generate or approve recommendations, submit final review. |
+| Graduate | Register, complete profile, select competency, submit practical/GitHub evidence, answer theory questions, view gap results, recommendations, reports, and notifications. |
+| Assessor | View submitted assessments, verify GitHub/practical work, review theory answers, generate or approve recommendations, submit final review. |
 | Admin | Manage users, competencies, RTB benchmarks, notifications, assessments, reports, and system analytics. |
 
 ## Technology Stack
@@ -160,17 +160,15 @@ The system follows this workflow:
 
 1. Graduate logs in.
 2. Graduate selects an ICT competency.
-3. System loads the selected competency, practical task, theory questions, portfolio requirements, rubric, and active RTB benchmark.
+3. System loads the selected competency, practical task, theory questions, and active RTB benchmark.
 4. Graduate submits evidence:
    - GitHub repository URL
    - Practical task answer or uploaded practical evidence
    - Theory question answers
-   - Portfolio link or project description
-   - Self-assessment score
 5. System validates required evidence.
 6. System calls the GitHub API to verify and summarize the repository.
-7. Assessor reviews the evidence and repository summary.
-8. Assessor assigns scores for each assessment area.
+7. Assessor reviews the GitHub task result, theory answers, and repository summary.
+8. System uses the GitHub task score and theory score as the assessed scores.
 9. System calculates the final weighted competency score.
 10. System compares the score with the RTB benchmark.
 11. System calculates the skill gap.
@@ -186,13 +184,11 @@ The current scoring model is:
 
 ```text
 Final Score =
-(Practical/GitHub Project Score x 0.60)
-+ (Theory Score x 0.20)
-+ (Portfolio Evidence Score x 0.15)
-+ (Self-Assessment Score x 0.05)
+(Practical/GitHub Project Score x 0.70)
++ (Theory/Quiz Score x 0.30)
 ```
 
-This gives the highest weight to practical work and GitHub/project evidence, making the assessment more realistic and less dependent on self-reporting.
+This gives the highest weight to practical work and GitHub/project evidence while still measuring theory knowledge from quiz answers.
 
 ### Skill Gap Formula
 
@@ -221,12 +217,12 @@ If Skill Gap < 0, Skill Gap = 0
 ```mermaid
 flowchart TD
     A["Graduate logs in"] --> B["Select ICT competency"]
-    B --> C["System loads RTB benchmark and rubric"]
-    C --> D["Graduate submits GitHub URL, practical task, theory answers, portfolio evidence, and self-assessment"]
+    B --> C["System loads RTB benchmark, GitHub task, and theory questions"]
+    C --> D["Graduate submits GitHub URL, practical task, and theory answers"]
     D --> E["System validates submission"]
     E --> F["System calls GitHub API and stores repository summary"]
-    F --> G["Assessor reviews evidence"]
-    G --> H["Assessor assigns rubric scores"]
+    F --> G["Assessor verifies GitHub task and theory evidence"]
+    G --> H["System uses GitHub task score and theory score"]
     H --> I["System calculates weighted final score"]
     I --> J["Compare final score with RTB benchmark"]
     J --> K["Calculate skill gap"]
@@ -273,6 +269,34 @@ The stored summary can include:
     "Repository contains supported ICT source files."
   ]
 }
+```
+
+### GitHub Environment Configuration
+
+Add these values to `backend/.env`:
+
+```env
+GITHUB_TOKEN=your_github_personal_access_token
+GITHUB_API_BASE_URL=https://api.github.com
+GITHUB_RAW_BASE_URL=https://raw.githubusercontent.com
+GITHUB_API_VERSION=2022-11-28
+GITHUB_REQUEST_TIMEOUT_MS=10000
+GITHUB_MAX_SAMPLED_FILES=6
+```
+
+`GITHUB_TOKEN` is optional for public repositories, but it is strongly recommended because it reduces rate-limit problems. It is required when the repository is private. For private repositories, the token owner must have access to the repository.
+
+Use only the root repository URL in the assessment form:
+
+```text
+https://github.com/owner/repository-name
+```
+
+Do not use branch, file, or commit URLs such as:
+
+```text
+https://github.com/owner/repository-name/tree/main
+https://github.com/owner/repository-name/blob/main/README.md
 ```
 
 ## Gemini Recommendation Integration
@@ -324,7 +348,14 @@ PORT=5000
 MONGO_URI=mongodb+srv://<db_username>:<db_password>@<cluster-host>/rtb_skills_gap?retryWrites=true&w=majority
 JWT_SECRET=replace_with_a_long_random_secret
 DB_CONNECT_TIMEOUT_MS=8000
+
+# GitHub repository analysis
 GITHUB_TOKEN=
+GITHUB_API_BASE_URL=https://api.github.com
+GITHUB_RAW_BASE_URL=https://raw.githubusercontent.com
+GITHUB_API_VERSION=2022-11-28
+GITHUB_REQUEST_TIMEOUT_MS=10000
+GITHUB_MAX_SAMPLED_FILES=6
 
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_RECOMMENDATION_MODEL=gemini-2.5-flash
@@ -574,7 +605,7 @@ Create competency request:
   "code": "ICT-WEB-001",
   "category": "Software Development",
   "description": "Ability to design, build, test, and document a responsive web application.",
-  "expectedEvidence": "GitHub repository, deployed or runnable project, README, screenshots, and portfolio explanation.",
+  "expectedEvidence": "GitHub repository, deployed or runnable project, README, screenshots, and task explanation.",
   "practicalTasks": [
     {
       "title": "Build a responsive CRUD web module",
@@ -597,39 +628,6 @@ Create competency request:
       "type": "short_answer",
       "expectedAnswer": "Input validation protects data integrity, improves user feedback, and reduces security risks.",
       "points": 10
-    }
-  ],
-  "portfolioRequirements": [
-    {
-      "title": "Project documentation",
-      "description": "Provide README, screenshots, setup steps, and a short explanation of your role.",
-      "required": true
-    }
-  ],
-  "rubricCriteria": [
-    {
-      "name": "Functionality",
-      "description": "The submitted project meets the required features and works correctly.",
-      "weight": 40,
-      "maxScore": 100
-    },
-    {
-      "name": "Code quality",
-      "description": "The code is organized, readable, reusable, and maintainable.",
-      "weight": 25,
-      "maxScore": 100
-    },
-    {
-      "name": "User interface",
-      "description": "The interface is clear, responsive, and user-friendly.",
-      "weight": 20,
-      "maxScore": 100
-    },
-    {
-      "name": "Documentation",
-      "description": "The project includes clear setup and usage documentation.",
-      "weight": 15,
-      "maxScore": 100
     }
   ],
   "isActive": true
@@ -663,6 +661,7 @@ Create benchmark request:
 | --- | --- | --- | --- |
 | GET | `/assessments` | Authenticated | List assessments. Graduates see their own assessments; assessors see submitted/reviewed assessments. |
 | POST | `/assessments` | Graduate | Submit competency assessment evidence. |
+| POST | `/assessments/repository-task-review` | Graduate | Scan a GitHub repository against the selected practical task and return checklist score/results before submission. |
 | GET | `/assessments/:id` | Authenticated | Get one assessment. |
 | PUT | `/assessments/:id/review` | Assessor, Admin | Review assessment, assign scores, calculate gap, save recommendation, and notify graduate. |
 | POST | `/assessments/:id/recommendation-preview` | Assessor, Admin | Generate recommendation preview before final review. |
@@ -687,8 +686,6 @@ Submit assessment request:
       "answer": "Input validation protects data integrity, prevents invalid data, improves feedback, and reduces security risks."
     }
   ],
-  "portfolioLink": "https://portfolio.example.com/student-project",
-  "projectDescription": "A full-stack CRUD web application developed using React and Node.js.",
   "fileUrls": [
     "https://example.com/project-screenshot.png"
   ],
@@ -699,8 +696,58 @@ Submit assessment request:
       "size": 102400,
       "dataUrl": "data:image/png;base64,BASE64_DATA"
     }
-  ],
-  "selfAssessmentScore": 75
+  ]
+}
+```
+
+Repository task review request:
+
+```json
+{
+  "competency": "COMPETENCY_ID",
+  "practicalTaskId": "PRACTICAL_TASK_ID",
+  "githubRepositoryUrl": "https://github.com/example/student-project"
+}
+```
+
+Repository task review response includes:
+
+```json
+{
+  "repositorySummary": {
+    "owner": "example",
+    "repo": "student-project",
+    "readmeFound": true,
+    "supportedFileCount": 24,
+    "codeQualityScore": 85,
+    "evidenceCompletenessScore": 80
+  },
+  "taskReview": {
+    "taskTitle": "Build a Graduate Profile Management Module",
+    "score": 82.5,
+    "pointsEarned": 82.5,
+    "pointsPossible": 100,
+    "passedCount": 6,
+    "failedCount": 2,
+    "checklist": [
+      {
+        "key": "repositoryAccessible",
+        "label": "Repository is accessible and verified",
+        "passed": true,
+        "weight": 10,
+        "evidence": "example/student-project"
+      },
+      {
+        "key": "testingEvidenceFound",
+        "label": "Testing evidence is included",
+        "passed": false,
+        "weight": 10,
+        "evidence": "No test/spec files detected.",
+        "advice": "Add automated tests or include clear manual testing evidence in the README."
+      }
+    ],
+    "summary": "Automatic repository review scored 82.5% with 6/8 checklist item(s) passed."
+  }
 }
 ```
 
@@ -708,29 +755,14 @@ Review assessment request:
 
 ```json
 {
-  "rubricScores": [
-    {
-      "criterionId": "RUBRIC_CRITERION_ID_1",
-      "score": 85,
-      "comment": "CRUD functionality works and routes are clearly implemented."
-    },
-    {
-      "criterionId": "RUBRIC_CRITERION_ID_2",
-      "score": 78,
-      "comment": "Code is organized but validation can be improved."
-    }
-  ],
   "practicalTaskScore": 82,
   "quizScore": 70,
-  "portfolioScore": 78,
-  "selfAssessmentScore": 75,
   "assessorComment": "The project demonstrates good CRUD functionality and documentation. More attention is needed on validation and error handling.",
   "evidenceVerification": {
     "githubReviewed": true,
     "practicalEvidenceReviewed": true,
-    "portfolioReviewed": true,
     "theoryReviewed": true,
-    "authenticityNotes": "Repository, README, commits, uploaded screenshot, and portfolio link were reviewed by the assessor."
+    "authenticityNotes": "Repository, README, commits, uploaded screenshot, and theory answers were reviewed by the assessor."
   },
   "recommendation": {
     "message": "Improve form validation, error handling, and testing before the next assessment.",
@@ -751,24 +783,14 @@ Recommendation preview request:
 
 ```json
 {
-  "rubricScores": [
-    {
-      "criterionId": "RUBRIC_CRITERION_ID_1",
-      "score": 85,
-      "comment": "Functional implementation is mostly complete."
-    }
-  ],
   "practicalTaskScore": 82,
   "quizScore": 70,
-  "portfolioScore": 78,
-  "selfAssessmentScore": 75,
   "assessorComment": "The project works, but validation and testing need improvement.",
   "evidenceVerification": {
     "githubReviewed": true,
     "practicalEvidenceReviewed": true,
-    "portfolioReviewed": true,
     "theoryReviewed": true,
-    "authenticityNotes": "Evidence was checked against the submitted GitHub project and portfolio."
+    "authenticityNotes": "Evidence was checked against the submitted GitHub project and theory answers."
   }
 }
 ```
@@ -781,12 +803,10 @@ Assessment review response includes:
     "scores": {
       "practicalTaskScore": 82,
       "quizScore": 70,
-      "portfolioScore": 78,
-      "selfAssessmentScore": 75,
-      "finalScore": 79.65
+      "finalScore": 78.4
     },
     "benchmarkScore": 80,
-    "skillGap": 0.35,
+    "skillGap": 1.6,
     "gapLevel": "Very Low Gap",
     "status": "reviewed"
   },
@@ -1042,7 +1062,7 @@ candidates[0].content.parts[0].text
 | --- | --- |
 | User | Stores account, role, institution, password hash, and active status. |
 | GraduateProfile | Stores graduate academic and personal profile details. |
-| Competency | Stores ICT competency, practical tasks, theory questions, portfolio requirements, and rubric criteria. |
+| Competency | Stores ICT competency, GitHub practical tasks, theory questions, and expected evidence. |
 | Benchmark | Stores active RTB required score for each competency. |
 | Assessment | Stores graduate evidence, GitHub summary, scores, benchmark score, skill gap, gap level, review status, and assessor comments. |
 | Recommendation | Stores AI draft, final approved recommendation, action items, resources, priority, and approval metadata. |
@@ -1059,7 +1079,7 @@ candidates[0].content.parts[0].text
   "code": "ICT-WEB-001",
   "category": "Software Development",
   "description": "Build responsive, secure, and maintainable web applications using frontend and backend technologies.",
-  "expectedEvidence": "GitHub repository, practical task submission, theory answers, portfolio link, README, screenshots, and project explanation.",
+  "expectedEvidence": "GitHub repository, practical task submission, theory answers, README, screenshots, and project explanation.",
   "isActive": true
 }
 ```

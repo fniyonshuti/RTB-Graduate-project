@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import './App.css'
-import { AppLayout, getDefaultView, type ViewKey } from './components/layout'
-import { AuthProvider, useAuth } from './context/AuthContext'
+import { Alert, Button, Card, TextField } from './components/common'
+import { AppLayout, type ViewKey } from './components/layout'
+import { AuthProvider } from './context/AuthContext'
+import { useAuth } from './context/useAuth'
 import { AuthPages } from './pages/AuthPages'
 import {
   AssessmentsPage,
@@ -11,6 +13,7 @@ import {
   GapResultsPage,
   GraduateProfilePage,
   NotificationsPage,
+  OrganizationsPage,
   RecommendationsPage,
   ReportsPage,
   SubmitAssessmentPage,
@@ -21,16 +24,25 @@ function AppContent() {
   const { user, token, isAuthenticated, isLoading, logout } = useAuth()
   const [currentView, setCurrentView] = useState<ViewKey>('dashboard')
 
-  useEffect(() => {
-    if (user) setCurrentView(getDefaultView(user.role))
-  }, [user])
-
   if (isLoading) {
     return <div className="boot-screen">Loading application...</div>
   }
 
   if (!isAuthenticated || !user || !token) {
     return <AuthPages />
+  }
+
+  if (user.mustChangePassword) {
+    return (
+      <AppLayout
+        currentView="dashboard"
+        onLogout={logout}
+        onNavigate={setCurrentView}
+        user={user}
+      >
+        <ForcePasswordChangePage />
+      </AppLayout>
+    )
   }
 
   function renderPage() {
@@ -69,7 +81,11 @@ function AppContent() {
     }
 
     if (currentView === 'users') {
-      return <UsersPage token={token} />
+      return <UsersPage role={user.role} token={token} />
+    }
+
+    if (currentView === 'organizations') {
+      return <OrganizationsPage token={token} />
     }
 
     if (currentView === 'competencies') {
@@ -92,6 +108,81 @@ function AppContent() {
     >
       {renderPage()}
     </AppLayout>
+  )
+}
+
+function ForcePasswordChangePage() {
+  const { changePassword, logout } = useAuth()
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setMessage('')
+
+    if (newPassword !== confirmPassword) {
+      setError('New password and confirmation do not match.')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await changePassword(currentPassword, newPassword)
+      setMessage('Password changed successfully. Your dashboard is ready.')
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Failed to change password')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <section className="page-stack">
+      <Card title="Change temporary password">
+        <Alert type="info">
+          Your account was created with a temporary password. Create a personal
+          password before using the dashboard.
+        </Alert>
+        {error && <Alert type="error">{error}</Alert>}
+        {message && <Alert type="success">{message}</Alert>}
+        <form className="form-stack" onSubmit={handleSubmit}>
+          <TextField
+            label="Current temporary password"
+            type="password"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+            required
+          />
+          <TextField
+            label="New password"
+            type="password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            required
+          />
+          <TextField
+            label="Confirm new password"
+            type="password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            required
+          />
+          <div className="form-actions">
+            <Button disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Changing password...' : 'Change password'}
+            </Button>
+            <Button variant="secondary" onClick={logout}>
+              Logout
+            </Button>
+          </div>
+        </form>
+      </Card>
+    </section>
   )
 }
 

@@ -37,3 +37,23 @@ export async function getGraduateProfileByUserId(userId) {
 
   return profile;
 }
+
+export async function deleteProfileByGraduateId(graduateId) {
+  const profile = await GraduateProfile.findOneAndDelete({ user: graduateId });
+
+  if (!profile) {
+    throw new AppError("Graduate profile was not found", 404);
+  }
+
+  return profile;
+}
+
+export async function deleteGraduateProfileByUserId(userId) {
+  const profile = await GraduateProfile.findOneAndDelete({ user: userId });
+
+  if (!profile) {
+    throw new AppError("Graduate profile was not found", 404);
+  }
+
+  return profile;
+}

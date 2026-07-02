@@ -2,6 +2,8 @@ import {
   getGraduateProfileByUserId,
   getProfileByGraduateId,
   listGraduateProfiles as listGraduateProfilesService,
+  deleteGraduateProfileByUserId,
+  deleteProfileByGraduateId,
   upsertProfileByGraduateId,
 } from '../services/graduateService.js';
 import { asyncHandler } from '../utils/errors.js';
@@ -25,4 +27,14 @@ export const listGraduateProfiles = asyncHandler(async (req, res) => {
 export const getGraduateProfile = asyncHandler(async (req, res) => {
   const profile = await getGraduateProfileByUserId(req.params.userId);
   sendSuccess(res, 'Graduate profile loaded', profile);
+});
+
+export const deleteMyProfile = asyncHandler(async (req, res) => {
+  const profile = await deleteProfileByGraduateId(req.user._id);
+  sendSuccess(res, 'Graduate profile deleted', profile);
+});
+
+export const deleteGraduateProfile = asyncHandler(async (req, res) => {
+  const profile = await deleteGraduateProfileByUserId(req.params.userId);
+  sendSuccess(res, 'Graduate profile deleted', profile);
 });

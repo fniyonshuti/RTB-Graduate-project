@@ -2,7 +2,9 @@ import express from 'express';
 import {
   listBenchmarks,
   createBenchmark,
+  getBenchmark,
   updateBenchmark,
+  deleteBenchmark,
 } from '../controllers/benchmarkController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/roleMiddleware.js';
@@ -21,6 +23,10 @@ router
     createBenchmark
   );
 
-router.put('/:id', authorize('admin'), updateBenchmark);
+router
+  .route('/:id')
+  .get(getBenchmark)
+  .put(authorize('admin'), updateBenchmark)
+  .delete(authorize('admin'), deleteBenchmark);
 
 export default router;

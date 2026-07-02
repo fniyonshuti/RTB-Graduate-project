@@ -1,7 +1,8 @@
 import mongoose from "mongoose";
+import { env } from "./env.js";
 
 async function connectDB() {
-  const mongoUri = process.env.MONGO_URI;
+  const mongoUri = env.mongoUri;
 
   if (!mongoUri) {
     throw new Error("MONGO_URI is missing in .env file");
@@ -9,7 +10,8 @@ async function connectDB() {
 
   try {
     const connection = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 8000,
+      serverSelectionTimeoutMS: env.dbConnectTimeoutMs,
+      autoIndex: !env.isProduction,
     });
 
     console.log(`MongoDB connected: ${connection.connection.host}`);

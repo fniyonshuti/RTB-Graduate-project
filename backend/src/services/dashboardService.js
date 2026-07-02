@@ -54,17 +54,23 @@ export async function getAssessorDashboard() {
   };
 }
 
-export async function getAdminDashboard() {
+export async function getAdminDashboard(user) {
+  const organizationFilter =
+    user.role === 'org_admin'
+      ? { organization: user.organization?._id || user.organization }
+      : {};
   const [
     totalGraduates,
     totalAssessors,
+    totalOrganizationAdmins,
     totalCompetencies,
     reviewedAssessments,
   ] = await Promise.all([
-    User.countDocuments({ role: 'graduate' }),
-    User.countDocuments({ role: 'assessor' }),
+    User.countDocuments({ role: 'graduate', ...organizationFilter }),
+    User.countDocuments({ role: 'assessor', ...organizationFilter }),
+    User.countDocuments({ role: 'org_admin', ...organizationFilter }),
     Competency.countDocuments({ isActive: true }),
-    Assessment.find({ status: 'reviewed' }),
+    Assessment.find({ status: 'reviewed', ...organizationFilter }),
   ]);
 
   const summary = summarizeAssessments(reviewedAssessments);
@@ -76,6 +82,7 @@ export async function getAdminDashboard() {
   return {
     totalGraduates,
     totalAssessors,
+    totalOrganizationAdmins,
     totalCompetencies,
     averageSkillGap: summary.averageGap,
     overallGapLevel: summary.overallGapLevel,

@@ -6,8 +6,15 @@ function hideCorrectAnswers(competency) {
 
   return {
     ...data,
+    practicalTasks: (data.practicalTasks || []).map((task) => {
+      const safeTask = { ...task };
+      delete safeTask.automatedTestCommand;
+      delete safeTask.automatedTestFiles;
+      return safeTask;
+    }),
     theoryQuestions: (data.theoryQuestions || []).map((question) => {
-      const { correctAnswer, ...safeQuestion } = question;
+      const safeQuestion = { ...question };
+      delete safeQuestion.correctAnswer;
       return safeQuestion;
     }),
   };
@@ -55,6 +62,20 @@ export async function updateCompetencyById(competencyId, payload) {
     new: true,
     runValidators: true,
   });
+
+  if (!competency) {
+    throw new AppError("Competency was not found", 404);
+  }
+
+  return competency;
+}
+
+export async function deactivateCompetencyById(competencyId) {
+  const competency = await Competency.findByIdAndUpdate(
+    competencyId,
+    { isActive: false },
+    { new: true, runValidators: true },
+  );
 
   if (!competency) {
     throw new AppError("Competency was not found", 404);

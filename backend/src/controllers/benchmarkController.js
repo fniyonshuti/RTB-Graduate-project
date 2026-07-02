@@ -1,5 +1,7 @@
 import {
   createBenchmark as createBenchmarkService,
+  deactivateBenchmarkById,
+  getBenchmarkById,
   listBenchmarks as listBenchmarksService,
   updateBenchmarkById,
 } from '../services/benchmarkService.js';
@@ -16,7 +18,17 @@ export const createBenchmark = asyncHandler(async (req, res) => {
   sendSuccess(res, 'Benchmark created', benchmark, 201);
 });
 
+export const getBenchmark = asyncHandler(async (req, res) => {
+  const benchmark = await getBenchmarkById(req.params.id);
+  sendSuccess(res, 'Benchmark loaded', benchmark);
+});
+
 export const updateBenchmark = asyncHandler(async (req, res) => {
   const benchmark = await updateBenchmarkById(req.params.id, req.body);
   sendSuccess(res, 'Benchmark updated', benchmark);
+});
+
+export const deleteBenchmark = asyncHandler(async (req, res) => {
+  const benchmark = await deactivateBenchmarkById(req.params.id);
+  sendSuccess(res, 'Benchmark deactivated', benchmark);
 });
