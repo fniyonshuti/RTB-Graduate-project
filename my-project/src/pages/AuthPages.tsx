@@ -1,13 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Alert,
   Button,
-  SelectField,
   TextField,
 } from "../components/common";
 import { api } from "../api/client";
 import { useAuth } from "../context/useAuth";
-import type { Organization } from "../types";
 import heroImage from "../assets/hero.png";
 
 function getInitialAuthState() {
@@ -33,48 +31,11 @@ export function AuthPages() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [organizationId, setOrganizationId] = useState("");
   const [resetToken, setResetToken] = useState(initialAuthState.resetToken);
   const [newPassword, setNewPassword] = useState("");
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [isLoadingOrganizations, setIsLoadingOrganizations] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (mode !== "register" || !showAuthPanel) return;
-
-    let isCurrent = true;
-
-    async function loadOrganizations() {
-      await Promise.resolve();
-      if (!isCurrent) return;
-
-      setIsLoadingOrganizations(true);
-
-      try {
-        const publicOrganizations = await api.publicOrganizations();
-        if (isCurrent) setOrganizations(publicOrganizations);
-      } catch (caughtError) {
-        if (!isCurrent) return;
-
-        setError(
-          caughtError instanceof Error
-            ? caughtError.message
-            : "Failed to load organizations",
-        );
-      } finally {
-        if (isCurrent) setIsLoadingOrganizations(false);
-      }
-    }
-
-    void loadOrganizations();
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [mode, showAuthPanel]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -86,11 +47,7 @@ export function AuthPages() {
       if (mode === "login") {
         await login(email, password);
       } else if (mode === "register") {
-        if (!organizationId) {
-          throw new Error("Please select your organization.");
-        }
-
-        await register({ name, email, password, organizationId });
+        await register({ name, email, password });
       } else if (mode === "forgot") {
         const result = await api.forgotPassword(email);
         if (result.emailStatus === "resend_domain_verification_required") {
@@ -132,7 +89,7 @@ export function AuthPages() {
           <div className="brand-mark">SG</div>
           <div>
             <strong>Skills Gap</strong>
-            <span>RTB-aligned graduate assessment</span>
+            <span>RTB-aligned automatic assessment</span>
           </div>
         </div>
         <nav className="home-nav-links" aria-label="Homepage sections">
@@ -172,10 +129,9 @@ export function AuthPages() {
           <BadgeLine />
           <h1>Skills Gap Analysis Tool</h1>
           <p>
-            A web-based system for ICT TVET graduates in Kicukiro District to
-            submit practical evidence, complete theory questions, receive
-            assessor-reviewed scores, and compare results with RTB competency
-            benchmarks.
+            A web-based system for ICT learners to submit practical evidence,
+            complete theory questions, receive instant automated scores, and
+            compare results with RTB competency benchmarks.
           </p>
           <div className="hero-actions">
             <Button
@@ -206,12 +162,12 @@ export function AuthPages() {
               <div className="brand-mark">SG</div>
               <h2>Skills Gap Analysis Tool</h2>
               <p>
-                Assess ICT graduate competencies against RTB-aligned standards
-                for Kicukiro District.
+                Assess ICT competencies against RTB-aligned standards with
+                automatic repository review.
               </p>
               <div className="auth-window__meta">
                 <span>Practical evidence</span>
-                <span>Assessor review</span>
+                <span>Automatic scoring</span>
                 <span>Gap reports</span>
               </div>
             </aside>
@@ -239,7 +195,7 @@ export function AuthPages() {
                   {mode === "login"
                     ? "Enter your credentials to open your role-based dashboard."
                     : mode === "register"
-                      ? "Public registration is for graduates only. Select your TVET organization to connect your assessments with the right institution."
+                      ? "Create an independent Normal User account. Organization users are created by their Organization Admin."
                       : mode === "forgot"
                         ? "Enter your email to generate a secure expiring password reset link."
                         : "Set a new password using the secure reset token."}
@@ -257,35 +213,17 @@ export function AuthPages() {
                       onChange={(event) => setName(event.target.value)}
                       required
                     />
-                    <SelectField
-                      label="Organization"
-                      value={organizationId}
-                      onChange={(event) => setOrganizationId(event.target.value)}
-                      required
-                    >
-                      <option value="">
-                        {isLoadingOrganizations
-                          ? "Loading organizations..."
-                          : "Select your organization"}
-                      </option>
-                      {organizations.map((organization) => (
-                        <option key={organization._id} value={organization._id}>
-                          {organization.name}
-                        </option>
-                      ))}
-                    </SelectField>
-                    {!isLoadingOrganizations && organizations.length === 0 && (
-                      <Alert type="info">
-                        No active organizations are available yet. Ask the platform
-                        administrator to register your TVET institution first.
-                      </Alert>
-                    )}
+                    <Alert type="info">
+                      Public signup creates a Normal User account. Ask your
+                      Organization Admin to create an Organization User account
+                      if your results must belong to an organization.
+                    </Alert>
                   </>
                 )}
                 {mode !== "reset" && (
                   <TextField
                     label="Email"
-                    placeholder="graduate@skills-gap.local"
+                    placeholder="learner@skills-gap.local"
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
@@ -363,31 +301,30 @@ export function AuthPages() {
       >
         <div className="section-intro section-intro--center">
           <span className="eyebrow">About project</span>
-          <h2>Built for graduates, TVET institutions, and administrators</h2>
+          <h2>Built for learners, organizations, and administrators</h2>
           <p>
-            The system supports the full skills gap workflow: graduate profile
+            The system supports the full skills gap workflow: user profile
             management, competency assessment, practical evidence submission,
-            GitHub task review, RTB benchmark comparison, recommendations,
-            reports, notifications, and dashboards.
+            automatic GitHub task review, RTB benchmark comparison,
+            recommendations, reports, notifications, and dashboards.
           </p>
         </div>
         <div className="card-grid card-grid--three">
           <article className="info-card">
             <span className="info-icon">01</span>
-            <strong>Graduates</strong>
+            <strong>Normal Users</strong>
             <p>
-              Register, manage a profile, select competencies, submit practical
+              Register independently, manage a profile, select competencies, submit practical
               GitHub evidence, answer theory questions, and view
               skill gap results.
             </p>
           </article>
           <article className="info-card">
             <span className="info-icon">02</span>
-            <strong>Assessors</strong>
+            <strong>Organization Admins</strong>
             <p>
-              Review submitted evidence, verify practical GitHub task results,
-              approve quiz/theory results, and provide
-              competency-specific recommendations.
+              Manage organization users and view only their organization
+              assessment results, skill gaps, reports, and analytics.
             </p>
           </article>
           <article className="info-card">
@@ -415,19 +352,19 @@ export function AuthPages() {
           <div className="workflow-checklist" aria-label="Workflow steps">
             <div>
               <span />
-              Graduate creates an account and completes profile information
+              User creates an account and completes profile information
             </div>
             <div>
               <span />
-              Graduate selects an RTB-aligned ICT competency
+              User selects an RTB-aligned ICT competency
             </div>
             <div>
               <span />
-              Graduate submits GitHub practical evidence and theory answers
+              User submits GitHub practical evidence and theory answers
             </div>
             <div>
               <span />
-              Assessor verifies GitHub task and theory evidence, then approves recommendations
+              System verifies GitHub task and theory evidence, then generates recommendations
             </div>
             <div>
               <span />
@@ -448,15 +385,15 @@ export function AuthPages() {
           <article className="feature-card">
             <strong>RTB benchmark comparison</strong>
             <p>
-              Skill Gap = RTB Benchmark Score - Graduate Final Score, then the
+              Skill Gap = RTB Benchmark Score - User Final Score, then the
               system classifies No, Very Low, Low, Moderate, or High Gap.
             </p>
           </article>
           <article className="feature-card">
             <strong>Reports and notifications</strong>
             <p>
-              Graduates can download reports and receive notifications when
-              reviews are completed; assessors are notified after submissions.
+              Users can download reports and receive notifications immediately
+              after automatic repository analysis completes.
             </p>
           </article>
         </div>
@@ -466,9 +403,8 @@ export function AuthPages() {
         <div className="home-footer__brand">
           <div className="brand-mark">SG</div>
           <p>
-            Supporting ICT TVET graduate readiness in Kicukiro District through
-            practical assessment, RTB benchmark comparison, assessor
-            recommendations, notifications, and reports.
+            Supporting ICT readiness through practical assessment, RTB benchmark
+            comparison, automatic recommendations, notifications, and reports.
           </p>
         </div>
         <div>
@@ -497,12 +433,13 @@ export function AuthPages() {
         </div>
         <div>
           <strong>Users</strong>
-          <span>Graduates</span>
-          <span>Assessors</span>
+          <span>Normal Users</span>
+          <span>Organization Users</span>
+          <span>Organization Admins</span>
           <span>Administrators</span>
         </div>
         <div className="home-footer__bottom">
-          <span>Skills Gap Analysis Tool for ICT TVET Graduates in Kicukiro District</span>
+          <span>Skills Gap Analysis Tool for ICT competency readiness</span>
           <span>Practical evidence, RTB benchmarks, gap levels, and recommendations</span>
         </div>
       </footer>
@@ -512,6 +449,6 @@ export function AuthPages() {
 
 function BadgeLine() {
   return (
-    <span className="eyebrow">TVET ICT Graduate Competency Assessment</span>
+    <span className="eyebrow">TVET ICT Competency Assessment</span>
   );
 }
