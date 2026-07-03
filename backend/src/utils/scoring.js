@@ -1,8 +1,6 @@
 export const SCORE_WEIGHTS = {
-  practicalTask: 0.5,
-  quiz: 0.2,
-  portfolio: 0.2,
-  selfAssessment: 0.1,
+  practicalTask: 0.7,
+  quiz: 0.3,
 };
 
 function isValidScore(score) {
@@ -18,8 +16,6 @@ export function validateScoreInputs(scores) {
   const normalizedScores = {
     practicalTaskScore: normalizeScore(scores.practicalTaskScore),
     quizScore: normalizeScore(scores.quizScore),
-    portfolioScore: normalizeScore(scores.portfolioScore),
-    selfAssessmentScore: normalizeScore(scores.selfAssessmentScore),
   };
 
   const invalidField = Object.entries(normalizedScores).find(
@@ -48,9 +44,7 @@ export function calculateWeightedScore(scores) {
 
   const finalScore =
     validation.scores.practicalTaskScore * SCORE_WEIGHTS.practicalTask +
-    validation.scores.quizScore * SCORE_WEIGHTS.quiz +
-    validation.scores.portfolioScore * SCORE_WEIGHTS.portfolio +
-    validation.scores.selfAssessmentScore * SCORE_WEIGHTS.selfAssessment;
+    validation.scores.quizScore * SCORE_WEIGHTS.quiz;
 
   return Math.round(finalScore * 100) / 100;
 }

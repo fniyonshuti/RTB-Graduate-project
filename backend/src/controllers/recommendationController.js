@@ -1,21 +1,28 @@
-import Recommendation from '../models/Recommendation.js';
+import {
+  deleteRecommendationById,
+  getRecommendationForUser,
+  listRecommendationsForUser,
+  updateRecommendationById,
+} from '../services/recommendationService.js';
 import { asyncHandler } from '../utils/errors.js';
 import { sendSuccess } from '../utils/response.js';
 
 export const listRecommendations = asyncHandler(async (req, res) => {
-  const query = {};
-
-  if (req.user.role === 'graduate') query.graduate = req.user._id;
-  if (req.query.graduate && req.user.role !== 'graduate') {
-    query.graduate = req.query.graduate;
-  }
-  if (req.query.competency) query.competency = req.query.competency;
-
-  const recommendations = await Recommendation.find(query)
-    .populate('graduate', 'name email institution')
-    .populate('competency', 'title code category')
-    .populate('assessor', 'name email institution')
-    .sort({ createdAt: -1 });
-
+  const recommendations = await listRecommendationsForUser(req.user, req.query);
   sendSuccess(res, 'Recommendations loaded', recommendations);
+});
+
+export const getRecommendation = asyncHandler(async (req, res) => {
+  const recommendation = await getRecommendationForUser(req.params.id, req.user);
+  sendSuccess(res, 'Recommendation loaded', recommendation);
+});
+
+export const updateRecommendation = asyncHandler(async (req, res) => {
+  const recommendation = await updateRecommendationById(req.params.id, req.body);
+  sendSuccess(res, 'Recommendation updated', recommendation);
+});
+
+export const deleteRecommendation = asyncHandler(async (req, res) => {
+  const recommendation = await deleteRecommendationById(req.params.id);
+  sendSuccess(res, 'Recommendation deleted', recommendation);
 });

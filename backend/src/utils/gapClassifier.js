@@ -4,7 +4,8 @@ export function calculateSkillGap(benchmarkScore, finalScore) {
 }
 
 export function classifyGap(skillGap) {
-  if (skillGap <= 5) return 'No Gap';
+  if (skillGap === 0) return 'No Gap';
+  if (skillGap <= 5) return 'Very Low Gap';
   if (skillGap <= 15) return 'Low Gap';
   if (skillGap <= 25) return 'Moderate Gap';
   return 'High Gap';

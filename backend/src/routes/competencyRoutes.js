@@ -4,6 +4,7 @@ import {
   getCompetency,
   createCompetency,
   updateCompetency,
+  deleteCompetency,
 } from '../controllers/competencyController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/roleMiddleware.js';
@@ -25,6 +26,7 @@ router
 router
   .route('/:id')
   .get(getCompetency)
-  .put(authorize('admin'), updateCompetency);
+  .put(authorize('admin'), updateCompetency)
+  .delete(authorize('admin'), deleteCompetency);
 
 export default router;

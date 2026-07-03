@@ -12,6 +12,10 @@ const reportSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    organization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+    },
     title: {
       type: String,
       required: true,
@@ -33,7 +37,14 @@ const reportSchema = new mongoose.Schema(
     },
     overallGapLevel: {
       type: String,
-      enum: ['No Gap', 'Low Gap', 'Moderate Gap', 'High Gap', 'Not Available'],
+      enum: [
+        'No Gap',
+        'Very Low Gap',
+        'Low Gap',
+        'Moderate Gap',
+        'High Gap',
+        'Not Available',
+      ],
       default: 'Not Available',
     },
     strengths: [
@@ -54,10 +65,26 @@ const reportSchema = new mongoose.Schema(
         ref: 'Recommendation',
       },
     ],
+    repositoryAnalysisSummary: {
+      type: String,
+      trim: true,
+    },
+    rubricBreakdown: [
+      {
+        label: String,
+        score: Number,
+        explanation: String,
+      },
+    ],
+    finalConclusion: {
+      type: String,
+      trim: true,
+    },
   },
   { timestamps: true }
 );
 
 reportSchema.index({ graduate: 1, createdAt: -1 });
+reportSchema.index({ organization: 1, createdAt: -1 });
 
 export default mongoose.model('Report', reportSchema);

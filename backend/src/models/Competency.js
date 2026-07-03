@@ -1,5 +1,19 @@
 import mongoose from 'mongoose';
 
+const automatedTestFileSchema = new mongoose.Schema(
+  {
+    path: {
+      type: String,
+      trim: true,
+    },
+    content: {
+      type: String,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
 const practicalTaskSchema = new mongoose.Schema(
   {
     title: {
@@ -26,6 +40,14 @@ const practicalTaskSchema = new mongoose.Schema(
       min: 1,
       max: 100,
       default: 100,
+    },
+    automatedTestCommand: {
+      type: String,
+      trim: true,
+    },
+    automatedTestFiles: {
+      type: [automatedTestFileSchema],
+      default: [],
     },
   },
   { timestamps: false }
@@ -66,54 +88,6 @@ const theoryQuestionSchema = new mongoose.Schema(
   { timestamps: false }
 );
 
-const portfolioRequirementSchema = new mongoose.Schema(
-  {
-    title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    description: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    required: {
-      type: Boolean,
-      default: true,
-    },
-  },
-  { timestamps: false }
-);
-
-const rubricCriteriaSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    description: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    weight: {
-      type: Number,
-      min: 0,
-      max: 100,
-      required: true,
-    },
-    maxScore: {
-      type: Number,
-      min: 1,
-      max: 100,
-      default: 100,
-    },
-  },
-  { timestamps: false }
-);
-
 const competencySchema = new mongoose.Schema(
   {
     title: {
@@ -149,14 +123,6 @@ const competencySchema = new mongoose.Schema(
       type: [theoryQuestionSchema],
       default: [],
     },
-    portfolioRequirements: {
-      type: [portfolioRequirementSchema],
-      default: [],
-    },
-    rubricCriteria: {
-      type: [rubricCriteriaSchema],
-      default: [],
-    },
     isActive: {
       type: Boolean,
       default: true,
@@ -169,7 +135,6 @@ const competencySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-competencySchema.index({ code: 1 }, { unique: true });
 competencySchema.index({ category: 1, isActive: 1 });
 
 export default mongoose.model('Competency', competencySchema);

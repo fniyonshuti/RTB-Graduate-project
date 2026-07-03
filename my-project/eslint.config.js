@@ -19,4 +19,19 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    files: ['test/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        afterEach: 'readonly',
+        beforeEach: 'readonly',
+        describe: 'readonly',
+        expect: 'readonly',
+        it: 'readonly',
+        vi: 'readonly',
+      },
+    },
+  },
 ])

@@ -22,6 +22,113 @@ const evidenceSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    githubRepositoryUrl: {
+      type: String,
+      trim: true,
+    },
+    repositorySummary: {
+      url: String,
+      owner: String,
+      repo: String,
+      isValid: Boolean,
+      fetchStatus: String,
+      analyzedAt: Date,
+      description: String,
+      defaultBranch: String,
+      stars: Number,
+      forks: Number,
+      languages: [String],
+      readmeFound: Boolean,
+      readmeExcerpt: String,
+      recentCommits: [
+        {
+          message: String,
+          author: String,
+          date: String,
+        },
+      ],
+      supportedFileCount: Number,
+      supportedFileTypes: [
+        {
+          extension: String,
+          count: Number,
+        },
+      ],
+      setupFileFound: Boolean,
+      testFileFound: Boolean,
+      packageScripts: mongoose.Schema.Types.Mixed,
+      testScriptFound: Boolean,
+      buildScriptFound: Boolean,
+      ciWorkflowFound: Boolean,
+      ciRunFound: Boolean,
+      ciRunName: String,
+      ciRunStatus: String,
+      ciRunConclusion: String,
+      ciRunUrl: String,
+      ciRunUpdatedAt: String,
+      ciPassing: Boolean,
+      codeQualityScore: Number,
+      evidenceCompletenessScore: Number,
+      riskFlags: [String],
+      taskReview: {
+        taskId: mongoose.Schema.Types.ObjectId,
+        taskTitle: String,
+        score: Number,
+        pointsEarned: Number,
+        pointsPossible: Number,
+        passedCount: Number,
+        failedCount: Number,
+        checklist: [
+          {
+            key: String,
+            label: String,
+            passed: Boolean,
+            weight: Number,
+            evidence: String,
+            advice: String,
+          },
+        ],
+        taskKeywords: [String],
+        matchedTaskKeywords: [String],
+        taskKeywordMatchRate: Number,
+        implementationReview: {
+          sourceFilesReviewed: Number,
+          implementationKeywordMatches: [String],
+          implementationKeywordRate: Number,
+          expectedFunctionalAreas: [String],
+          detectedFunctionalAreas: [String],
+          missingFunctionalAreas: [String],
+          functionalCoverageRate: Number,
+          expectedActions: [String],
+          matchedActions: [String],
+          actionCoverageRate: Number,
+          hasRuntimeIntegration: Number,
+          implementationEvidenceScore: Number,
+        },
+        automatedProofSignals: Number,
+        automatedProofPassed: Boolean,
+        proofLevel: String,
+        proofSummary: String,
+        repositoryAssessmentResultId: mongoose.Schema.Types.ObjectId,
+        repositoryAssessmentEvidence: mongoose.Schema.Types.Mixed,
+        competencyScores: mongoose.Schema.Types.Mixed,
+        recommendations: [String],
+        feedback: [String],
+        reviewedAt: Date,
+        summary: String,
+      },
+      sampledSourceFiles: [
+        {
+          path: String,
+          language: String,
+          size: Number,
+          excerpt: String,
+        },
+      ],
+      topLevelItems: [String],
+      codeQualityNotes: [String],
+      summaryText: String,
+    },
     quizAnswers: {
       type: String,
       trim: true,
@@ -59,14 +166,6 @@ const evidenceSchema = new mongoose.Schema(
         },
       },
     ],
-    portfolioLink: {
-      type: String,
-      trim: true,
-    },
-    projectDescription: {
-      type: String,
-      trim: true,
-    },
     fileUrls: [
       {
         type: String,
@@ -94,11 +193,6 @@ const evidenceSchema = new mongoose.Schema(
         },
       },
     ],
-    selfAssessmentScore: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
   },
   { _id: false }
 );
@@ -111,16 +205,6 @@ const scoresSchema = new mongoose.Schema(
       max: 100,
     },
     quizScore: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
-    portfolioScore: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
-    selfAssessmentScore: {
       type: Number,
       min: 0,
       max: 100,
@@ -141,6 +225,10 @@ const assessmentSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    organization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+    },
     competency: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Competency',
@@ -149,6 +237,20 @@ const assessmentSchema = new mongoose.Schema(
     assessor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
+    },
+    reviewMode: {
+      type: String,
+      enum: ['automatic', 'manual_legacy'],
+      default: 'automatic',
+    },
+    reviewedBySystem: {
+      type: Boolean,
+      default: true,
+    },
+    scoringEngineVersion: {
+      type: String,
+      default: 'automatic-rubric-v1',
+      trim: true,
     },
     evidence: {
       type: evidenceSchema,
@@ -170,7 +272,14 @@ const assessmentSchema = new mongoose.Schema(
     },
     gapLevel: {
       type: String,
-      enum: ['No Gap', 'Low Gap', 'Moderate Gap', 'High Gap', 'Not Reviewed'],
+      enum: [
+        'No Gap',
+        'Very Low Gap',
+        'Low Gap',
+        'Moderate Gap',
+        'High Gap',
+        'Not Reviewed',
+      ],
       default: 'Not Reviewed',
     },
     status: {
@@ -182,6 +291,24 @@ const assessmentSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    evidenceVerification: {
+      githubReviewed: {
+        type: Boolean,
+        default: false,
+      },
+      practicalEvidenceReviewed: {
+        type: Boolean,
+        default: false,
+      },
+      theoryReviewed: {
+        type: Boolean,
+        default: false,
+      },
+      authenticityNotes: {
+        type: String,
+        trim: true,
+      },
+    },
     reviewedAt: {
       type: Date,
     },
@@ -190,6 +317,7 @@ const assessmentSchema = new mongoose.Schema(
 );
 
 assessmentSchema.index({ graduate: 1, competency: 1 });
+assessmentSchema.index({ organization: 1, status: 1, createdAt: -1 });
 assessmentSchema.index({ assessor: 1, status: 1 });
 assessmentSchema.index({ status: 1, createdAt: -1 });
 

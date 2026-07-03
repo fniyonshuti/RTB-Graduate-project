@@ -1,33 +1,16 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
 import { api } from '../api/client'
-import type { AuthPayload, Role, User } from '../types'
+import type { AuthPayload } from '../types'
+import { AuthContext, type AuthContextValue } from './auth-context'
+import { STORAGE_KEYS } from '../constants/storage'
 
-type AuthContextValue = {
-  user: User | null
-  token: string | null
-  isAuthenticated: boolean
-  isLoading: boolean
-  login: (email: string, password: string) => Promise<void>
-  register: (payload: {
-    name: string
-    email: string
-    password: string
-    role: Role
-    institution?: string
-  }) => Promise<void>
-  logout: () => void
-}
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined)
-const STORAGE_KEY = 'rtb-skills-gap-auth'
+const STORAGE_KEY = STORAGE_KEYS.AUTH
 
 function readStoredAuth(): AuthPayload | null {
   const raw = localStorage.getItem(STORAGE_KEY)
@@ -42,36 +25,42 @@ function readStoredAuth(): AuthPayload | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [storedAuth] = useState(readStoredAuth)
+  const [user, setUser] = useState(storedAuth?.user ?? null)
+  const [token, setToken] = useState(storedAuth?.token ?? null)
+  const [isLoading, setIsLoading] = useState(Boolean(storedAuth))
 
   useEffect(() => {
-    const stored = readStoredAuth()
-    if (!stored) {
-      setIsLoading(false)
-      return
-    }
+    if (!storedAuth) return
 
-    setUser(stored.user)
-    setToken(stored.token)
+    let isCurrent = true
 
     api
-      .me(stored.token)
+      .me(storedAuth.token)
       .then((freshUser) => {
+        if (!isCurrent) return
+
         setUser(freshUser)
         localStorage.setItem(
           STORAGE_KEY,
-          JSON.stringify({ user: freshUser, token: stored.token }),
+          JSON.stringify({ user: freshUser, token: storedAuth.token }),
         )
       })
       .catch(() => {
+        if (!isCurrent) return
+
         localStorage.removeItem(STORAGE_KEY)
         setUser(null)
         setToken(null)
       })
-      .finally(() => setIsLoading(false))
-  }, [])
+      .finally(() => {
+        if (isCurrent) setIsLoading(false)
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [storedAuth])
 
   const persistAuth = useCallback((payload: AuthPayload) => {
     setUser(payload.user)
@@ -92,13 +81,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: string
       email: string
       password: string
-      role: Role
       institution?: string
     }) => {
       const authPayload = await api.register(payload)
       persistAuth(authPayload)
     },
     [persistAuth],
+  )
+
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      if (!token) throw new Error('Authentication is required')
+      const freshUser = await api.changePassword(token, currentPassword, newPassword)
+      setUser(freshUser)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ user: freshUser, token }))
+    },
+    [token],
   )
 
   const logout = useCallback(() => {
@@ -114,21 +112,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: Boolean(user && token),
       isLoading,
       login,
+      changePassword,
       register,
       logout,
     }),
-    [isLoading, login, logout, register, token, user],
+    [changePassword, isLoading, login, logout, register, token, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext)
-
-  if (!context) {
-    throw new Error('useAuth must be used inside AuthProvider')
-  }
-
-  return context
 }

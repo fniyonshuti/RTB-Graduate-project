@@ -4,6 +4,8 @@ import {
   upsertMyProfile,
   listGraduateProfiles,
   getGraduateProfile,
+  deleteMyProfile,
+  deleteGraduateProfile,
 } from '../controllers/graduateController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/roleMiddleware.js';
@@ -14,10 +16,14 @@ router.use(protect);
 
 router
   .route('/me')
-  .get(authorize('graduate'), getMyProfile)
-  .put(authorize('graduate'), upsertMyProfile);
+  .get(authorize('learner'), getMyProfile)
+  .put(authorize('learner'), upsertMyProfile)
+  .delete(authorize('learner'), deleteMyProfile);
 
-router.get('/', authorize('assessor', 'admin'), listGraduateProfiles);
-router.get('/:userId', authorize('assessor', 'admin'), getGraduateProfile);
+router.get('/', authorize('org_admin', 'admin'), listGraduateProfiles);
+router
+  .route('/:userId')
+  .get(authorize('org_admin', 'admin'), getGraduateProfile)
+  .delete(authorize('admin'), deleteGraduateProfile);
 
 export default router;

@@ -1,61 +1,31 @@
 import mongoose from "mongoose";
-
-function maskMongoUri(uri) {
-  return uri.replace(/\/\/([^:/@]+):([^@]+)@/, "//$1:****@");
-}
-
-function isSrvNetworkError(error) {
-  return (
-    error.message.includes("querySrv") ||
-    ["ECONNREFUSED", "ENOTFOUND", "ETIMEOUT", "ESERVFAIL"].includes(error.code)
-  );
-}
-
-async function tryConnect(uri, label) {
-  const connection = await mongoose.connect(uri, {
-    serverSelectionTimeoutMS: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 8000,
-  });
-
-  console.log(`MongoDB connected (${label}): ${connection.connection.host}`);
-  return connection;
-}
+import { env } from "./env.js";
 
 async function connectDB() {
-  const primaryUri = process.env.MONGO_URI;
+  const mongoUri = env.mongoUri;
 
-  if (!primaryUri) {
+  if (!mongoUri) {
     throw new Error("MONGO_URI is missing in .env file");
   }
 
   try {
-    return await tryConnect(primaryUri, "primary");
-  } catch (primaryError) {
-    const fallbackUri = process.env.MONGO_FALLBACK_URI;
+    const connection = await mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: env.dbConnectTimeoutMs,
+      autoIndex: !env.isProduction,
+    });
 
-    if (!fallbackUri || fallbackUri === primaryUri || !isSrvNetworkError(primaryError)) {
-      console.error(`MongoDB connection failed: ${primaryError.message}`);
-      if (primaryUri.startsWith("mongodb+srv://")) {
-        console.error(
-          "Atlas SRV lookup failed. Check DNS/network access, Atlas IP access list, database user credentials, and outbound ports 27015-27017."
-        );
-      }
-      throw primaryError;
-    }
+    console.log(`MongoDB connected: ${connection.connection.host}`);
+    return connection;
+  } catch (error) {
+    console.error(`MongoDB connection failed: ${error.message}`);
 
-    console.warn(
-      `Primary MongoDB connection failed: ${primaryError.message}`
-    );
-    console.warn(`Trying fallback MongoDB URI: ${maskMongoUri(fallbackUri)}`);
-
-    try {
-      return await tryConnect(fallbackUri, "fallback");
-    } catch (fallbackError) {
-      console.error(`Fallback MongoDB connection failed: ${fallbackError.message}`);
+    if (mongoUri.startsWith("mongodb+srv://")) {
       console.error(
-        "Fix: start local MongoDB or update MONGO_URI to a reachable MongoDB Atlas/local connection string."
+        "Atlas SRV lookup failed. Check DNS/network access, Atlas IP access list, database user credentials, and outbound ports 27015-27017.",
       );
-      throw fallbackError;
     }
+
+    throw error;
   }
 }
 

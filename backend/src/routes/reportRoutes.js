@@ -1,5 +1,10 @@
 import express from 'express';
-import { createReport, listReports } from '../controllers/reportController.js';
+import {
+  createReport,
+  deleteReport,
+  getReport,
+  listReports,
+} from '../controllers/reportController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/roleMiddleware.js';
 
@@ -9,7 +14,12 @@ router.use(protect);
 
 router
   .route('/')
-  .get(authorize('graduate', 'assessor', 'admin'), listReports)
-  .post(authorize('graduate', 'assessor', 'admin'), createReport);
+  .get(authorize('learner'), listReports)
+  .post(authorize('learner'), createReport);
+
+router
+  .route('/:id')
+  .get(authorize('learner'), getReport)
+  .delete(authorize('learner'), deleteReport);
 
 export default router;

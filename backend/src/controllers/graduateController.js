@@ -1,43 +1,40 @@
-import GraduateProfile from '../models/GraduateProfile.js';
-import { AppError, asyncHandler } from '../utils/errors.js';
+import {
+  getGraduateProfileByUserId,
+  getProfileByGraduateId,
+  listGraduateProfiles as listGraduateProfilesService,
+  deleteGraduateProfileByUserId,
+  deleteProfileByGraduateId,
+  upsertProfileByGraduateId,
+} from '../services/graduateService.js';
+import { asyncHandler } from '../utils/errors.js';
 import { sendSuccess } from '../utils/response.js';
 
 export const getMyProfile = asyncHandler(async (req, res) => {
-  const profile = await GraduateProfile.findOne({ user: req.user._id }).populate(
-    'user',
-    'name email institution role'
-  );
-
+  const profile = await getProfileByGraduateId(req.user._id);
   sendSuccess(res, 'Graduate profile loaded', profile);
 });
 
 export const upsertMyProfile = asyncHandler(async (req, res) => {
-  const profile = await GraduateProfile.findOneAndUpdate(
-    { user: req.user._id },
-    { ...req.body, user: req.user._id },
-    { new: true, upsert: true, runValidators: true }
-  ).populate('user', 'name email institution role');
-
+  const profile = await upsertProfileByGraduateId(req.user._id, req.body);
   sendSuccess(res, 'Graduate profile saved', profile);
 });
 
 export const listGraduateProfiles = asyncHandler(async (req, res) => {
-  const profiles = await GraduateProfile.find()
-    .populate('user', 'name email institution role isActive')
-    .sort({ createdAt: -1 });
-
+  const profiles = await listGraduateProfilesService(req.user);
   sendSuccess(res, 'Graduate profiles loaded', profiles);
 });
 
 export const getGraduateProfile = asyncHandler(async (req, res) => {
-  const profile = await GraduateProfile.findOne({ user: req.params.userId }).populate(
-    'user',
-    'name email institution role isActive'
-  );
-
-  if (!profile) {
-    throw new AppError('Graduate profile was not found', 404);
-  }
-
+  const profile = await getGraduateProfileByUserId(req.params.userId, req.user);
   sendSuccess(res, 'Graduate profile loaded', profile);
+});
+
+export const deleteMyProfile = asyncHandler(async (req, res) => {
+  const profile = await deleteProfileByGraduateId(req.user._id);
+  sendSuccess(res, 'Graduate profile deleted', profile);
+});
+
+export const deleteGraduateProfile = asyncHandler(async (req, res) => {
+  const profile = await deleteGraduateProfileByUserId(req.params.userId);
+  sendSuccess(res, 'Graduate profile deleted', profile);
 });

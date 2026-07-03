@@ -1,6 +1,29 @@
-export type Role = 'graduate' | 'assessor' | 'admin'
+export type Role =
+  | 'normal_user'
+  | 'organization_user'
+  | 'org_admin'
+  | 'admin'
+  | 'super_admin'
+  | 'assessor'
 
-export type GapLevel = 'No Gap' | 'Low Gap' | 'Moderate Gap' | 'High Gap' | 'Not Reviewed'
+export type Organization = {
+  _id: string
+  name: string
+  district?: string
+  type?: 'tvet_institution' | 'training_center' | 'other'
+  contactEmail?: string
+  phone?: string
+  address?: string
+  status?: 'active' | 'inactive'
+}
+
+export type GapLevel =
+  | 'No Gap'
+  | 'Very Low Gap'
+  | 'Low Gap'
+  | 'Moderate Gap'
+  | 'High Gap'
+  | 'Not Reviewed'
 
 export type AssessmentStatus =
   | 'draft'
@@ -15,8 +38,10 @@ export type User = {
   name: string
   email: string
   role: Role
+  organization?: Organization | string
   institution?: string
   isActive?: boolean
+  mustChangePassword?: boolean
 }
 
 export type ApiResponse<T> = {
@@ -39,8 +64,6 @@ export type Competency = {
   expectedEvidence?: string
   practicalTasks?: PracticalTask[]
   theoryQuestions?: TheoryQuestion[]
-  portfolioRequirements?: PortfolioRequirement[]
-  rubricCriteria?: RubricCriterion[]
   isActive?: boolean
 }
 
@@ -51,6 +74,11 @@ export type PracticalTask = {
   deliverables?: string
   estimatedMinutes?: number
   maxScore?: number
+  automatedTestCommand?: string
+  automatedTestFiles?: {
+    path?: string
+    content?: string
+  }[]
 }
 
 export type TheoryQuestion = {
@@ -61,21 +89,6 @@ export type TheoryQuestion = {
   correctAnswer?: string
   expectedAnswer?: string
   points: number
-}
-
-export type PortfolioRequirement = {
-  _id: string
-  title: string
-  description: string
-  required: boolean
-}
-
-export type RubricCriterion = {
-  _id: string
-  name: string
-  description: string
-  weight: number
-  maxScore: number
 }
 
 export type Benchmark = {
@@ -105,6 +118,9 @@ export type Assessment = {
   _id: string
   graduate: User
   assessor?: User
+  reviewMode?: 'automatic' | 'manual_legacy'
+  reviewedBySystem?: boolean
+  scoringEngineVersion?: string
   competency: Competency
   evidence: {
     practicalSubmissionMode?: 'direct_test' | 'file_upload' | 'mixed'
@@ -112,6 +128,8 @@ export type Assessment = {
     practicalTaskTitle?: string
     practicalTaskInstructions?: string
     practicalTask?: string
+    githubRepositoryUrl?: string
+    repositorySummary?: RepositorySummary
     quizAnswers?: string
     theoryAnswers?: {
       questionId: string
@@ -121,17 +139,12 @@ export type Assessment = {
       pointsAwarded: number
       pointsPossible: number
     }[]
-    portfolioLink?: string
-    projectDescription?: string
     fileUrls?: string[]
     evidenceFiles?: EvidenceFile[]
-    selfAssessmentScore?: number
   }
   scores: {
     practicalTaskScore?: number
     quizScore?: number
-    portfolioScore?: number
-    selfAssessmentScore?: number
     finalScore?: number
   }
   benchmarkScore?: number
@@ -139,8 +152,178 @@ export type Assessment = {
   gapLevel: GapLevel
   status: AssessmentStatus
   assessorComment?: string
+  evidenceVerification?: {
+    githubReviewed?: boolean
+    practicalEvidenceReviewed?: boolean
+    theoryReviewed?: boolean
+    authenticityNotes?: string
+  }
   createdAt?: string
   reviewedAt?: string
+}
+
+export type RepositoryTaskReview = {
+  taskId?: string
+  taskTitle?: string
+  score: number
+  pointsEarned: number
+  pointsPossible: number
+  passedCount: number
+  failedCount: number
+  checklist: {
+    key: string
+    label: string
+    passed: boolean
+    weight: number
+    evidence?: string
+    advice?: string
+  }[]
+  taskKeywords?: string[]
+  matchedTaskKeywords?: string[]
+  taskKeywordMatchRate?: number
+  implementationReview?: {
+    sourceFilesReviewed?: number
+    implementationKeywordMatches?: string[]
+    implementationKeywordRate?: number
+    expectedFunctionalAreas?: string[]
+    detectedFunctionalAreas?: string[]
+    missingFunctionalAreas?: string[]
+    functionalCoverageRate?: number
+    expectedActions?: string[]
+    matchedActions?: string[]
+    actionCoverageRate?: number
+    hasRuntimeIntegration?: number
+    implementationEvidenceScore?: number
+  }
+  automatedProofSignals?: number
+  automatedProofPassed?: boolean
+  proofLevel?: string
+  proofSummary?: string
+  repositoryAssessmentResultId?: string
+  competencyScores?: Record<string, number>
+  recommendations?: string[]
+  feedback?: string[]
+  reviewedAt?: string
+  summary?: string
+}
+
+export type RepositorySummary = {
+  url?: string
+  owner?: string
+  repo?: string
+  isValid?: boolean
+  fetchStatus?: string
+  analyzedAt?: string
+  description?: string
+  defaultBranch?: string
+  stars?: number
+  forks?: number
+  languages?: string[]
+  readmeFound?: boolean
+  readmeExcerpt?: string
+  recentCommits?: {
+    message?: string
+    author?: string
+    date?: string
+  }[]
+  supportedFileCount?: number
+  supportedFileTypes?: {
+    extension?: string
+    count?: number
+  }[]
+  setupFileFound?: boolean
+  testFileFound?: boolean
+  packageScripts?: Record<string, string>
+  testScriptFound?: boolean
+  buildScriptFound?: boolean
+  ciWorkflowFound?: boolean
+  ciRunFound?: boolean
+  ciRunName?: string
+  ciRunStatus?: string
+  ciRunConclusion?: string
+  ciRunUrl?: string
+  ciRunUpdatedAt?: string
+  ciPassing?: boolean
+  codeQualityScore?: number
+  evidenceCompletenessScore?: number
+  riskFlags?: string[]
+  taskReview?: RepositoryTaskReview
+  sampledSourceFiles?: {
+    path?: string
+    language?: string
+    size?: number
+    excerpt?: string
+  }[]
+  topLevelItems?: string[]
+  codeQualityNotes?: string[]
+  summaryText?: string
+}
+
+export type RepositoryAssessmentResult = {
+  _id: string
+  repositoryUrl: string
+  owner?: string
+  repo?: string
+  verificationStatus: 'verified' | 'failed'
+  executionMode: 'docker' | 'local' | 'static_only' | 'failed'
+  projectType?: string
+  detectedTechnologies: string[]
+  totalTestCases: number
+  passedTestCases: number
+  accuracyScore: number
+  gapClassification: 'Excellent' | 'Competent' | 'Moderate Gap' | 'High Gap' | string
+  competencyScores: Record<
+    'frontend' | 'backend' | 'database' | 'authentication' | 'testing' | 'documentation' | 'deployment',
+    number
+  >
+  passedRequirements: {
+    id?: string
+    title?: string
+    competency?: string
+    passed?: boolean
+    evidence?: string
+    error?: string
+  }[]
+  failedRequirements: {
+    id?: string
+    title?: string
+    competency?: string
+    passed?: boolean
+    evidence?: string
+    error?: string
+  }[]
+  eslintResult?: {
+    available?: boolean
+    success?: boolean
+    errors?: number
+    warnings?: number
+    output?: string
+  }
+  securityScanResult?: {
+    available?: boolean
+    success?: boolean
+    high?: number
+    critical?: number
+    total?: number
+    secretFindings?: string[]
+    output?: string
+  }
+  assessorReviewStatus?: 'pending' | 'approved' | 'returned'
+  automaticReviewStatus?: 'completed' | 'failed'
+  commandResults?: {
+    name?: string
+    command?: string
+    success?: boolean
+    exitCode?: number
+    stdout?: string
+    stderr?: string
+    durationMs?: number
+  }[]
+  recommendations: string[]
+  assessorValidationRequired: boolean
+  securityNotes: string[]
+  errorMessage?: string
+  createdAt?: string
 }
 
 export type Recommendation = {
@@ -149,9 +332,17 @@ export type Recommendation = {
   competency: Competency
   gapLevel: GapLevel
   message: string
+  draftMessage?: string
   actionItems: string[]
   resources: string[]
   priority: 'low' | 'medium' | 'high'
+  aiProvider?: string
+  aiModel?: string
+  aiPrompt?: string
+  aiRawResponse?: string
+  approvedBy?: User
+  approvedAt?: string
+  isApproved?: boolean
 }
 
 export type EvidenceFile = {
@@ -173,6 +364,13 @@ export type Report = {
   strengths: string[]
   weaknesses: string[]
   recommendations?: Recommendation[]
+  repositoryAnalysisSummary?: string
+  rubricBreakdown?: {
+    label?: string
+    score?: number
+    explanation?: string
+  }[]
+  finalConclusion?: string
   createdAt?: string
 }
 
