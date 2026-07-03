@@ -39,6 +39,7 @@ function hideCorrectAnswersFromAssessment(assessment) {
       (question) => {
         const safeQuestion = { ...question };
         delete safeQuestion.correctAnswer;
+        delete safeQuestion.expectedAnswer;
         return safeQuestion;
       },
     );
@@ -49,6 +50,50 @@ function hideCorrectAnswersFromAssessment(assessment) {
 
 function normalizeAnswer(value = "") {
   return String(value).trim().toLowerCase();
+}
+
+const THEORY_STOP_WORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "that",
+  "this",
+  "with",
+  "from",
+  "are",
+  "was",
+  "were",
+  "has",
+  "have",
+  "into",
+  "data",
+  "user",
+  "users",
+  "system",
+  "application",
+]);
+
+function tokenizeTheoryAnswer(value = "") {
+  return normalizeAnswer(value)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !THEORY_STOP_WORDS.has(token));
+}
+
+function scoreShortAnswer({ answerText, expectedAnswer, points }) {
+  const expectedTokens = [...new Set(tokenizeTheoryAnswer(expectedAnswer))];
+
+  if (expectedTokens.length === 0) return 0;
+
+  const answerTokens = new Set(tokenizeTheoryAnswer(answerText));
+  const matchedTokens = expectedTokens.filter((token) =>
+    answerTokens.has(token),
+  );
+  const coverage = matchedTokens.length / expectedTokens.length;
+
+  if (coverage < 0.35) return 0;
+
+  return Math.round(points * Math.min(coverage, 1) * 100) / 100;
 }
 
 function calculateTheoryResult(competency, submittedAnswers = []) {
@@ -76,14 +121,21 @@ function calculateTheoryResult(competency, submittedAnswers = []) {
     const isCorrect =
       isObjective &&
       normalizeAnswer(answerText) === normalizeAnswer(question.correctAnswer);
-    const pointsAwarded = isCorrect ? question.points : 0;
+    const pointsAwarded = isObjective
+      ? isCorrect
+        ? question.points
+        : 0
+      : scoreShortAnswer({
+          answerText,
+          expectedAnswer: question.expectedAnswer,
+          points: question.points,
+        });
 
     return {
       questionId: question._id,
       question: question.question,
       answer: answerText,
-      correctAnswer: question.correctAnswer,
-      isCorrect: isObjective ? isCorrect : undefined,
+      isCorrect: isObjective ? isCorrect : pointsAwarded === question.points,
       pointsAwarded,
       pointsPossible: question.points,
     };
@@ -212,6 +264,27 @@ export async function submitAssessment(user, payload) {
     },
     benchmark.requiredScore,
   );
+  const assessorComment =
+    "Automatically reviewed using repository analysis, automated checks, theory answers, and RTB benchmark comparison.";
+  const evidenceVerification = {
+    githubReviewed: true,
+    practicalEvidenceReviewed: true,
+    theoryReviewed: true,
+    authenticityNotes:
+      "No human assessor review was used. Repository evidence was checked by the automated assessment engine.",
+  };
+  const automaticDraft = await generateAutomaticRecommendationDraft({
+    assessment: {
+      scores: analysis.scores,
+      benchmarkScore: analysis.benchmarkScore,
+      skillGap: analysis.skillGap,
+      gapLevel: analysis.gapLevel,
+      evidence: { repositorySummary },
+      assessorComment,
+      evidenceVerification,
+    },
+    competency,
+  });
 
   const assessment = await Assessment.create({
     graduate: graduate._id,
@@ -238,22 +311,11 @@ export async function submitAssessment(user, payload) {
     skillGap: analysis.skillGap,
     gapLevel: analysis.gapLevel,
     status: "reviewed",
-    assessorComment:
-      "Automatically reviewed using repository analysis, automated checks, theory answers, and RTB benchmark comparison.",
-    evidenceVerification: {
-      githubReviewed: true,
-      practicalEvidenceReviewed: true,
-      theoryReviewed: true,
-      authenticityNotes:
-        "No human assessor review was used. Repository evidence was checked by the automated assessment engine.",
-    },
+    assessorComment,
+    evidenceVerification,
     reviewedAt: new Date(),
   });
 
-  const automaticDraft = await generateAutomaticRecommendationDraft({
-    assessment,
-    competency,
-  });
   await upsertAssessmentRecommendation({
     assessment,
     assessorId: user._id,
@@ -481,6 +543,38 @@ export async function previewRepositoryTaskReview(payload, user) {
           : repositoryAssessment.errorMessage ||
             "Repository assessment failed.",
       repositoryAssessmentResultId: repositoryAssessment._id,
+      repositoryAssessmentEvidence: {
+        verificationStatus: repositoryAssessment.verificationStatus,
+        executionMode: repositoryAssessment.executionMode,
+        projectType: repositoryAssessment.projectType,
+        detectedTechnologies: repositoryAssessment.detectedTechnologies || [],
+        totalTestCases: repositoryAssessment.totalTestCases,
+        passedTestCases: repositoryAssessment.passedTestCases,
+        totalWeight: repositoryAssessment.totalWeight,
+        passedWeight: repositoryAssessment.passedWeight,
+        accuracyScore: repositoryAssessment.accuracyScore,
+        gapClassification: repositoryAssessment.gapClassification,
+        eslintResult: repositoryAssessment.eslintResult,
+        securityScanResult: repositoryAssessment.securityScanResult,
+        passedRequirements: (repositoryAssessment.passedRequirements || []).map(
+          (item) => ({
+            title: item.title,
+            competency: item.competency,
+            evidence: item.evidence,
+            weight: item.weight,
+          }),
+        ),
+        failedRequirements: (repositoryAssessment.failedRequirements || []).map(
+          (item) => ({
+            title: item.title,
+            competency: item.competency,
+            error: item.error,
+            weight: item.weight,
+          }),
+        ),
+        assessorValidationRequired:
+          repositoryAssessment.assessorValidationRequired,
+      },
       competencyScores: repositoryAssessment.competencyScores,
       recommendations: repositoryAssessment.recommendations,
       summary: `Real repository assessment scored ${repositoryAssessment.accuracyScore}% from ${repositoryAssessment.passedWeight || 0}/${repositoryAssessment.totalWeight || 0} weighted objective points across ${repositoryAssessment.passedTestCases}/${repositoryAssessment.totalTestCases} check(s).`,
@@ -702,6 +796,9 @@ export async function reviewAssessment(assessmentId, assessorId, payload) {
     type: "assessment",
     link: `/graduate/results`,
   });
+
+  const assessor = await User.findById(assessorId).select("_id role");
+  await generateGraduateReport(assessment.graduate, assessor).catch(() => null);
 
   const reviewedAssessment = await populateAssessment(
     Assessment.findById(assessment._id),

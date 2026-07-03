@@ -4,7 +4,6 @@ import {
   deleteManagedUser,
   getManagedUser,
   listManagedUsers,
-  resetManagedUserTemporaryPassword,
   updateManagedUser,
 } from '../services/userService.js';
 import { asyncHandler } from '../utils/errors.js';
@@ -38,9 +37,4 @@ export const deactivateUser = asyncHandler(async (req, res) => {
 export const deleteUser = asyncHandler(async (req, res) => {
   const user = await deleteManagedUser(req.params.id, req.user);
   sendSuccess(res, 'User deleted', user);
-});
-
-export const resetUserTemporaryPassword = asyncHandler(async (req, res) => {
-  const result = await resetManagedUserTemporaryPassword(req.params.id, req.user);
-  sendSuccess(res, 'Temporary password reset successfully', result);
 });

@@ -431,13 +431,6 @@ export const api = {
   deleteUser: (token: string, id: string) =>
     request<User>(`/users/${id}`, { method: 'DELETE', token }),
 
-  resetUserTemporaryPassword: (token: string, id: string) =>
-    request<{
-      user: User
-      temporaryPassword: string
-      expiresAt: string
-    }>(`/users/${id}/reset-password`, { method: 'PATCH', token }),
-
   organizations: (token: string) =>
     request<Organization[]>('/organizations', { token }),
 

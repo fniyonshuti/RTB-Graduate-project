@@ -8,8 +8,9 @@ import {
 import { api } from '../api/client'
 import type { AuthPayload } from '../types'
 import { AuthContext, type AuthContextValue } from './auth-context'
+import { STORAGE_KEYS } from '../constants/storage'
 
-const STORAGE_KEY = 'rtb-skills-gap-auth'
+const STORAGE_KEY = STORAGE_KEYS.AUTH
 
 function readStoredAuth(): AuthPayload | null {
   const raw = localStorage.getItem(STORAGE_KEY)

@@ -40,7 +40,7 @@ describe("Graduate profile management practical task", () => {
         name: "Test Graduate",
         email: uniqueEmail,
         password: "Password123!",
-        role: "graduate"
+        role: "normal_user"
       });
 
     expect([200, 201]).toContain(response.status);
@@ -59,7 +59,7 @@ describe("Graduate profile management practical task", () => {
         name: "",
         email: "invalid-email",
         password: "123",
-        role: "graduate"
+        role: "normal_user"
       });
 
     expect([400, 422]).toContain(response.status);

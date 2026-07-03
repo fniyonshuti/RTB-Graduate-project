@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import './App.css'
 import { Alert, Button, Card, TextField } from './components/common'
 import { AppLayout, type ViewKey } from './components/layout'
 import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './context/useAuth'
 import { AuthPages } from './pages/AuthPages'
+import { isLearnerRole } from './utils/roles'
+import './index.css'
 import {
   AssessmentsPage,
   BenchmarksPage,
@@ -73,6 +74,10 @@ function AppContent() {
     }
 
     if (currentView === 'reports') {
+      if (!isLearnerRole(user.role)) {
+        return <DashboardPage onNavigate={setCurrentView} role={user.role} token={token} />
+      }
+
       return <ReportsPage role={user.role} token={token} />
     }
 

@@ -110,6 +110,7 @@ const evidenceSchema = new mongoose.Schema(
         proofLevel: String,
         proofSummary: String,
         repositoryAssessmentResultId: mongoose.Schema.Types.ObjectId,
+        repositoryAssessmentEvidence: mongoose.Schema.Types.Mixed,
         competencyScores: mongoose.Schema.Types.Mixed,
         recommendations: [String],
         feedback: [String],

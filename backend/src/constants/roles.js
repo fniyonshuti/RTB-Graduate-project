@@ -4,7 +4,6 @@ export const ROLES = {
   ORGANIZATION_ADMIN: "org_admin",
   ADMIN: "admin",
   SUPER_ADMIN: "super_admin",
-  LEGACY_GRADUATE: "graduate",
   LEGACY_ASSESSOR: "assessor",
 };
 
@@ -13,13 +12,11 @@ export const USER_ROLE_VALUES = Object.values(ROLES);
 export const LEARNER_ROLES = [
   ROLES.NORMAL_USER,
   ROLES.ORGANIZATION_USER,
-  ROLES.LEGACY_GRADUATE,
 ];
 
 export const ORGANIZATION_SCOPED_ROLES = [
   ROLES.ORGANIZATION_USER,
   ROLES.ORGANIZATION_ADMIN,
-  ROLES.LEGACY_GRADUATE,
 ];
 
 export const SYSTEM_ADMIN_ROLES = [ROLES.ADMIN, ROLES.SUPER_ADMIN];
@@ -34,7 +31,7 @@ export function isLearnerRole(role) {
 }
 
 export function isOrganizationUserRole(role) {
-  return role === ROLES.ORGANIZATION_USER || role === ROLES.LEGACY_GRADUATE;
+  return role === ROLES.ORGANIZATION_USER;
 }
 
 export function isOrganizationAdminRole(role) {
@@ -57,7 +54,6 @@ export function manageableRolesFor(role) {
       ROLES.ORGANIZATION_ADMIN,
       ROLES.ADMIN,
       ROLES.SUPER_ADMIN,
-      ROLES.LEGACY_GRADUATE,
     ];
   }
 
@@ -103,7 +99,6 @@ export function displayRole(role) {
     [ROLES.ORGANIZATION_ADMIN]: "Organization Admin",
     [ROLES.ADMIN]: "Admin",
     [ROLES.SUPER_ADMIN]: "Super Admin",
-    [ROLES.LEGACY_GRADUATE]: "Organization User",
     [ROLES.LEGACY_ASSESSOR]: "Assessor (legacy)",
   };
 

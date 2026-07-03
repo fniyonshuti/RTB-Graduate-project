@@ -4,7 +4,6 @@ import {
   deleteReport,
   getReport,
   listReports,
-  updateReport,
 } from '../controllers/reportController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/roleMiddleware.js';
@@ -15,13 +14,12 @@ router.use(protect);
 
 router
   .route('/')
-  .get(authorize('learner', 'org_admin', 'admin'), listReports)
-  .post(authorize('learner', 'org_admin', 'admin'), createReport);
+  .get(authorize('learner'), listReports)
+  .post(authorize('learner'), createReport);
 
 router
   .route('/:id')
-  .get(authorize('learner', 'org_admin', 'admin'), getReport)
-  .put(authorize('org_admin', 'admin'), updateReport)
-  .delete(authorize('learner', 'org_admin', 'admin'), deleteReport);
+  .get(authorize('learner'), getReport)
+  .delete(authorize('learner'), deleteReport);
 
 export default router;

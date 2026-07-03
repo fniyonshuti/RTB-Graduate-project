@@ -17,10 +17,24 @@ import {
   GapBadge,
   LoadingState,
   ProgressBar,
+  ReadMoreText,
   SelectField,
   StatCard,
   TextArea,
   TextField,
+  BarChartComponent,
+  LineChartComponent,
+  PieChartComponent,
+  Users,
+  BarChart3,
+  TrendingUp,
+  Zap,
+  Target,
+  ClipboardCheck,
+  Award,
+  AlertTriangle,
+  Gauge,
+  Activity,
 } from "../components/common";
 import type {
   Assessment,
@@ -38,6 +52,7 @@ import type {
 } from "../types";
 import { formatDate, formatPercent, readableStatus } from "../utils/gapLevels";
 import { isLearnerRole, roleLabel } from "../utils/roles";
+import { GITHUB_PLACEHOLDER } from "../constants/github";
 
 type PageProps = {
   token: string;
@@ -47,6 +62,8 @@ type PageProps = {
 type DashboardPageProps = PageProps & {
   onNavigate: (view: ViewKey) => void;
 };
+
+type ChartItem = Record<string, string | number>;
 
 type AsyncState<T> = {
   data: T;
@@ -128,6 +145,75 @@ function dashboardList<T>(data: DashboardData, key: string) {
   return Array.isArray(data[key]) ? (data[key] as T[]) : [];
 }
 
+function dashboardChartList(data: DashboardData, key: string) {
+  return dashboardList<ChartItem>(data, key);
+}
+
+function dashboardRecord(data: DashboardData, key: string) {
+  const value = data[key];
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, number>)
+    : {};
+}
+
+function gapDistributionChart(data: DashboardData) {
+  const distribution = dashboardRecord(data, "gapDistribution");
+  const orderedLevels = [
+    "No Gap",
+    "Very Low Gap",
+    "Low Gap",
+    "Moderate Gap",
+    "High Gap",
+    "Not Reviewed",
+  ];
+
+  return orderedLevels
+    .map((level) => ({
+      name: level,
+      value: Number(distribution[level] || 0),
+    }))
+    .filter((item) => item.value > 0);
+}
+
+function reviewedAssessmentChart(data: DashboardData, assessments: Assessment[]) {
+  const apiChart = dashboardChartList(data, "reviewedCompetencyScores");
+
+  if (apiChart.length > 0) return apiChart;
+
+  return assessments
+    .filter((assessment) => assessment.status === "reviewed")
+    .map((assessment) => ({
+      name:
+        assessment.competency?.code ||
+        assessment.competency?.title?.slice(0, 14) ||
+        "Competency",
+      score: Number(assessment.scores?.finalScore || 0),
+      gap: Number(assessment.skillGap || 0),
+    }));
+}
+
+function assessmentStatusChart(data: DashboardData, assessments: Assessment[]) {
+  const apiChart = dashboardChartList(data, "assessmentStatusDistribution");
+
+  if (apiChart.length > 0) {
+    return apiChart.map((item) => ({
+      ...item,
+      name:
+        typeof item.name === "string"
+          ? readableStatus(item.name as Assessment["status"])
+          : item.name,
+    }));
+  }
+
+  const totals = assessments.reduce<Record<string, number>>((summary, item) => {
+    const status = readableStatus(item.status);
+    summary[status] = (summary[status] || 0) + 1;
+    return summary;
+  }, {});
+
+  return Object.entries(totals).map(([name, value]) => ({ name, value }));
+}
+
 export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.dashboard(token),
@@ -147,39 +233,161 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
     );
   }
 
+  const totalUsers = dashboardNumber(data, "totalGraduates");
+  const orgUsers = dashboardNumber(data, "totalOrganizationUsers");
+  const orgAdmins = dashboardNumber(data, "totalOrganizationAdmins");
+  const totalCompetencies = dashboardNumber(data, "totalCompetencies");
+  const avgGap = formatPercent(dashboardNumber(data, "averageSkillGap"));
+  const gapChartData = gapDistributionChart(data);
+  const assessmentStatusData = assessmentStatusChart(data, []);
+  const competencyScoreData = dashboardChartList(data, "scoreByCompetency");
+  const benchmarkCoverageData = dashboardChartList(data, "benchmarkCoverage");
+  const roleDistributionData = dashboardChartList(data, "roleDistribution");
+  const isOrganizationDashboard = role === "org_admin";
+
   const cards = [
-    ["Total Users", dashboardNumber(data, "totalGraduates")],
-    ["Organization Users", dashboardNumber(data, "totalOrganizationUsers")],
-    ["Organization Admins", dashboardNumber(data, "totalOrganizationAdmins")],
-    [
-      "Average Skill Gap",
-      formatPercent(dashboardNumber(data, "averageSkillGap")),
-    ],
+    {
+      label: isOrganizationDashboard ? "Organization Users" : "Total Users",
+      value: totalUsers,
+      icon: <Users size={24} />,
+      tone: "blue" as const,
+    },
+    {
+      label: "Organization Users",
+      value: orgUsers,
+      icon: <ClipboardCheck size={24} />,
+      tone: "green" as const,
+    },
+    { label: "Organization Admins", value: orgAdmins, icon: <Zap size={24} />, tone: "violet" as const },
+    {
+      label: "Active Competencies",
+      value: totalCompetencies,
+      icon: <BarChart3 size={24} />,
+      tone: "slate" as const,
+    },
+    {
+      label: "Average Skill Gap",
+      value: avgGap,
+      icon: <Target size={24} />,
+      helper: dashboardText(data, "overallGapLevel"),
+      tone: "amber" as const,
+    },
   ];
 
   return (
     <section className="page-stack">
       <PageHeader
         title={`${roleLabel(role)} Dashboard`}
-        description="A clear overview of assessment progress, scores, gaps, and action areas."
+        description={
+          isOrganizationDashboard
+            ? "A scoped overview of users, assessments, gaps, and reports for your organization only."
+            : "A clear overview of assessment progress, scores, gaps, and action areas."
+        }
         onRefresh={refresh}
       />
       {error && <Alert type="error">{error}</Alert>}
       <div className="stat-grid">
-        {cards.map(([label, value]) => (
+        {cards.map(({ label, value, icon, helper, tone }) => (
           <StatCard
-            helper={
-              label === "Average Skill Gap"
-                ? dashboardText(data, "overallGapLevel")
-                : undefined
-            }
+            helper={helper}
             key={label}
-            label={String(label)}
+            label={label}
             value={value}
+            icon={icon}
+            tone={tone}
           />
         ))}
       </div>
-      <Card title="Assessment Engine">
+
+      <div className="analytics-grid">
+        <Card
+          title={isOrganizationDashboard ? "Organization User Composition" : "User Composition"}
+          icon={<Users size={20} />}
+        >
+          {roleDistributionData.length === 0 ? (
+            <EmptyState message="User composition appears after accounts are created." />
+          ) : (
+            <PieChartComponent
+              data={roleDistributionData}
+              dataKey="value"
+              nameKey="name"
+              colors={["#2563eb", "#059669", "#7c3aed", "#0f172a", "#f59e0b", "#14b8a6", "#ef4444"]}
+            />
+          )}
+        </Card>
+
+        <Card title="Gap Distribution" icon={<Target size={20} />}>
+          {gapChartData.length === 0 ? (
+            <EmptyState message="Gap distribution appears after assessments are reviewed." />
+          ) : (
+            <PieChartComponent
+              data={gapChartData}
+              dataKey="value"
+              nameKey="name"
+              colors={["#10b981", "#22c55e", "#f59e0b", "#ef4444", "#b91c1c", "#64748b"]}
+            />
+          )}
+        </Card>
+
+        <Card
+          title="Assessment Status"
+          icon={<BarChart3 size={20} />}
+        >
+          {assessmentStatusData.length === 0 ? (
+            <EmptyState message="Assessment status chart appears after users submit assessments." />
+          ) : (
+            <BarChartComponent
+              data={assessmentStatusData}
+              dataKey="value"
+              xAxisKey="name"
+              color="#2563eb"
+            />
+          )}
+        </Card>
+      </div>
+
+      <div className="analytics-grid">
+        <Card title="Average Score by Competency" icon={<TrendingUp size={20} />}>
+          {competencyScoreData.length === 0 ? (
+            <EmptyState message="Competency score charts appear after reviewed assessments exist." />
+          ) : (
+            <BarChartComponent
+              data={competencyScoreData}
+              dataKey="score"
+              xAxisKey="name"
+              color="#059669"
+            />
+          )}
+        </Card>
+
+        <Card title="Average Gap by Competency" icon={<Target size={20} />}>
+          {competencyScoreData.length === 0 ? (
+            <EmptyState message="Competency gap charts appear after reviewed assessments exist." />
+          ) : (
+            <LineChartComponent
+              data={competencyScoreData}
+              dataKey="gap"
+              xAxisKey="name"
+              color="#f59e0b"
+            />
+          )}
+        </Card>
+
+        <Card title="Benchmark Coverage" icon={<Gauge size={20} />}>
+          {benchmarkCoverageData.length === 0 ? (
+            <EmptyState message="Benchmark coverage appears after competencies and benchmarks are added." />
+          ) : (
+            <PieChartComponent
+              data={benchmarkCoverageData}
+              dataKey="count"
+              nameKey="name"
+              colors={["#10b981", "#ef4444"]}
+            />
+          )}
+        </Card>
+      </div>
+
+      <Card title="Assessment Engine" icon={<Zap size={20} />}>
         <div className="engine-strip">
           <span>Evidence submission</span>
           <span>GitHub task review</span>
@@ -217,6 +425,9 @@ function GraduateDashboard({
   const assessmentsSubmitted = dashboardNumber(data, "assessmentsSubmitted");
   const highGapCount = dashboardNumber(data, "highGapCount");
   const hasReviewedResults = competenciesAssessed > 0;
+  const scoreChartData = reviewedAssessmentChart(data, recentAssessments);
+  const gapChartData = dashboardChartList(data, "skillGapByCompetency");
+  const statusChartData = assessmentStatusChart(data, recentAssessments);
   const nextAction = hasReviewedResults
     ? "Review improvement plan"
     : "Take first assessment";
@@ -251,16 +462,22 @@ function GraduateDashboard({
           }
           label="Overall Score"
           value={formatPercent(overallScore)}
+          icon={<Award size={24} />}
+          tone="blue"
         />
         <StatCard
           helper={dashboardText(data, "overallGapLevel")}
           label="Average Skill Gap"
           value={formatPercent(averageGap)}
+          icon={<Gauge size={24} />}
+          tone="amber"
         />
         <StatCard
           helper={`${assessmentsSubmitted} submitted`}
           label="Competencies Reviewed"
           value={competenciesAssessed}
+          icon={<ClipboardCheck size={24} />}
+          tone="green"
         />
         <StatCard
           helper={
@@ -268,7 +485,50 @@ function GraduateDashboard({
           }
           label="High Gap Areas"
           value={highGapCount}
+          icon={<AlertTriangle size={24} />}
+          tone={highGapCount > 0 ? "red" : "slate"}
         />
+      </div>
+
+      <div className="analytics-grid">
+        <Card title="Reviewed Competency Scores" icon={<TrendingUp size={20} />}>
+          {scoreChartData.length === 0 ? (
+            <EmptyState message="Reviewed score charts appear after your first completed assessment." />
+          ) : (
+            <BarChartComponent
+              data={scoreChartData}
+              dataKey="score"
+              xAxisKey="name"
+              color="#2563eb"
+            />
+          )}
+        </Card>
+
+        <Card title="Skill Gap by Competency" icon={<Target size={20} />}>
+          {(gapChartData.length || scoreChartData.length) === 0 ? (
+            <EmptyState message="Skill gap chart appears after assessor review." />
+          ) : (
+            <LineChartComponent
+              data={gapChartData.length > 0 ? gapChartData : scoreChartData}
+              dataKey="gap"
+              xAxisKey="name"
+              color="#f59e0b"
+            />
+          )}
+        </Card>
+
+        <Card title="Assessment Status" icon={<Activity size={20} />}>
+          {statusChartData.length === 0 ? (
+            <EmptyState message="Assessment status chart appears after submissions." />
+          ) : (
+            <PieChartComponent
+              data={statusChartData}
+              dataKey="value"
+              nameKey="name"
+              colors={["#2563eb", "#f59e0b", "#10b981", "#64748b"]}
+            />
+          )}
+        </Card>
       </div>
 
       <div className="dashboard-grid">
@@ -306,19 +566,19 @@ function GraduateDashboard({
           <div className="workflow-list">
             <WorkflowStep
               label="1"
-              text="Choose a competency aligned with RTB ICT standards."
+              text="Select an RTB-aligned ICT competency."
             />
             <WorkflowStep
               label="2"
-              text="Submit GitHub practical evidence and quiz/theory answers."
+              text="Submit GitHub practical evidence repository and theory answers."
             />
             <WorkflowStep
               label="3"
-              text="The system verifies the GitHub task review and theory answers automatically."
+              text="The system reviews the GitHub repository and scores theory evidence."
             />
             <WorkflowStep
               label="4"
-              text="System calculates final score, RTB gap level, and recommendations."
+              text="The system calculates skill gap, classifies gap level, generates Gemini recommendations, notifies the user, and generates the report."
             />
           </div>
         </Card>
@@ -331,12 +591,12 @@ function GraduateDashboard({
           ) : (
             <div className="compact-list">
               {recentAssessments.slice(0, 4).map((assessment) => (
-                <div className="compact-row" key={assessment._id}>
-                  <div>
+                <div className="compact-row assessment-activity-row" key={assessment._id}>
+                  <div className="assessment-activity-main">
                     <strong>{assessment.competency.title}</strong>
                     <span>{readableStatus(assessment.status)}</span>
                   </div>
-                  <div className="compact-meta">
+                  <div className="compact-meta assessment-activity-meta">
                     <GapBadge level={assessment.gapLevel} />
                     <span>{formatDate(assessment.createdAt)}</span>
                   </div>
@@ -360,7 +620,7 @@ function GraduateDashboard({
                     <strong>{recommendation.competency.title}</strong>
                     <GapBadge level={recommendation.gapLevel} />
                   </div>
-                  <p>{recommendation.message}</p>
+                  <ReadMoreText text={recommendation.message} limit={150} />
                 </div>
               ))}
             </div>
@@ -382,7 +642,7 @@ function WorkflowStep({ label, text }: { label: string; text: string }) {
   return (
     <div className="workflow-step">
       <span>{label}</span>
-      <p>{text}</p>
+      <ReadMoreText text={text} limit={130} />
     </div>
   );
 }
@@ -536,13 +796,12 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const [theoryAnswers, setTheoryAnswers] = useState<Record<string, string>>(
     {},
   );
-  const [repositoryTaskReview, setRepositoryTaskReview] =
-    useState<{
-      competency: string;
-      githubRepositoryUrl: string;
-      practicalTaskId: string;
-      taskReview: RepositoryTaskReview;
-    } | null>(null);
+  const [repositoryTaskReview, setRepositoryTaskReview] = useState<{
+    competency: string;
+    githubRepositoryUrl: string;
+    practicalTaskId: string;
+    taskReview: RepositoryTaskReview;
+  } | null>(null);
   const [isReviewingRepository, setIsReviewingRepository] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -577,13 +836,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const canContinueToEvidence = Boolean(competency);
   const practicalEvidenceReady =
     reviewedRepositoryUrl.length > 0 && Boolean(activeRepositoryTaskReview);
-  const canReview =
-    practicalEvidenceReady &&
-    requiredTheoryAnswered;
+  const canReview = practicalEvidenceReady && requiredTheoryAnswered;
   const canSubmit =
-    Boolean(competency) &&
-    practicalEvidenceReady &&
-    requiredTheoryAnswered;
+    Boolean(competency) && practicalEvidenceReady && requiredTheoryAnswered;
 
   async function handleEvidenceFiles(files: FileList | null) {
     if (!files) return;
@@ -644,7 +899,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
           answer: theoryAnswers[question._id] || "",
         })),
       });
-      setMessage("Assessment completed. Automatic scores, gap results, recommendations, and report are ready.");
+      setMessage(
+        "Assessment completed. Automatic scores, gap results, recommendations, and report are ready.",
+      );
       setPracticalTask("");
       setGithubRepositoryUrl("");
       setEvidenceFiles([]);
@@ -691,7 +948,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
         practicalTaskId: selectedTask._id,
         taskReview: result.taskReview,
       });
-      setMessage("Repository task review completed. Check the task score and checklist.");
+      setMessage(
+        "Repository task review completed. Check the task score and checklist.",
+      );
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -806,9 +1065,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
             <Card title="Complete the practical test and theory questions">
               <div className="form-stack">
                 <Alert type="info">
-                  Practical evidence is based on a GitHub repository. The
-                  system scans the repository against the selected task and
-                  shows a checklist score before you submit for automatic scoring.
+                  Practical evidence is based on a GitHub repository. The system
+                  scans the repository against the selected task and shows a
+                  checklist score before you submit for automatic scoring.
                 </Alert>
 
                 {availableTasks.length > 0 ? (
@@ -842,7 +1101,8 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                     {activeRepositoryTaskReview && (
                       <div className="task-score-strip">
                         <span>
-                          Score: {formatPercent(activeRepositoryTaskReview.score)}
+                          Score:{" "}
+                          {formatPercent(activeRepositoryTaskReview.score)}
                         </span>
                         <em>
                           Checks completed:{" "}
@@ -861,11 +1121,11 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                         </strong>
                       </div>
                     )}
-                    <p>{selectedTask.instructions}</p>
+                    <ReadMoreText text={selectedTask.instructions} limit={220} />
                     {selectedTask.deliverables && (
                       <div>
                         <strong>Required deliverables</strong>
-                        <p>{selectedTask.deliverables}</p>
+                        <ReadMoreText text={selectedTask.deliverables} limit={180} />
                       </div>
                     )}
                     <TextField
@@ -875,14 +1135,13 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                       onChange={(event) =>
                         setGithubRepositoryUrl(event.target.value)
                       }
-                      placeholder="https://github.com/username/project"
+                      placeholder={GITHUB_PLACEHOLDER.INDIVIDUAL_PROJECT}
                       required
                     />
                     <div className="button-row">
                       <Button
                         disabled={
-                          isReviewingRepository ||
-                          !githubRepositoryUrl.trim()
+                          isReviewingRepository || !githubRepositoryUrl.trim()
                         }
                         variant="secondary"
                         onClick={() => void handleRepositoryTaskReview()}
@@ -921,11 +1180,16 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                             {activeRepositoryTaskReview.proofLevel && (
                               <p>
                                 Proof level:{" "}
-                                <strong>{activeRepositoryTaskReview.proofLevel}</strong>
+                                <strong>
+                                  {activeRepositoryTaskReview.proofLevel}
+                                </strong>
                               </p>
                             )}
                             {activeRepositoryTaskReview.proofSummary && (
-                              <p>{activeRepositoryTaskReview.proofSummary}</p>
+                              <ReadMoreText
+                                text={activeRepositoryTaskReview.proofSummary}
+                                limit={180}
+                              />
                             )}
                             <p>
                               Source files reviewed:{" "}
@@ -976,9 +1240,13 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                               <span>{item.passed ? "Passed" : "Failed"}</span>
                               <div>
                                 <strong>{item.label}</strong>
-                                <p>{item.evidence}</p>
+                                <ReadMoreText text={item.evidence} limit={140} />
                                 {!item.passed && item.advice && (
-                                  <small>{item.advice}</small>
+                                  <ReadMoreText
+                                    className="text-sm"
+                                    text={item.advice}
+                                    limit={120}
+                                  />
                                 )}
                               </div>
                               <em>{item.weight} pts</em>
@@ -1006,7 +1274,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                             <ul>
                               {activeRepositoryTaskReview.recommendations.map(
                                 (item) => (
-                                  <li key={item}>{item}</li>
+                                  <li key={item}>
+                                    <ReadMoreText text={item} limit={150} />
+                                  </li>
                                 ),
                               )}
                             </ul>
@@ -1016,9 +1286,13 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                           <div className="assessor-note warning-note">
                             <strong>Improve before submission</strong>
                             <ul>
-                              {activeRepositoryTaskReview.feedback.map((item) => (
-                                <li key={item}>{item}</li>
-                              ))}
+                              {activeRepositoryTaskReview.feedback.map(
+                                (item) => (
+                                  <li key={item}>
+                                    <ReadMoreText text={item} limit={150} />
+                                  </li>
+                                ),
+                              )}
                             </ul>
                           </div>
                         ) : (
@@ -1106,7 +1380,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                           </strong>
                           <span>{question.type.replace("_", " ")}</span>
                         </div>
-                        <p>{question.question}</p>
+                        <ReadMoreText text={question.question} limit={180} />
                         {question.type === "multiple_choice" &&
                         question.options?.length ? (
                           <div className="option-list">
@@ -1482,8 +1756,8 @@ export function AssessmentsPage({ token, role }: PageProps) {
                       <h3>Choose a submission</h3>
                       <p>
                         Select a card from the queue to inspect GitHub task and
-                        theory evidence, verify authenticity, and approve the final
-                        recommendation.
+                        theory evidence, verify authenticity, and approve the
+                        final recommendation.
                       </p>
                     </>
                   )}
@@ -1575,13 +1849,12 @@ function ReviewAssessmentPanel({
   );
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
 
-  const repositoryTaskReview = assessment.evidence.repositorySummary?.taskReview;
+  const repositoryTaskReview =
+    assessment.evidence.repositorySummary?.taskReview;
   const effectivePracticalScore =
     repositoryTaskReview?.score ?? assessment.scores.practicalTaskScore ?? 0;
   const previewScore = useMemo(
-    () =>
-      effectivePracticalScore * 0.7 +
-      quizScore * 0.3,
+    () => effectivePracticalScore * 0.7 + quizScore * 0.3,
     [effectivePracticalScore, quizScore],
   );
   const repositoryQuality =
@@ -1633,7 +1906,9 @@ function ReviewAssessmentPanel({
     const timeoutId = window.setTimeout(() => {
       async function loadInitialGeminiDraft() {
         setIsGeneratingDraft(true);
-        setDraftStatus("Generating Gemini recommendation from performance data...");
+        setDraftStatus(
+          "Generating Gemini recommendation from performance data...",
+        );
 
         try {
           const draft = await api.previewAssessmentRecommendation(
@@ -1729,8 +2004,8 @@ function ReviewAssessmentPanel({
           <span className="eyebrow">Assessment review</span>
           <h2>{assessment.competency.title}</h2>
           <p>
-            Review the GitHub practical task, theory answers,
-            and final recommendation before submitting the official gap result.
+            Review the GitHub practical task, theory answers, and final
+            recommendation before submitting the official gap result.
           </p>
           <div className="review-identity">
             <span>{assessment.graduate.name}</span>
@@ -1778,7 +2053,10 @@ function ReviewAssessmentPanel({
             <span>01</span>
             <div>
               <h3>Submitted evidence</h3>
-              <p>Use these artifacts to confirm that the work is real and aligned with the selected practical task.</p>
+              <p>
+                Use these artifacts to confirm that the work is real and aligned
+                with the selected practical task.
+              </p>
             </div>
           </div>
           <div className="review-overview-grid">
@@ -1795,7 +2073,10 @@ function ReviewAssessmentPanel({
             <div>
               <span>Theory answers</span>
               <strong>
-                {theoryAnswers.length}/{assessment.competency.theoryQuestions?.length || theoryAnswers.length || 0}
+                {theoryAnswers.length}/
+                {assessment.competency.theoryQuestions?.length ||
+                  theoryAnswers.length ||
+                  0}
               </strong>
               <small>Submitted responses</small>
             </div>
@@ -1813,10 +2094,11 @@ function ReviewAssessmentPanel({
           </div>
           <div className="assessor-evidence-section">
             <strong>Graduate practical submission</strong>
-            <p>
-              {assessment.evidence.practicalTask ||
-                "No practical task details provided."}
-            </p>
+            <ReadMoreText
+              text={assessment.evidence.practicalTask}
+              emptyText="No practical task details provided."
+              limit={220}
+            />
           </div>
           <div className="assessor-evidence-section">
             <strong>GitHub repository / practical project</strong>
@@ -1830,7 +2112,10 @@ function ReviewAssessmentPanel({
                   Open GitHub repository
                 </a>
                 {assessment.evidence.repositorySummary?.summaryText && (
-                  <p>{assessment.evidence.repositorySummary.summaryText}</p>
+                  <ReadMoreText
+                    text={assessment.evidence.repositorySummary.summaryText}
+                    limit={220}
+                  />
                 )}
                 {assessment.evidence.repositorySummary?.languages?.length ? (
                   <div className="compact-meta">
@@ -1846,7 +2131,9 @@ function ReviewAssessmentPanel({
                   <ul>
                     {assessment.evidence.repositorySummary.codeQualityNotes.map(
                       (note) => (
-                        <li key={note}>{note}</li>
+                        <li key={note}>
+                          <ReadMoreText text={note} limit={160} />
+                        </li>
                       ),
                     )}
                   </ul>
@@ -1892,26 +2179,24 @@ function ReviewAssessmentPanel({
                 {assessment.evidence.repositorySummary?.taskReview && (
                   <div className="assessor-note">
                     <strong>Automatic task review</strong>
-                        <p>
+                    <ReadMoreText
+                      text={assessment.evidence.repositorySummary.taskReview.summary}
+                      limit={180}
+                    />
+                    {assessment.evidence.repositorySummary.taskReview
+                      .proofLevel && (
+                      <p>
+                        Proof level:{" "}
+                        <strong>
                           {
                             assessment.evidence.repositorySummary.taskReview
-                              .summary
+                              .proofLevel
                           }
-                        </p>
-                        {assessment.evidence.repositorySummary.taskReview
-                          .proofLevel && (
-                          <p>
-                            Proof level:{" "}
-                            <strong>
-                              {
-                                assessment.evidence.repositorySummary.taskReview
-                                  .proofLevel
-                              }
-                            </strong>
-                          </p>
-                        )}
-                        {assessment.evidence.repositorySummary.taskReview
-                          .implementationReview && (
+                        </strong>
+                      </p>
+                    )}
+                    {assessment.evidence.repositorySummary.taskReview
+                      .implementationReview && (
                       <div className="assessor-note">
                         <strong>Implementation evidence</strong>
                         <p>
@@ -1923,14 +2208,13 @@ function ReviewAssessmentPanel({
                           . Implementation evidence score:{" "}
                           {formatPercent(
                             assessment.evidence.repositorySummary.taskReview
-                              .implementationReview.implementationEvidenceScore ||
-                              0,
+                              .implementationReview
+                              .implementationEvidenceScore || 0,
                           )}
                           . Functional coverage:{" "}
                           {formatPercent(
                             assessment.evidence.repositorySummary.taskReview
-                              .implementationReview.functionalCoverageRate ||
-                              0,
+                              .implementationReview.functionalCoverageRate || 0,
                           )}
                           .
                         </p>
@@ -1968,7 +2252,7 @@ function ReviewAssessmentPanel({
                             <span>{item.passed ? "Passed" : "Failed"}</span>
                             <div>
                               <strong>{item.label}</strong>
-                              <p>{item.evidence}</p>
+                              <ReadMoreText text={item.evidence} limit={140} />
                             </div>
                             <em>{item.weight} pts</em>
                           </div>
@@ -1999,7 +2283,9 @@ function ReviewAssessmentPanel({
                         <ul>
                           {assessment.evidence.repositorySummary.taskReview.recommendations.map(
                             (item) => (
-                              <li key={item}>{item}</li>
+                              <li key={item}>
+                                <ReadMoreText text={item} limit={150} />
+                              </li>
                             ),
                           )}
                         </ul>
@@ -2010,7 +2296,10 @@ function ReviewAssessmentPanel({
                 {assessment.evidence.repositorySummary?.readmeExcerpt && (
                   <div className="assessor-note">
                     <strong>README excerpt</strong>
-                    <p>{assessment.evidence.repositorySummary.readmeExcerpt}</p>
+                    <ReadMoreText
+                      text={assessment.evidence.repositorySummary.readmeExcerpt}
+                      limit={240}
+                    />
                   </div>
                 )}
                 {assessment.evidence.repositorySummary?.sampledSourceFiles
@@ -2021,7 +2310,11 @@ function ReviewAssessmentPanel({
                         <div className="theory-review-item" key={file.path}>
                           <strong>{file.path}</strong>
                           <span>{file.language}</span>
-                          <p>{file.excerpt || "No excerpt available."}</p>
+                          <ReadMoreText
+                            text={file.excerpt}
+                            emptyText="No excerpt available."
+                            limit={260}
+                          />
                         </div>
                       ),
                     )}
@@ -2072,7 +2365,7 @@ function ReviewAssessmentPanel({
               <div className="theory-review-list">
                 {theoryAnswers.map((answer) => (
                   <div className="theory-review-item" key={answer.questionId}>
-                    <p>{answer.question}</p>
+                    <ReadMoreText text={answer.question} limit={160} />
                     <span>Answer: {answer.answer || "No answer"}</span>
                     <span>
                       Auto score: {answer.pointsAwarded}/{answer.pointsPossible}
@@ -2083,14 +2376,23 @@ function ReviewAssessmentPanel({
             )}
           </div>
         </div>
-        <form className="form-stack review-panel review-form-panel" onSubmit={handleReview}>
+        <form
+          className="form-stack review-panel review-form-panel"
+          onSubmit={handleReview}
+        >
           {error && <Alert type="error">{error}</Alert>}
-          <div className="recommendation-approval-panel" id="review-recommendation">
+          <div
+            className="recommendation-approval-panel"
+            id="review-recommendation"
+          >
             <div className="review-section-title">
               <span>03</span>
               <div>
                 <h3>Approve Gemini recommendation</h3>
-                <p>Gemini uses the GitHub task score, theory score, benchmark, gap level, and assessor notes to draft practical guidance.</p>
+                <p>
+                  Gemini uses the GitHub task score, theory score, benchmark,
+                  gap level, and assessor notes to draft practical guidance.
+                </p>
               </div>
             </div>
             <div className="recommendation-action-row">
@@ -2111,8 +2413,13 @@ function ReviewAssessmentPanel({
               <div className="gemini-recommendation-card">
                 <div className="gemini-recommendation-header">
                   <div>
-                    <span className="eyebrow">Gemini performance-based draft</span>
-                    <strong>{draftPreview.recommendation.message}</strong>
+                    <span className="eyebrow">
+                      Gemini performance-based draft
+                    </span>
+                    <ReadMoreText
+                      text={draftPreview.recommendation.message}
+                      limit={180}
+                    />
                   </div>
                   <Badge tone="role">
                     {draftPreview.recommendation.priority} priority
@@ -2172,9 +2479,9 @@ function ReviewAssessmentPanel({
                 <span className="eyebrow">Gemini draft</span>
                 <strong>Recommendation draft is not available yet.</strong>
                 <p>
-                  Confirm Gemini configuration and assessment scores, then use the
-                  generate button again. The review cannot be saved until Gemini
-                  returns a recommendation.
+                  Confirm Gemini configuration and assessment scores, then use
+                  the generate button again. The review cannot be saved until
+                  Gemini returns a recommendation.
                 </p>
               </div>
             )}
@@ -2195,7 +2502,10 @@ function ReviewAssessmentPanel({
             <span>02</span>
             <div>
               <h3>Assessment scores</h3>
-              <p>The system assesses only GitHub practical task and theory/quiz. Practical/GitHub carries 70% and theory/quiz carries 30%.</p>
+              <p>
+                The system assesses only GitHub practical task and theory/quiz.
+                Practical/GitHub carries 70% and theory/quiz carries 30%.
+              </p>
             </div>
           </div>
           <div className="assessment-score-cards">
@@ -2238,13 +2548,11 @@ function ReviewAssessmentPanel({
               ].map(([key, label]) => (
                 <label className="check-row" key={key}>
                   <input
-                    checked={
-                      Boolean(
-                        evidenceVerification[
-                          key as keyof typeof evidenceVerification
-                        ],
-                      )
-                    }
+                    checked={Boolean(
+                      evidenceVerification[
+                        key as keyof typeof evidenceVerification
+                      ],
+                    )}
                     type="checkbox"
                     onChange={(event) =>
                       setEvidenceVerification((current) => ({
@@ -2267,7 +2575,7 @@ function ReviewAssessmentPanel({
                   authenticityNotes: event.target.value,
                 }))
               }
-              />
+            />
           </div>
           <div className="review-submit-bar">
             <Button variant="ghost" onClick={onClose}>
@@ -2295,6 +2603,21 @@ export function GapResultsPage({ token }: { token: string }) {
 
   if (isLoading) return <LoadingState message="Loading gap results..." />;
 
+  const averageScore = data.length
+    ? data.reduce(
+        (total, assessment) => total + Number(assessment.scores.finalScore || 0),
+        0,
+      ) / data.length
+    : 0;
+  const highGapCount = data.filter(
+    (assessment) => assessment.gapLevel === "High Gap",
+  ).length;
+  const latestReviewed = data
+    .map((assessment) => assessment.reviewedAt || assessment.createdAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
   return (
     <section className="page-stack">
       <PageHeader
@@ -2306,76 +2629,87 @@ export function GapResultsPage({ token }: { token: string }) {
       {data.length === 0 ? (
         <EmptyState message="No reviewed results yet." />
       ) : (
-        <div className="result-grid">
+        <>
+          <div className="stat-grid">
+            <StatCard
+              helper="Reviewed competency results"
+              icon={<Target size={20} />}
+              label="Total results"
+              value={data.length}
+            />
+            <StatCard
+              helper="Average reviewed competency score"
+              icon={<Gauge size={20} />}
+              label="Average score"
+              tone="green"
+              value={formatPercent(averageScore)}
+            />
+            <StatCard
+              helper={`Latest review: ${latestReviewed ? formatDate(latestReviewed) : "N/A"}`}
+              icon={<AlertTriangle size={20} />}
+              label="High gaps"
+              tone={highGapCount > 0 ? "red" : "slate"}
+              value={highGapCount}
+            />
+          </div>
+          <div className="result-page-list">
           {data.map((assessment) => {
             const recommendation = recommendations.find(
               (item) => item.competency._id === assessment.competency._id,
             );
 
             return (
-              <Card key={assessment._id} title={assessment.competency.title}>
-                <div className="result-card">
-                  <div className="result-topline">
+              <article className="result-card result-page-card" key={assessment._id}>
+                <header className="result-page-card__header">
+                  <div>
+                    <span className="eyebrow">Competency result</span>
+                    <h3>{assessment.competency.title}</h3>
+                  </div>
+                  <div className="result-page-card__status">
                     <GapBadge level={assessment.gapLevel} />
                     <span>Reviewed {formatDate(assessment.reviewedAt)}</span>
                   </div>
-                  <ProgressBar value={assessment.scores.finalScore} />
-                  <div className="result-metrics">
-                    <span>
-                      Graduate score:{" "}
-                      {formatPercent(assessment.scores.finalScore)}
-                    </span>
-                    <span>
-                      RTB benchmark: {formatPercent(assessment.benchmarkScore)}
-                    </span>
-                    <span>Skill gap: {formatPercent(assessment.skillGap)}</span>
+                </header>
+
+                <div className="result-score-panel">
+                  <div>
+                    <span>Graduate score</span>
+                    <strong>{formatPercent(assessment.scores.finalScore)}</strong>
                   </div>
-                  <div className="assessor-note">
-                    <strong>Assessor comment</strong>
-                    <p>
-                      {assessment.assessorComment ||
-                        "No assessor comment provided."}
-                    </p>
+                  <div>
+                    <span>RTB benchmark</span>
+                    <strong>{formatPercent(assessment.benchmarkScore)}</strong>
                   </div>
-                  <div className="assessor-note">
-                    <strong>Repository summary</strong>
-                    <p>
-                      {assessment.evidence.repositorySummary?.summaryText ||
-                        "No GitHub repository summary was stored for this assessment."}
-                    </p>
-                    {assessment.evidence.repositorySummary && (
-                      <div className="result-metrics">
-                        <span>
-                          Repository quality:{" "}
-                          {formatPercent(
-                            assessment.evidence.repositorySummary
-                              .codeQualityScore || 0,
-                          )}
-                        </span>
-                        <span>
-                          Evidence completeness:{" "}
-                          {formatPercent(
-                            assessment.evidence.repositorySummary
-                              .evidenceCompletenessScore || 0,
-                          )}
-                        </span>
-                      </div>
-                    )}
+                  <div>
+                    <span>Skill gap</span>
+                    <strong>{formatPercent(assessment.skillGap)}</strong>
                   </div>
-                  <div className="assessor-note">
-                    <strong>Assessment score breakdown</strong>
-                    <ul>
-                      <li>
-                        GitHub practical task:{" "}
+                </div>
+
+                <ProgressBar value={assessment.scores.finalScore} />
+
+                <div className="result-detail-grid">
+                  <section className="assessor-note">
+                    <div className="section-heading">
+                      <strong>Score breakdown</strong>
+                      <span>70% practical, 30% theory</span>
+                    </div>
+                    <div className="result-metrics">
+                      <span>
+                        GitHub task:{" "}
                         {formatPercent(assessment.scores.practicalTaskScore)}
-                      </li>
-                      <li>
-                        Theory / quiz: {formatPercent(assessment.scores.quizScore)}
-                      </li>
-                    </ul>
-                  </div>
-                  <div className="assessor-note">
-                    <strong>Evidence verification</strong>
+                      </span>
+                      <span>
+                        Theory: {formatPercent(assessment.scores.quizScore)}
+                      </span>
+                    </div>
+                  </section>
+
+                  <section className="assessor-note">
+                    <div className="section-heading">
+                      <strong>Evidence verification</strong>
+                      <span>{assessment.evidenceVerification ? "Recorded" : "Pending"}</span>
+                    </div>
                     <p>
                       {assessment.evidenceVerification
                         ? [
@@ -2395,29 +2729,73 @@ export function GapResultsPage({ token }: { token: string }) {
                         : "Verification checks not recorded."}
                     </p>
                     {assessment.evidenceVerification?.authenticityNotes && (
-                      <p>{assessment.evidenceVerification.authenticityNotes}</p>
+                      <ReadMoreText
+                        text={assessment.evidenceVerification.authenticityNotes}
+                        limit={160}
+                      />
                     )}
-                  </div>
-                  <div className="assessor-note">
+                  </section>
+
+                  <section className="assessor-note">
+                    <strong>Assessor comment</strong>
+                    <ReadMoreText
+                      text={assessment.assessorComment}
+                      emptyText="No assessor comment provided."
+                      limit={160}
+                    />
+                  </section>
+
+                  <section className="assessor-note">
+                    <strong>Repository summary</strong>
+                    <ReadMoreText
+                      text={assessment.evidence.repositorySummary?.summaryText}
+                      emptyText="No GitHub repository summary was stored for this assessment."
+                      limit={190}
+                    />
+                    {assessment.evidence.repositorySummary && (
+                      <div className="result-metrics">
+                        <span>
+                          Repository quality:{" "}
+                          {formatPercent(
+                            assessment.evidence.repositorySummary
+                              .codeQualityScore || 0,
+                          )}
+                        </span>
+                        <span>
+                          Evidence completeness:{" "}
+                          {formatPercent(
+                            assessment.evidence.repositorySummary
+                              .evidenceCompletenessScore || 0,
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="assessor-note result-recommendation-panel">
                     <strong>Recommendation</strong>
-                    <p>
-                      {recommendation?.message ||
-                        "Recommendation will appear after the assessor adds improvement guidance."}
-                    </p>
+                    <ReadMoreText
+                      text={recommendation?.message}
+                      emptyText="Recommendation will appear after the assessor adds improvement guidance."
+                      limit={180}
+                    />
                     {recommendation &&
                       recommendation.actionItems.length > 0 && (
                         <ul>
                           {recommendation.actionItems.map((item) => (
-                            <li key={item}>{item}</li>
+                            <li key={item}>
+                              <ReadMoreText text={item} limit={150} />
+                            </li>
                           ))}
                         </ul>
                       )}
-                  </div>
+                  </section>
                 </div>
-              </Card>
+              </article>
             );
           })}
-        </div>
+          </div>
+        </>
       )}
     </section>
   );
@@ -2431,6 +2809,18 @@ export function RecommendationsPage({ token }: { token: string }) {
 
   if (isLoading) return <LoadingState message="Loading recommendations..." />;
 
+  const highPriorityCount = data.filter(
+    (recommendation) => recommendation.priority === "high",
+  ).length;
+  const approvedCount = data.filter(
+    (recommendation) => recommendation.isApproved,
+  ).length;
+  const actionItemCount = data.reduce(
+    (total, recommendation) =>
+      total + Number(recommendation.actionItems?.length || 0),
+    0,
+  );
+
   return (
     <section className="page-stack">
       <PageHeader
@@ -2442,30 +2832,102 @@ export function RecommendationsPage({ token }: { token: string }) {
       {data.length === 0 ? (
         <EmptyState message="No recommendations found." />
       ) : (
-        <div className="card-list">
+        <>
+          <div className="stat-grid">
+            <StatCard
+              helper="Competency-linked guidance items"
+              icon={<Award size={20} />}
+              label="Recommendations"
+              value={data.length}
+            />
+            <StatCard
+              helper="Items requiring urgent improvement"
+              icon={<AlertTriangle size={20} />}
+              label="High priority"
+              tone={highPriorityCount > 0 ? "red" : "slate"}
+              value={highPriorityCount}
+            />
+            <StatCard
+              helper={`${approvedCount} approved recommendation(s)`}
+              icon={<ClipboardCheck size={20} />}
+              label="Action items"
+              tone="green"
+              value={actionItemCount}
+            />
+          </div>
+
+          <div className="recommendation-page-grid">
           {data.map((recommendation) => (
-            <Card
-              key={recommendation._id}
-              title={recommendation.competency.title}
-            >
-              <div className="recommendation">
-                <GapBadge level={recommendation.gapLevel} />
-                <p>{recommendation.message}</p>
+            <article className="recommendation recommendation-page-card" key={recommendation._id}>
+              <header className="recommendation-page-card__header">
+                <div>
+                  <span className="eyebrow">Improvement guidance</span>
+                  <h3>{recommendation.competency.title}</h3>
+                </div>
+                <div className="recommendation-page-card__badges">
+                  <GapBadge level={recommendation.gapLevel} />
+                  <Badge tone={recommendation.priority === "high" ? "danger" : recommendation.priority === "medium" ? "warning" : "success"}>
+                    {recommendation.priority} priority
+                  </Badge>
+                </div>
+              </header>
+
+              <section className="recommendation-message-panel">
+                <strong>Approved recommendation</strong>
+                <ReadMoreText text={recommendation.message} limit={240} />
                 {recommendation.draftMessage &&
                   recommendation.draftMessage !== recommendation.message && (
-                    <p>{recommendation.draftMessage}</p>
+                    <div className="recommendation-draft-panel">
+                      <strong>Gemini draft reference</strong>
+                      <ReadMoreText
+                        text={recommendation.draftMessage}
+                        limit={220}
+                      />
+                    </div>
                   )}
+              </section>
+
+              <div className="recommendation-support-grid">
+                <section className="assessor-note">
+                  <div className="section-heading">
+                    <strong>Action plan</strong>
+                    <span>{recommendation.actionItems.length} item(s)</span>
+                  </div>
                 {recommendation.actionItems.length > 0 && (
                   <ul>
                     {recommendation.actionItems.map((item) => (
-                      <li key={item}>{item}</li>
+                      <li key={item}>
+                        <ReadMoreText text={item} limit={150} />
+                      </li>
                     ))}
                   </ul>
                 )}
+                {recommendation.actionItems.length === 0 && (
+                  <p>No action items were added.</p>
+                )}
+                </section>
+
+                <section className="assessor-note">
+                  <div className="section-heading">
+                    <strong>Recommendation details</strong>
+                    <span>{recommendation.isApproved ? "Approved" : "Draft"}</span>
+                  </div>
+                  <div className="result-metrics">
+                    <span>Provider: {recommendation.aiProvider || "Gemini"}</span>
+                    <span>Model: {recommendation.aiModel || "N/A"}</span>
+                    <span>
+                      Approved:{" "}
+                      {recommendation.approvedAt
+                        ? formatDate(recommendation.approvedAt)
+                        : "Not recorded"}
+                    </span>
+                  </div>
+                </section>
               </div>
-            </Card>
+            </article>
           ))}
-        </div>
+          </div>
+        </>
       )}
     </section>
   );
@@ -2504,6 +2966,15 @@ export function ReportsPage({ token, role }: PageProps) {
 
   if (isLoading) return <LoadingState message="Loading reports..." />;
 
+  const averageOverallScore = data.length
+    ? data.reduce((total, report) => total + Number(report.overallScore || 0), 0) /
+      data.length
+    : 0;
+  const includedAssessmentCount = data.reduce(
+    (total, report) => total + Number(report.assessments?.length || 0),
+    0,
+  );
+
   return (
     <section className="page-stack">
       <PageHeader
@@ -2513,43 +2984,89 @@ export function ReportsPage({ token, role }: PageProps) {
       />
       {error && <Alert type="error">{error}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
-      <Card
-        actions={<Button onClick={handleGenerate}>Generate Report</Button>}
-        title="Report generation"
-      >
-        {!isLearnerRole(role) && (
-          <TextField
-            label="Assessment user ID"
-            value={graduateId}
-            onChange={(event) => setGraduateId(event.target.value)}
-          />
-        )}
-      </Card>
+      <div className="report-command-panel">
+        <div>
+          <span className="eyebrow">Report center</span>
+          <h3>Generate and download reviewed assessment reports</h3>
+          <p>
+            Reports summarize reviewed competencies, final scores, gap levels,
+            repository evidence, and approved recommendations.
+          </p>
+        </div>
+        <div className="report-command-panel__actions">
+          {!isLearnerRole(role) && (
+            <TextField
+              label="Assessment user ID"
+              value={graduateId}
+              onChange={(event) => setGraduateId(event.target.value)}
+            />
+          )}
+          <Button onClick={handleGenerate}>Generate Report</Button>
+        </div>
+      </div>
       {data.length === 0 ? (
         <EmptyState message="No reports generated yet." />
       ) : (
-        <div className="card-list">
+        <>
+          <div className="stat-grid">
+            <StatCard
+              helper="Generated report records"
+              icon={<BarChart3 size={20} />}
+              label="Reports"
+              value={data.length}
+            />
+            <StatCard
+              helper="Average score across reports"
+              icon={<Gauge size={20} />}
+              label="Average overall score"
+              tone="green"
+              value={formatPercent(averageOverallScore)}
+            />
+            <StatCard
+              helper="Reviewed competencies included"
+              icon={<ClipboardCheck size={20} />}
+              label="Included assessments"
+              tone="slate"
+              value={includedAssessmentCount}
+            />
+          </div>
+
+          <div className="report-page-list">
           {data.map((report) => (
-            <Card
-              actions={
+            <article className="report-page-card report-preview" key={report._id}>
+              <header className="report-page-card__header">
+                <div>
+                  <span className="eyebrow">Graduate report</span>
+                  <h3>{report.title}</h3>
+                </div>
                 <Button
                   variant="secondary"
                   onClick={() => downloadReport(report)}
                 >
                   Download Report
                 </Button>
-              }
-              key={report._id}
-              title={report.title}
-            >
-              <p>{report.summary}</p>
-              <div className="result-metrics">
-                <span>Overall score: {formatPercent(report.overallScore)}</span>
-                <span>Gap level: {report.overallGapLevel}</span>
-                <span>Generated: {formatDate(report.createdAt)}</span>
+              </header>
+
+              <div className="report-score-panel">
+                <div>
+                  <span>Overall score</span>
+                  <strong>{formatPercent(report.overallScore)}</strong>
+                </div>
+                <div>
+                  <span>Gap level</span>
+                  <strong>{report.overallGapLevel}</strong>
+                </div>
+                <div>
+                  <span>Generated</span>
+                  <strong>{formatDate(report.createdAt)}</strong>
+                </div>
               </div>
-              {report.assessments && report.assessments.length > 0 && (
-                <div className="report-preview">
+
+              <ReadMoreText text={report.summary} limit={240} />
+
+              <div className="report-detail-grid">
+                {report.assessments && report.assessments.length > 0 && (
+                <section className="assessor-note">
                   <strong>Included competencies</strong>
                   <ul>
                     {report.assessments.map((assessment) => (
@@ -2560,20 +3077,22 @@ export function ReportsPage({ token, role }: PageProps) {
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-              {report.assessments && report.assessments.length > 0 && (
-                <div className="report-preview">
+                </section>
+                )}
+                {report.assessments && report.assessments.length > 0 && (
+                <section className="assessor-note">
                   <strong>Repository summaries</strong>
                   <ul>
                     {report.assessments.map((assessment) => (
                       <li key={`${report._id}-${assessment._id}-repo`}>
-                        {assessment.competency.title}:{" "}
-                        {assessment.evidence.repositorySummary?.summaryText ||
-                          "No repository summary available."}
+                        <strong>{assessment.competency.title}</strong>
+                        <ReadMoreText
+                          text={assessment.evidence.repositorySummary?.summaryText}
+                          emptyText="No repository summary available."
+                          limit={150}
+                        />
                         {assessment.evidence.repositorySummary && (
-                          <>
-                            {" "}
+                          <span>
                             Quality{" "}
                             {formatPercent(
                               assessment.evidence.repositorySummary
@@ -2584,16 +3103,18 @@ export function ReportsPage({ token, role }: PageProps) {
                               assessment.evidence.repositorySummary
                                 .evidenceCompletenessScore || 0,
                             )}
-                          </>
+                          </span>
                         )}
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-            </Card>
+                </section>
+                )}
+              </div>
+            </article>
           ))}
-        </div>
+          </div>
+        </>
       )}
     </section>
   );
@@ -2833,7 +3354,7 @@ function GraduateNotificationsPage({ token }: { token: string }) {
                   <span>{notification.type}</span>
                   <span>{formatDate(notification.createdAt)}</span>
                 </div>
-                <p>{notification.message}</p>
+                <ReadMoreText text={notification.message} limit={180} />
                 {!notification.isRead && <strong>Unread</strong>}
               </div>
             </Card>
@@ -3044,9 +3565,16 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
     role: defaultRole as Role,
     organizationId: "",
   });
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    role: defaultRole as Role,
+    organizationId: "",
+  });
   const [message, setMessage] = useState("");
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const creatableRoles =
     role === "super_admin"
@@ -3065,8 +3593,14 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
       return;
     }
 
-    if (["organization_user", "org_admin"].includes(form.role) && role !== "org_admin" && !form.organizationId) {
-      setFormError("Select an organization for organization users and organization admins.");
+    if (
+      ["organization_user", "org_admin"].includes(form.role) &&
+      role !== "org_admin" &&
+      !form.organizationId
+    ) {
+      setFormError(
+        "Select an organization for organization users and organization admins.",
+      );
       return;
     }
 
@@ -3090,29 +3624,86 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
       await refresh();
     } catch (caughtError) {
       setFormError(
-        caughtError instanceof Error ? caughtError.message : "Failed to create user",
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to create user",
       );
     } finally {
       setIsSaving(false);
     }
   }
 
-  async function handleResetTemporaryPassword(user: User) {
+  function startEditUser(user: User) {
+    setEditingUserId(user.id);
+    let orgId = "";
+    if (typeof user.organization === "string") {
+      orgId = user.organization;
+    } else if (
+      user.organization &&
+      typeof user.organization === "object" &&
+      "_id" in user.organization
+    ) {
+      orgId = user.organization._id;
+    }
+    setEditForm({
+      name: user.name,
+      role: user.role,
+      organizationId: orgId,
+    });
+    setFormError("");
+    setMessage("");
+  }
+
+  async function handleUpdateUser() {
     setMessage("");
     setFormError("");
 
+    if (!editForm.name.trim()) {
+      setFormError("Name is required.");
+      return;
+    }
+
+    if (!editingUserId) return;
+
+    setIsSaving(true);
     try {
-      const result = await api.resetUserTemporaryPassword(token, user.id);
-      setMessage(
-        `Temporary password for ${result.user.name}: ${result.temporaryPassword}. It expires on ${formatDate(result.expiresAt)} and must be changed after login.`,
-      );
+      await api.updateUser(token, editingUserId, {
+        name: editForm.name.trim(),
+        role: editForm.role,
+      });
+      setEditingUserId(null);
+      setMessage("User updated successfully.");
       await refresh();
     } catch (caughtError) {
       setFormError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Failed to reset temporary password",
+          : "Failed to update user",
       );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleDeleteUser(userId: string) {
+    if (!window.confirm("Are you sure you want to delete this user?")) return;
+
+    setIsDeleting(userId);
+    setFormError("");
+    setMessage("");
+
+    try {
+      await api.deleteUser(token, userId);
+      setMessage("User deleted successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to delete user",
+      );
+    } finally {
+      setIsDeleting(null);
     }
   }
 
@@ -3132,79 +3723,168 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
         onRefresh={refresh}
       />
       {error && <Alert type="error">{error}</Alert>}
-      {organizationError && role === "admin" && <Alert type="error">{organizationError}</Alert>}
+      {organizationError && role === "admin" && (
+        <Alert type="error">{organizationError}</Alert>
+      )}
+      <Alert type="info">
+        After an account is created, administrators and organization admins
+        cannot reset that user&apos;s password. The user must use Forgot
+        Password to receive a secure reset link and manage their own account
+        access.
+      </Alert>
       {message && <Alert type="success">{message}</Alert>}
       {formError && <Alert type="error">{formError}</Alert>}
-      <Card title="Create user account">
-        <Alert type="info">
-          Normal user self-registration is public from the homepage. Admin,
-          super admin, organization admin, and organization user accounts are
-          protected and must be created by an authorized administrator.
-        </Alert>
-        <form className="form-grid" onSubmit={handleCreateUser}>
-          <TextField
-            label="Full name"
-            value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.target.value })}
-            required
-          />
-          <TextField
-            label="Email"
-            type="email"
-            value={form.email}
-            onChange={(event) => setForm({ ...form, email: event.target.value })}
-            required
-          />
-          <TextField
-            label="Temporary password"
-            type="password"
-            value={form.password}
-            onChange={(event) => setForm({ ...form, password: event.target.value })}
-            required
-          />
-          <SelectField
-            label="Role"
-            value={form.role}
-            onChange={(event) => setForm({ ...form, role: event.target.value as Role })}
+
+      {editingUserId ? (
+        <Card title="Edit user" icon={<Users size={20} />}>
+          <form
+            className="form-grid"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleUpdateUser();
+            }}
           >
-            {creatableRoles.map((item) => (
-              <option key={item} value={item}>
-                {roleLabel(item)}
-              </option>
-            ))}
-          </SelectField>
-          {role !== "org_admin" && ["organization_user", "org_admin"].includes(form.role) && (
-            <SelectField
-              label="Organization"
-              value={form.organizationId}
+            <TextField
+              label="Full name"
+              value={editForm.name}
               onChange={(event) =>
-                setForm({ ...form, organizationId: event.target.value })
+                setEditForm({ ...editForm, name: event.target.value })
               }
               required
+            />
+            <SelectField
+              label="Role"
+              value={editForm.role}
+              onChange={(event) =>
+                setEditForm({ ...editForm, role: event.target.value as Role })
+              }
             >
-              <option value="">Select organization</option>
-              {organizations
-                .filter((organization) => organization.status !== "inactive")
-                .map((organization) => (
-                  <option key={organization._id} value={organization._id}>
-                    {organization.name}
-                  </option>
-                ))}
+              {creatableRoles.map((item) => (
+                <option key={item} value={item}>
+                  {roleLabel(item)}
+                </option>
+              ))}
             </SelectField>
-          )}
-          <div className="form-actions">
-            <Button disabled={isSaving} type="submit">
-              {isSaving ? "Creating user..." : "Create user"}
-            </Button>
-            {role === "admin" && (
-              <Button variant="secondary" onClick={refreshOrganizations}>
-                Refresh organizations
-              </Button>
+            {["organization_user", "org_admin"].includes(editForm.role) && (
+              <SelectField
+                label="Organization"
+                value={editForm.organizationId}
+                onChange={(event) =>
+                  setEditForm({
+                    ...editForm,
+                    organizationId: event.target.value,
+                  })
+                }
+                required
+              >
+                <option value="">Select organization</option>
+                {organizations
+                  .filter((organization) => organization.status !== "inactive")
+                  .map((organization) => (
+                    <option key={organization._id} value={organization._id}>
+                      {organization.name}
+                    </option>
+                  ))}
+              </SelectField>
             )}
-          </div>
-        </form>
-      </Card>
-      <Card title="Users">
+            <div className="form-actions">
+              <Button disabled={isSaving} type="submit">
+                {isSaving ? "Updating user..." : "Update user"}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={isSaving}
+                onClick={() => setEditingUserId(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Card>
+      ) : (
+        <Card title="Create user account" icon={<Users size={20} />}>
+          <Alert type="info">
+            Normal user self-registration is public from the homepage. Admin,
+            super admin, organization admin, and organization user accounts are
+            protected and must be created by an authorized administrator.
+          </Alert>
+          <form className="form-grid" onSubmit={handleCreateUser}>
+            <TextField
+              label="Full name"
+              value={form.name}
+              onChange={(event) =>
+                setForm({ ...form, name: event.target.value })
+              }
+              required
+            />
+            <TextField
+              label="Email"
+              type="email"
+              value={form.email}
+              onChange={(event) =>
+                setForm({ ...form, email: event.target.value })
+              }
+              required
+            />
+            <TextField
+              label="Temporary password"
+              type="password"
+              value={form.password}
+              onChange={(event) =>
+                setForm({ ...form, password: event.target.value })
+              }
+              required
+            />
+            <SelectField
+              label="Role"
+              value={form.role}
+              onChange={(event) =>
+                setForm({ ...form, role: event.target.value as Role })
+              }
+            >
+              {creatableRoles.map((item) => (
+                <option key={item} value={item}>
+                  {roleLabel(item)}
+                </option>
+              ))}
+            </SelectField>
+            {role !== "org_admin" &&
+              ["organization_user", "org_admin"].includes(form.role) && (
+                <SelectField
+                  label="Organization"
+                  value={form.organizationId}
+                  onChange={(event) =>
+                    setForm({ ...form, organizationId: event.target.value })
+                  }
+                  required
+                >
+                  <option value="">Select organization</option>
+                  {organizations
+                    .filter(
+                      (organization) => organization.status !== "inactive",
+                    )
+                    .map((organization) => (
+                      <option key={organization._id} value={organization._id}>
+                        {organization.name}
+                      </option>
+                    ))}
+                </SelectField>
+              )}
+            <div className="form-actions">
+              <Button disabled={isSaving} type="submit">
+                {isSaving ? "Creating user..." : "Create user"}
+              </Button>
+              {role === "admin" && (
+                <Button variant="secondary" onClick={refreshOrganizations}>
+                  Refresh organizations
+                </Button>
+              )}
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <Card title="Users" icon={<Users size={20} />}>
         {data.length === 0 ? (
           <EmptyState message="No users found." />
         ) : (
@@ -3217,7 +3897,7 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
                   <th>Role</th>
                   <th>Organization</th>
                   <th>Status</th>
-                  <th>Security</th>
+                  <th>Password access</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -3230,15 +3910,27 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
                     <td>{organizationName(user)}</td>
                     <td>{user.isActive === false ? "Inactive" : "Active"}</td>
                     <td>
-                      {user.mustChangePassword ? "Temporary password" : "Password set"}
+                      {user.mustChangePassword
+                        ? "Temporary password"
+                        : "User-managed password"}
                     </td>
                     <td>
-                      <Button
-                        variant="secondary"
-                        onClick={() => void handleResetTemporaryPassword(user)}
-                      >
-                        Reset password
-                      </Button>
+                      <div className="button-row">
+                        <Button
+                          variant="secondary"
+                          onClick={() => startEditUser(user)}
+                          disabled={editingUserId !== null}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          disabled={isDeleting === user.id}
+                          onClick={() => void handleDeleteUser(user.id)}
+                        >
+                          {isDeleting === user.id ? "Deleting..." : "Delete"}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -3264,9 +3956,19 @@ export function OrganizationsPage({ token }: { token: string }) {
     phone: "",
     address: "",
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    district: "",
+    type: "tvet_institution" as Organization["type"],
+    contactEmail: "",
+    phone: "",
+    address: "",
+  });
   const [message, setMessage] = useState("");
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   async function handleCreateOrganization(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3309,6 +4011,78 @@ export function OrganizationsPage({ token }: { token: string }) {
     }
   }
 
+  function startEditOrganization(org: Organization) {
+    setEditingId(org._id);
+    setEditForm({
+      name: org.name,
+      district: org.district || "",
+      type: org.type || "tvet_institution",
+      contactEmail: org.contactEmail || "",
+      phone: org.phone || "",
+      address: org.address || "",
+    });
+    setFormError("");
+    setMessage("");
+  }
+
+  async function handleUpdateOrganization() {
+    setMessage("");
+    setFormError("");
+
+    if (!editForm.name.trim()) {
+      setFormError("Organization name is required.");
+      return;
+    }
+
+    if (!editingId) return;
+
+    setIsSaving(true);
+    try {
+      await api.updateOrganization(token, editingId, {
+        name: editForm.name.trim(),
+        district: editForm.district.trim(),
+        type: editForm.type,
+        contactEmail: editForm.contactEmail.trim(),
+        phone: editForm.phone.trim(),
+        address: editForm.address.trim(),
+      });
+      setEditingId(null);
+      setMessage("Organization updated successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to update organization",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleDeleteOrganization(orgId: string) {
+    if (!window.confirm("Are you sure you want to delete this organization?"))
+      return;
+
+    setIsDeleting(orgId);
+    setFormError("");
+    setMessage("");
+
+    try {
+      await api.deleteOrganization(token, orgId);
+      setMessage("Organization deleted successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to delete organization",
+      );
+    } finally {
+      setIsDeleting(null);
+    }
+  }
+
   if (isLoading) return <LoadingState message="Loading organizations..." />;
 
   return (
@@ -3321,56 +4095,145 @@ export function OrganizationsPage({ token }: { token: string }) {
       {error && <Alert type="error">{error}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
       {formError && <Alert type="error">{formError}</Alert>}
-      <Card title="Create organization">
-        <form className="form-grid" onSubmit={handleCreateOrganization}>
-          <TextField
-            label="Organization name"
-            value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.target.value })}
-            required
-          />
-          <TextField
-            label="District"
-            value={form.district}
-            onChange={(event) => setForm({ ...form, district: event.target.value })}
-          />
-          <SelectField
-            label="Organization type"
-            value={form.type}
-            onChange={(event) =>
-              setForm({ ...form, type: event.target.value as Organization["type"] })
-            }
+
+      {editingId ? (
+        <Card title="Edit organization" icon={<BarChart3 size={20} />}>
+          <form
+            className="form-grid"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleUpdateOrganization();
+            }}
           >
-            <option value="tvet_institution">TVET Institution</option>
-            <option value="training_center">Training Center</option>
-            <option value="other">Other</option>
-          </SelectField>
-          <TextField
-            label="Contact email"
-            type="email"
-            value={form.contactEmail}
-            onChange={(event) =>
-              setForm({ ...form, contactEmail: event.target.value })
-            }
-          />
-          <TextField
-            label="Phone"
-            value={form.phone}
-            onChange={(event) => setForm({ ...form, phone: event.target.value })}
-          />
-          <TextField
-            label="Address"
-            value={form.address}
-            onChange={(event) => setForm({ ...form, address: event.target.value })}
-          />
-          <div className="form-actions">
-            <Button disabled={isSaving} type="submit">
-              {isSaving ? "Creating organization..." : "Create organization"}
-            </Button>
-          </div>
-        </form>
-      </Card>
-      <Card title="Registered organizations">
+            <TextField
+              label="Organization name"
+              value={editForm.name}
+              onChange={(event) =>
+                setEditForm({ ...editForm, name: event.target.value })
+              }
+              required
+            />
+            <TextField
+              label="District"
+              value={editForm.district}
+              onChange={(event) =>
+                setEditForm({ ...editForm, district: event.target.value })
+              }
+            />
+            <SelectField
+              label="Organization type"
+              value={editForm.type}
+              onChange={(event) =>
+                setEditForm({
+                  ...editForm,
+                  type: event.target.value as Organization["type"],
+                })
+              }
+            >
+              <option value="tvet_institution">TVET Institution</option>
+              <option value="training_center">Training Center</option>
+              <option value="other">Other</option>
+            </SelectField>
+            <TextField
+              label="Contact email"
+              type="email"
+              value={editForm.contactEmail}
+              onChange={(event) =>
+                setEditForm({ ...editForm, contactEmail: event.target.value })
+              }
+            />
+            <TextField
+              label="Phone"
+              value={editForm.phone}
+              onChange={(event) =>
+                setEditForm({ ...editForm, phone: event.target.value })
+              }
+            />
+            <TextField
+              label="Address"
+              value={editForm.address}
+              onChange={(event) =>
+                setEditForm({ ...editForm, address: event.target.value })
+              }
+            />
+            <div className="form-actions">
+              <Button disabled={isSaving} type="submit">
+                {isSaving ? "Updating organization..." : "Update organization"}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={isSaving}
+                onClick={() => setEditingId(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Card>
+      ) : (
+        <Card title="Create organization" icon={<BarChart3 size={20} />}>
+          <form className="form-grid" onSubmit={handleCreateOrganization}>
+            <TextField
+              label="Organization name"
+              value={form.name}
+              onChange={(event) =>
+                setForm({ ...form, name: event.target.value })
+              }
+              required
+            />
+            <TextField
+              label="District"
+              value={form.district}
+              onChange={(event) =>
+                setForm({ ...form, district: event.target.value })
+              }
+            />
+            <SelectField
+              label="Organization type"
+              value={form.type}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  type: event.target.value as Organization["type"],
+                })
+              }
+            >
+              <option value="tvet_institution">TVET Institution</option>
+              <option value="training_center">Training Center</option>
+              <option value="other">Other</option>
+            </SelectField>
+            <TextField
+              label="Contact email"
+              type="email"
+              value={form.contactEmail}
+              onChange={(event) =>
+                setForm({ ...form, contactEmail: event.target.value })
+              }
+            />
+            <TextField
+              label="Phone"
+              value={form.phone}
+              onChange={(event) =>
+                setForm({ ...form, phone: event.target.value })
+              }
+            />
+            <TextField
+              label="Address"
+              value={form.address}
+              onChange={(event) =>
+                setForm({ ...form, address: event.target.value })
+              }
+            />
+            <div className="form-actions">
+              <Button disabled={isSaving} type="submit">
+                {isSaving ? "Creating organization..." : "Create organization"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <Card title="Registered organizations" icon={<BarChart3 size={20} />}>
         {data.length === 0 ? (
           <EmptyState message="No organizations found." />
         ) : (
@@ -3383,6 +4246,7 @@ export function OrganizationsPage({ token }: { token: string }) {
                   <th>Type</th>
                   <th>Contact</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -3391,8 +4255,32 @@ export function OrganizationsPage({ token }: { token: string }) {
                     <td>{organization.name}</td>
                     <td>{organization.district || "N/A"}</td>
                     <td>{organization.type || "N/A"}</td>
-                    <td>{organization.contactEmail || organization.phone || "N/A"}</td>
+                    <td>
+                      {organization.contactEmail || organization.phone || "N/A"}
+                    </td>
                     <td>{organization.status || "active"}</td>
+                    <td>
+                      <div className="button-row">
+                        <Button
+                          variant="secondary"
+                          onClick={() => startEditOrganization(organization)}
+                          disabled={editingId !== null}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          disabled={isDeleting === organization._id}
+                          onClick={() =>
+                            void handleDeleteOrganization(organization._id)
+                          }
+                        >
+                          {isDeleting === organization._id
+                            ? "Deleting..."
+                            : "Delete"}
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -3428,6 +4316,26 @@ export function CompetenciesPage({ token }: { token: string }) {
   const [message, setMessage] = useState("");
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [editingCompetencyId, setEditingCompetencyId] = useState<string | null>(
+    null,
+  );
+  const [editForm, setEditForm] = useState({
+    code: "",
+    title: "",
+    category: "",
+    description: "",
+    expectedEvidence: "",
+    practicalTaskTitle: "",
+    practicalTaskInstructions: "",
+    practicalTaskDeliverables: "",
+    practicalTaskTestCommand: "",
+    practicalTaskTestFilePath: "",
+    practicalTaskTestFileContent: "",
+    theoryQuestion: "",
+    theoryOptions: "",
+    theoryCorrectAnswer: "",
+  });
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   function resetCompetencyForm() {
     setForm({
@@ -3448,24 +4356,163 @@ export function CompetenciesPage({ token }: { token: string }) {
     });
   }
 
-  function validateCompetencyForm() {
-    const code = form.code.trim();
-    const title = form.title.trim();
-    const category = form.category.trim();
-    const hasPracticalTask = Boolean(form.practicalTaskTitle.trim());
-    // Hidden instructor tests are optional, but partial configuration would
-    // make repository execution ambiguous, so require all three fields together.
+  function resetEditForm() {
+    setEditForm({
+      code: "",
+      title: "",
+      category: "",
+      description: "",
+      expectedEvidence: "",
+      practicalTaskTitle: "",
+      practicalTaskInstructions: "",
+      practicalTaskDeliverables: "",
+      practicalTaskTestCommand: "",
+      practicalTaskTestFilePath: "",
+      practicalTaskTestFileContent: "",
+      theoryQuestion: "",
+      theoryOptions: "",
+      theoryCorrectAnswer: "",
+    });
+  }
+
+  function startEditCompetency(competency: Competency) {
+    setEditingCompetencyId(competency._id);
+    const practicalTask = competency.practicalTasks?.[0];
+    const theoryQuestion = competency.theoryQuestions?.[0];
+
+    setEditForm({
+      code: competency.code,
+      title: competency.title,
+      category: competency.category,
+      description: competency.description || "",
+      expectedEvidence: competency.expectedEvidence || "",
+      practicalTaskTitle: practicalTask?.title || "",
+      practicalTaskInstructions: practicalTask?.instructions || "",
+      practicalTaskDeliverables: practicalTask?.deliverables || "",
+      practicalTaskTestCommand: practicalTask?.automatedTestCommand || "",
+      practicalTaskTestFilePath:
+        practicalTask?.automatedTestFiles?.[0]?.path || "",
+      practicalTaskTestFileContent:
+        practicalTask?.automatedTestFiles?.[0]?.content || "",
+      theoryQuestion: theoryQuestion?.question || "",
+      theoryOptions: theoryQuestion?.options?.join("\n") || "",
+      theoryCorrectAnswer: theoryQuestion?.correctAnswer || "",
+    });
+    setFormError("");
+    setMessage("");
+  }
+
+  async function handleUpdateCompetency(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    setFormError("");
+
+    const validationMessage = validateCompetencyForm(editForm);
+    if (validationMessage) {
+      setFormError(validationMessage);
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const theoryOptions = editForm.theoryOptions
+        .split("\n")
+        .map((option) => option.trim())
+        .filter(Boolean);
+
+      await api.updateCompetency(token, editingCompetencyId!, {
+        code: editForm.code.trim(),
+        title: editForm.title.trim(),
+        category: editForm.category.trim(),
+        description: editForm.description.trim(),
+        expectedEvidence: editForm.expectedEvidence.trim(),
+        practicalTasks: editForm.practicalTaskTitle.trim()
+          ? [
+              {
+                title: editForm.practicalTaskTitle.trim(),
+                instructions: editForm.practicalTaskInstructions.trim(),
+                deliverables: editForm.practicalTaskDeliverables.trim(),
+                estimatedMinutes: 60,
+                maxScore: 100,
+                automatedTestCommand: editForm.practicalTaskTestCommand.trim(),
+                automatedTestFiles:
+                  editForm.practicalTaskTestFilePath.trim() &&
+                  editForm.practicalTaskTestFileContent.trim()
+                    ? [
+                        {
+                          path: editForm.practicalTaskTestFilePath.trim(),
+                          content: editForm.practicalTaskTestFileContent,
+                        },
+                      ]
+                    : [],
+              },
+            ]
+          : [],
+        theoryQuestions: editForm.theoryQuestion.trim()
+          ? [
+              {
+                question: editForm.theoryQuestion.trim(),
+                type: "multiple_choice",
+                options: theoryOptions,
+                correctAnswer: editForm.theoryCorrectAnswer.trim(),
+                points: 1,
+              },
+            ]
+          : [],
+      });
+      setEditingCompetencyId(null);
+      resetEditForm();
+      setMessage("Competency updated successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to update competency",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleDeleteCompetency(id: string) {
+    if (!window.confirm("Are you sure you want to delete this competency?")) {
+      return;
+    }
+
+    setIsDeleting(id);
+    try {
+      await api.deleteCompetency(token, id);
+      setMessage("Competency deleted successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to delete competency",
+      );
+    } finally {
+      setIsDeleting(null);
+    }
+  }
+
+  function validateCompetencyForm(formData: typeof form) {
+    const code = formData.code.trim();
+    const title = formData.title.trim();
+    const category = formData.category.trim();
+    const hasPracticalTask = Boolean(formData.practicalTaskTitle.trim());
     const hasAnyInstructorTestField = Boolean(
-      form.practicalTaskTestCommand.trim() ||
-        form.practicalTaskTestFilePath.trim() ||
-        form.practicalTaskTestFileContent.trim(),
+      formData.practicalTaskTestCommand.trim() ||
+      formData.practicalTaskTestFilePath.trim() ||
+      formData.practicalTaskTestFileContent.trim(),
     );
     const hasCompleteInstructorTest =
-      Boolean(form.practicalTaskTestCommand.trim()) &&
-      Boolean(form.practicalTaskTestFilePath.trim()) &&
-      Boolean(form.practicalTaskTestFileContent.trim());
-    const hasTheoryQuestion = Boolean(form.theoryQuestion.trim());
-    const theoryOptions = form.theoryOptions
+      Boolean(formData.practicalTaskTestCommand.trim()) &&
+      Boolean(formData.practicalTaskTestFilePath.trim()) &&
+      Boolean(formData.practicalTaskTestFileContent.trim());
+    const hasTheoryQuestion = Boolean(formData.theoryQuestion.trim());
+    const theoryOptions = formData.theoryOptions
       .split("\n")
       .map((option) => option.trim())
       .filter(Boolean);
@@ -3474,7 +4521,7 @@ export function CompetenciesPage({ token }: { token: string }) {
       return "Code, title, and category are required.";
     }
 
-    if (hasPracticalTask && !form.practicalTaskInstructions.trim()) {
+    if (hasPracticalTask && !formData.practicalTaskInstructions.trim()) {
       return "Task instructions are required when a practical task is added.";
     }
 
@@ -3482,7 +4529,7 @@ export function CompetenciesPage({ token }: { token: string }) {
       return "Instructor test command, file path, and file content must all be provided together.";
     }
 
-    if (hasTheoryQuestion && !form.theoryCorrectAnswer.trim()) {
+    if (hasTheoryQuestion && !formData.theoryCorrectAnswer.trim()) {
       return "Correct answer is required when a theory question is added.";
     }
 
@@ -3494,7 +4541,8 @@ export function CompetenciesPage({ token }: { token: string }) {
       hasTheoryQuestion &&
       !theoryOptions.some(
         (option) =>
-          option.toLowerCase() === form.theoryCorrectAnswer.trim().toLowerCase(),
+          option.toLowerCase() ===
+          formData.theoryCorrectAnswer.trim().toLowerCase(),
       )
     ) {
       return "Correct answer must match one of the multiple-choice options.";
@@ -3508,7 +4556,7 @@ export function CompetenciesPage({ token }: { token: string }) {
     setMessage("");
     setFormError("");
 
-    const validationMessage = validateCompetencyForm();
+    const validationMessage = validateCompetencyForm(form);
     if (validationMessage) {
       setFormError(validationMessage);
       return;
@@ -3590,43 +4638,79 @@ export function CompetenciesPage({ token }: { token: string }) {
       {error && <Alert type="error">{error}</Alert>}
       {formError && <Alert type="error">{formError}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
-      <Card title="Add real assessment competency">
-        <form className="form-grid" onSubmit={handleCreate}>
+      <Card
+        title={
+          editingCompetencyId
+            ? "Edit Competency"
+            : "Add real assessment competency"
+        }
+        icon={<Zap size={20} />}
+      >
+        <form
+          className="form-grid"
+          onSubmit={editingCompetencyId ? handleUpdateCompetency : handleCreate}
+        >
           <TextField
             label="Code"
-            value={form.code}
-            onChange={(event) => setForm({ ...form, code: event.target.value })}
+            value={editingCompetencyId ? editForm.code : form.code}
+            onChange={(event) =>
+              editingCompetencyId
+                ? setEditForm({ ...editForm, code: event.target.value })
+                : setForm({ ...form, code: event.target.value })
+            }
             required
+            disabled={editingCompetencyId ? isSaving : false}
           />
           <TextField
             label="Title"
-            value={form.title}
+            value={editingCompetencyId ? editForm.title : form.title}
             onChange={(event) =>
-              setForm({ ...form, title: event.target.value })
+              editingCompetencyId
+                ? setEditForm({ ...editForm, title: event.target.value })
+                : setForm({ ...form, title: event.target.value })
             }
             required
+            disabled={editingCompetencyId ? isSaving : false}
           />
           <TextField
             label="Category"
-            value={form.category}
+            value={editingCompetencyId ? editForm.category : form.category}
             onChange={(event) =>
-              setForm({ ...form, category: event.target.value })
+              editingCompetencyId
+                ? setEditForm({ ...editForm, category: event.target.value })
+                : setForm({ ...form, category: event.target.value })
             }
             required
+            disabled={editingCompetencyId ? isSaving : false}
           />
           <TextField
             label="Description"
-            value={form.description}
-            onChange={(event) =>
-              setForm({ ...form, description: event.target.value })
+            value={
+              editingCompetencyId ? editForm.description : form.description
             }
+            onChange={(event) =>
+              editingCompetencyId
+                ? setEditForm({ ...editForm, description: event.target.value })
+                : setForm({ ...form, description: event.target.value })
+            }
+            disabled={editingCompetencyId ? isSaving : false}
           />
           <TextField
             label="Expected evidence"
-            value={form.expectedEvidence}
-            onChange={(event) =>
-              setForm({ ...form, expectedEvidence: event.target.value })
+            value={
+              editingCompetencyId
+                ? editForm.expectedEvidence
+                : form.expectedEvidence
             }
+            onChange={(event) =>
+              editingCompetencyId
+                ? setEditForm({
+                    ...editForm,
+                    expectedEvidence: event.target.value,
+                  })
+                : setForm({ ...form, expectedEvidence: event.target.value })
+            }
+            disabled={editingCompetencyId ? isSaving : false}
           />
           <div className="full-span form-subsection">
             <h3>Practical test</h3>
@@ -3638,68 +4722,131 @@ export function CompetenciesPage({ token }: { token: string }) {
             <div className="form-grid">
               <TextField
                 label="Task title"
-                value={form.practicalTaskTitle}
-                onChange={(event) =>
-                  setForm({ ...form, practicalTaskTitle: event.target.value })
+                value={
+                  editingCompetencyId
+                    ? editForm.practicalTaskTitle
+                    : form.practicalTaskTitle
                 }
+                onChange={(event) =>
+                  editingCompetencyId
+                    ? setEditForm({
+                        ...editForm,
+                        practicalTaskTitle: event.target.value,
+                      })
+                    : setForm({
+                        ...form,
+                        practicalTaskTitle: event.target.value,
+                      })
+                }
+                disabled={editingCompetencyId ? isSaving : false}
               />
               <TextField
                 label="Deliverables"
-                value={form.practicalTaskDeliverables}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    practicalTaskDeliverables: event.target.value,
-                  })
+                value={
+                  editingCompetencyId
+                    ? editForm.practicalTaskDeliverables
+                    : form.practicalTaskDeliverables
                 }
+                onChange={(event) =>
+                  editingCompetencyId
+                    ? setEditForm({
+                        ...editForm,
+                        practicalTaskDeliverables: event.target.value,
+                      })
+                    : setForm({
+                        ...form,
+                        practicalTaskDeliverables: event.target.value,
+                      })
+                }
+                disabled={editingCompetencyId ? isSaving : false}
               />
               <div className="full-span">
                 <TextArea
                   label="Task instructions"
                   rows={4}
-                  value={form.practicalTaskInstructions}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      practicalTaskInstructions: event.target.value,
-                    })
+                  value={
+                    editingCompetencyId
+                      ? editForm.practicalTaskInstructions
+                      : form.practicalTaskInstructions
                   }
+                  onChange={(event) =>
+                    editingCompetencyId
+                      ? setEditForm({
+                          ...editForm,
+                          practicalTaskInstructions: event.target.value,
+                        })
+                      : setForm({
+                          ...form,
+                          practicalTaskInstructions: event.target.value,
+                        })
+                  }
+                  disabled={editingCompetencyId ? isSaving : false}
                 />
               </div>
               <TextField
                 label="Instructor test command"
-                value={form.practicalTaskTestCommand}
+                value={
+                  editingCompetencyId
+                    ? editForm.practicalTaskTestCommand
+                    : form.practicalTaskTestCommand
+                }
                 onChange={(event) =>
-                  setForm({
-                    ...form,
-                    practicalTaskTestCommand: event.target.value,
-                  })
+                  editingCompetencyId
+                    ? setEditForm({
+                        ...editForm,
+                        practicalTaskTestCommand: event.target.value,
+                      })
+                    : setForm({
+                        ...form,
+                        practicalTaskTestCommand: event.target.value,
+                      })
                 }
                 placeholder="npm test -- --runInBand tests/instructor-task.test.js"
+                disabled={editingCompetencyId ? isSaving : false}
               />
               <TextField
                 label="Instructor test file path"
-                value={form.practicalTaskTestFilePath}
+                value={
+                  editingCompetencyId
+                    ? editForm.practicalTaskTestFilePath
+                    : form.practicalTaskTestFilePath
+                }
                 onChange={(event) =>
-                  setForm({
-                    ...form,
-                    practicalTaskTestFilePath: event.target.value,
-                  })
+                  editingCompetencyId
+                    ? setEditForm({
+                        ...editForm,
+                        practicalTaskTestFilePath: event.target.value,
+                      })
+                    : setForm({
+                        ...form,
+                        practicalTaskTestFilePath: event.target.value,
+                      })
                 }
                 placeholder="tests/instructor-task.test.js"
+                disabled={editingCompetencyId ? isSaving : false}
               />
               <div className="full-span">
                 <TextArea
                   label="Instructor test file content"
                   rows={8}
-                  value={form.practicalTaskTestFileContent}
+                  value={
+                    editingCompetencyId
+                      ? editForm.practicalTaskTestFileContent
+                      : form.practicalTaskTestFileContent
+                  }
                   onChange={(event) =>
-                    setForm({
-                      ...form,
-                      practicalTaskTestFileContent: event.target.value,
-                    })
+                    editingCompetencyId
+                      ? setEditForm({
+                          ...editForm,
+                          practicalTaskTestFileContent: event.target.value,
+                        })
+                      : setForm({
+                          ...form,
+                          practicalTaskTestFileContent: event.target.value,
+                        })
                   }
                   placeholder="Add Jest, Supertest, or Playwright tests that prove the practical task works."
+                  disabled={editingCompetencyId ? isSaving : false}
                 />
               </div>
             </div>
@@ -3713,50 +4860,94 @@ export function CompetenciesPage({ token }: { token: string }) {
             <div className="form-grid">
               <TextField
                 label="Question"
-                value={form.theoryQuestion}
-                onChange={(event) =>
-                  setForm({ ...form, theoryQuestion: event.target.value })
+                value={
+                  editingCompetencyId
+                    ? editForm.theoryQuestion
+                    : form.theoryQuestion
                 }
+                onChange={(event) =>
+                  editingCompetencyId
+                    ? setEditForm({
+                        ...editForm,
+                        theoryQuestion: event.target.value,
+                      })
+                    : setForm({ ...form, theoryQuestion: event.target.value })
+                }
+                disabled={editingCompetencyId ? isSaving : false}
               />
               <TextField
                 label="Correct answer"
-                value={form.theoryCorrectAnswer}
-                onChange={(event) =>
-                  setForm({ ...form, theoryCorrectAnswer: event.target.value })
+                value={
+                  editingCompetencyId
+                    ? editForm.theoryCorrectAnswer
+                    : form.theoryCorrectAnswer
                 }
+                onChange={(event) =>
+                  editingCompetencyId
+                    ? setEditForm({
+                        ...editForm,
+                        theoryCorrectAnswer: event.target.value,
+                      })
+                    : setForm({
+                        ...form,
+                        theoryCorrectAnswer: event.target.value,
+                      })
+                }
+                disabled={editingCompetencyId ? isSaving : false}
               />
               <div className="full-span">
                 <TextArea
                   label="Multiple-choice options, one per line"
                   rows={4}
-                  value={form.theoryOptions}
-                  onChange={(event) =>
-                    setForm({ ...form, theoryOptions: event.target.value })
+                  value={
+                    editingCompetencyId
+                      ? editForm.theoryOptions
+                      : form.theoryOptions
                   }
+                  onChange={(event) =>
+                    editingCompetencyId
+                      ? setEditForm({
+                          ...editForm,
+                          theoryOptions: event.target.value,
+                        })
+                      : setForm({ ...form, theoryOptions: event.target.value })
+                  }
+                  disabled={editingCompetencyId ? isSaving : false}
                 />
               </div>
             </div>
           </div>
           <div className="full-span button-row">
             <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Saving competency..." : "Add Competency"}
+              {isSaving
+                ? editingCompetencyId
+                  ? "Saving competency..."
+                  : "Saving competency..."
+                : editingCompetencyId
+                  ? "Update Competency"
+                  : "Add Competency"}
             </Button>
             <Button
               type="button"
               variant="secondary"
               onClick={() => {
-                resetCompetencyForm();
+                if (editingCompetencyId) {
+                  setEditingCompetencyId(null);
+                  resetEditForm();
+                } else {
+                  resetCompetencyForm();
+                }
                 setFormError("");
                 setMessage("");
               }}
               disabled={isSaving}
             >
-              Clear Form
+              {editingCompetencyId ? "Cancel" : "Clear Form"}
             </Button>
           </div>
         </form>
       </Card>
-      <Card title="Current competencies">
+      <Card title="Current competencies" icon={<Zap size={20} />}>
         {data.length === 0 ? (
           <EmptyState message="No competencies have been added yet." />
         ) : (
@@ -3769,6 +4960,7 @@ export function CompetenciesPage({ token }: { token: string }) {
                   <th>Category</th>
                   <th>Expected Evidence</th>
                   <th>Assessment Content</th>
+                  <th className="w-56">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -3793,6 +4985,26 @@ export function CompetenciesPage({ token }: { token: string }) {
                         {hiddenTestCount > 0
                           ? `, ${hiddenTestCount} hidden test set(s)`
                           : ""}
+                      </td>
+                      <td>
+                        <div className="table-action-row">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => startEditCompetency(item)}
+                          disabled={isSaving || editingCompetencyId !== null}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="danger"
+                          onClick={() => handleDeleteCompetency(item._id)}
+                          disabled={isDeleting === item._id || isSaving}
+                        >
+                          {isDeleting === item._id ? "Deleting..." : "Delete"}
+                        </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -3823,13 +5035,111 @@ export function BenchmarksPage({ token }: { token: string }) {
     level: "intermediate",
     description: "",
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    competency: "",
+    requiredScore: 80,
+    level: "intermediate",
+    description: "",
+  });
   const [message, setMessage] = useState("");
+  const [formError, setFormError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await api.createBenchmark(token, form);
-    setMessage("Benchmark saved successfully.");
-    await refresh();
+    setFormError("");
+    setMessage("");
+
+    if (!form.competency) {
+      setFormError("Please select a competency.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await api.createBenchmark(token, form);
+      setMessage("Benchmark saved successfully.");
+      setForm({
+        competency: "",
+        requiredScore: 80,
+        level: "intermediate",
+        description: "",
+      });
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to create benchmark",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function startEditBenchmark(benchmark: Benchmark) {
+    setEditingId(benchmark._id);
+    setEditForm({
+      competency: benchmark.competency._id,
+      requiredScore: benchmark.requiredScore,
+      level: benchmark.level,
+      description: benchmark.description || "",
+    });
+    setFormError("");
+    setMessage("");
+  }
+
+  async function handleUpdateBenchmark() {
+    setFormError("");
+    setMessage("");
+
+    if (!editForm.competency) {
+      setFormError("Please select a competency.");
+      return;
+    }
+
+    if (!editingId) return;
+
+    setIsSaving(true);
+    try {
+      await api.updateBenchmark(token, editingId, editForm);
+      setEditingId(null);
+      setMessage("Benchmark updated successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to update benchmark",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleDeleteBenchmark(benchmarkId: string) {
+    if (!window.confirm("Are you sure you want to delete this benchmark?"))
+      return;
+
+    setIsDeleting(benchmarkId);
+    setFormError("");
+    setMessage("");
+
+    try {
+      await api.deleteBenchmark(token, benchmarkId);
+      setMessage("Benchmark deleted successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to delete benchmark",
+      );
+    } finally {
+      setIsDeleting(null);
+    }
   }
 
   if (isLoading) return <LoadingState message="Loading benchmarks..." />;
@@ -3843,54 +5153,130 @@ export function BenchmarksPage({ token }: { token: string }) {
       />
       {error && <Alert type="error">{error}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
-      <Card title="Add benchmark">
-        <form className="form-grid" onSubmit={handleCreate}>
-          <SelectField
-            label="Competency"
-            value={form.competency}
-            onChange={(event) =>
-              setForm({ ...form, competency: event.target.value })
-            }
-            required
+      {formError && <Alert type="error">{formError}</Alert>}
+
+      {editingId ? (
+        <Card title="Edit benchmark" icon={<TrendingUp size={20} />}>
+          <form
+            className="form-grid"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleUpdateBenchmark();
+            }}
           >
-            <option value="">Select competency</option>
-            {competencies.map((item) => (
-              <option key={item._id} value={item._id}>
-                {item.code} - {item.title}
-              </option>
-            ))}
-          </SelectField>
-          <TextField
-            label="Required score"
-            max={100}
-            min={0}
-            type="number"
-            value={form.requiredScore}
-            onChange={(event) =>
-              setForm({ ...form, requiredScore: Number(event.target.value) })
-            }
-          />
-          <SelectField
-            label="Level"
-            value={form.level}
-            onChange={(event) =>
-              setForm({ ...form, level: event.target.value })
-            }
-          >
-            <option value="basic">Basic</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="advanced">Advanced</option>
-          </SelectField>
-          <TextField
-            label="Description"
-            value={form.description}
-            onChange={(event) =>
-              setForm({ ...form, description: event.target.value })
-            }
-          />
-          <Button type="submit">Save Benchmark</Button>
-        </form>
-      </Card>
+            <SelectField
+              label="Competency"
+              value={editForm.competency}
+              onChange={(event) =>
+                setEditForm({ ...editForm, competency: event.target.value })
+              }
+              required
+            >
+              <option value="">Select competency</option>
+              {competencies.map((item) => (
+                <option key={item._id} value={item._id}>
+                  {item.code} - {item.title}
+                </option>
+              ))}
+            </SelectField>
+            <TextField
+              label="Required score"
+              max={100}
+              min={0}
+              type="number"
+              value={editForm.requiredScore}
+              onChange={(event) =>
+                setEditForm({
+                  ...editForm,
+                  requiredScore: Number(event.target.value),
+                })
+              }
+            />
+            <SelectField
+              label="Level"
+              value={editForm.level}
+              onChange={(event) =>
+                setEditForm({ ...editForm, level: event.target.value })
+              }
+            >
+              <option value="basic">Basic</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="advanced">Advanced</option>
+            </SelectField>
+            <TextField
+              label="Description"
+              value={editForm.description}
+              onChange={(event) =>
+                setEditForm({ ...editForm, description: event.target.value })
+              }
+            />
+            <div className="form-actions">
+              <Button disabled={isSaving} type="submit">
+                {isSaving ? "Updating benchmark..." : "Update benchmark"}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={isSaving}
+                onClick={() => setEditingId(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Card>
+      ) : (
+        <Card title="Add benchmark" icon={<TrendingUp size={20} />}>
+          <form className="form-grid" onSubmit={handleCreate}>
+            <SelectField
+              label="Competency"
+              value={form.competency}
+              onChange={(event) =>
+                setForm({ ...form, competency: event.target.value })
+              }
+              required
+            >
+              <option value="">Select competency</option>
+              {competencies.map((item) => (
+                <option key={item._id} value={item._id}>
+                  {item.code} - {item.title}
+                </option>
+              ))}
+            </SelectField>
+            <TextField
+              label="Required score"
+              max={100}
+              min={0}
+              type="number"
+              value={form.requiredScore}
+              onChange={(event) =>
+                setForm({ ...form, requiredScore: Number(event.target.value) })
+              }
+            />
+            <SelectField
+              label="Level"
+              value={form.level}
+              onChange={(event) =>
+                setForm({ ...form, level: event.target.value })
+              }
+            >
+              <option value="basic">Basic</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="advanced">Advanced</option>
+            </SelectField>
+            <TextField
+              label="Description"
+              value={form.description}
+              onChange={(event) =>
+                setForm({ ...form, description: event.target.value })
+              }
+            />
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "Saving benchmark..." : "Save benchmark"}
+            </Button>
+          </form>
+        </Card>
+      )}
+
       <Card title="Active benchmarks">
         <div className="table-wrap">
           <table>
@@ -3899,6 +5285,7 @@ export function BenchmarksPage({ token }: { token: string }) {
                 <th>Competency</th>
                 <th>Required Score</th>
                 <th>Level</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -3907,6 +5294,24 @@ export function BenchmarksPage({ token }: { token: string }) {
                   <td>{item.competency.title}</td>
                   <td>{formatPercent(item.requiredScore)}</td>
                   <td>{item.level}</td>
+                  <td>
+                    <div className="button-row">
+                      <Button
+                        variant="secondary"
+                        onClick={() => startEditBenchmark(item)}
+                        disabled={editingId !== null}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="danger"
+                        disabled={isDeleting === item._id}
+                        onClick={() => void handleDeleteBenchmark(item._id)}
+                      >
+                        {isDeleting === item._id ? "Deleting..." : "Delete"}
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

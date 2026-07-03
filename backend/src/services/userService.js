@@ -4,7 +4,6 @@ import { sanitizeUser } from "./authService.js";
 import { AppError } from "../utils/errors.js";
 import { hashPassword } from "../utils/password.js";
 import { env } from "../config/env.js";
-import crypto from "node:crypto";
 import {
   ROLES,
   ORGANIZATION_SCOPED_ROLES,
@@ -14,10 +13,6 @@ import {
 } from "../constants/roles.js";
 
 const MANAGED_USER_POPULATE = "name district type status";
-
-function generateTemporaryPassword() {
-  return `Temp-${crypto.randomBytes(5).toString("base64url")}1`;
-}
 
 function assertOrganizationAdminHasOrganization(user) {
   if (user.role === ROLES.ORGANIZATION_ADMIN && !user.organization) {
@@ -234,40 +229,4 @@ export async function deactivateManagedUser(userId, actor) {
 
 export async function deleteManagedUser(userId, actor) {
   return deactivateManagedUser(userId, actor);
-}
-
-export async function resetManagedUserTemporaryPassword(userId, actor) {
-  const existingUser = await getUserInManagedScope(userId, actor);
-  assertCanManageRole(actor, existingUser.role);
-
-  const temporaryPassword = generateTemporaryPassword();
-  const { passwordHash, passwordSalt } = hashPassword(temporaryPassword);
-  const temporaryPasswordExpiresAt = new Date(
-    Date.now() + env.temporaryPasswordExpiresHours * 60 * 60 * 1000,
-  );
-
-  const user = await User.findByIdAndUpdate(
-    existingUser._id,
-    {
-      $set: {
-        passwordHash,
-        passwordSalt,
-        mustChangePassword: true,
-        temporaryPasswordExpiresAt,
-      },
-      $unset: {
-        passwordChangedAt: "",
-        passwordResetTokenHash: "",
-        passwordResetExpiresAt: "",
-        passwordResetUsedAt: "",
-      },
-    },
-    { new: true, runValidators: true },
-  ).populate("organization", MANAGED_USER_POPULATE);
-
-  return {
-    user: sanitizeUser(user),
-    temporaryPassword,
-    expiresAt: temporaryPasswordExpiresAt,
-  };
 }

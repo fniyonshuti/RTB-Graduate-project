@@ -70,6 +70,9 @@ export const env = {
     false,
   ),
   repositoryDockerImage: process.env.REPOSITORY_DOCKER_IMAGE || 'node:20-alpine',
+  pbkdf2Iterations: numberEnv('PBKDF2_ITERATIONS', 120000),
+  pbkdf2KeyLength: numberEnv('PBKDF2_KEY_LENGTH', 64),
+  pbkdf2Digest: process.env.PBKDF2_DIGEST || 'sha512',
 };
 
 export function validateRuntimeConfig() {

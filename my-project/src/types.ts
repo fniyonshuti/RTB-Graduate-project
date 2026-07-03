@@ -4,7 +4,6 @@ export type Role =
   | 'org_admin'
   | 'admin'
   | 'super_admin'
-  | 'graduate'
   | 'assessor'
 
 export type Organization = {

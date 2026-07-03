@@ -23,6 +23,9 @@ export function getWeakAssessmentAreas(scores = {}) {
 function buildRepositorySummaryText(repositorySummary = {}) {
   // Keep the AI prompt compact by turning the repository analysis into a single
   // evidence summary instead of sending the full raw repository payload.
+  const taskReview = repositorySummary.taskReview || {};
+  const repositoryAssessmentEvidence =
+    taskReview.repositoryAssessmentEvidence || {};
   const sampledFiles = Array.isArray(repositorySummary.sampledSourceFiles)
     ? repositorySummary.sampledSourceFiles
         .map((file) =>
@@ -33,8 +36,63 @@ function buildRepositorySummaryText(repositorySummary = {}) {
         )
         .filter(Boolean)
     : [];
+  const passedChecks = Array.isArray(taskReview.checklist)
+    ? taskReview.checklist
+        .filter((item) => item.passed)
+        .map((item) => `${item.label}: ${item.evidence || "passed"}`)
+        .slice(0, 6)
+    : [];
+  const failedChecks = Array.isArray(taskReview.checklist)
+    ? taskReview.checklist
+        .filter((item) => !item.passed)
+        .map((item) => `${item.label}: ${item.advice || item.evidence || "failed"}`)
+        .slice(0, 6)
+    : [];
+  const failedExecutableRequirements = Array.isArray(
+    repositoryAssessmentEvidence.failedRequirements,
+  )
+    ? repositoryAssessmentEvidence.failedRequirements
+        .map((item) => `${item.title}: ${item.error || "failed"}`)
+        .slice(0, 6)
+    : [];
+  const competencyScores = repositoryAssessmentEvidence.competencyScores
+    ? Object.entries(repositoryAssessmentEvidence.competencyScores)
+        .map(([name, score]) => `${name}: ${score}%`)
+        .join(", ")
+    : "";
   const parts = [
     repositorySummary.summaryText,
+    taskReview.summary,
+    taskReview.proofSummary,
+    Number.isFinite(taskReview.score)
+      ? `Practical GitHub task score: ${taskReview.score}%.`
+      : "",
+    Number.isFinite(repositoryAssessmentEvidence.accuracyScore)
+      ? `Executable repository assessment accuracy: ${repositoryAssessmentEvidence.accuracyScore}%.`
+      : "",
+    repositoryAssessmentEvidence.executionMode
+      ? `Execution mode: ${repositoryAssessmentEvidence.executionMode}.`
+      : "",
+    Array.isArray(repositoryAssessmentEvidence.detectedTechnologies) &&
+    repositoryAssessmentEvidence.detectedTechnologies.length > 0
+      ? `Detected technologies: ${repositoryAssessmentEvidence.detectedTechnologies.join(", ")}.`
+      : "",
+    Number.isFinite(repositoryAssessmentEvidence.passedTestCases) &&
+    Number.isFinite(repositoryAssessmentEvidence.totalTestCases)
+      ? `Automated tests/checks passed: ${repositoryAssessmentEvidence.passedTestCases}/${repositoryAssessmentEvidence.totalTestCases}.`
+      : "",
+    repositoryAssessmentEvidence.eslintResult
+      ? `ESLint: ${repositoryAssessmentEvidence.eslintResult.success ? "passed" : "needs work"} with ${repositoryAssessmentEvidence.eslintResult.errors || 0} error(s) and ${repositoryAssessmentEvidence.eslintResult.warnings || 0} warning(s).`
+      : "",
+    repositoryAssessmentEvidence.securityScanResult
+      ? `Security scan: ${repositoryAssessmentEvidence.securityScanResult.success ? "passed" : "needs work"} with ${repositoryAssessmentEvidence.securityScanResult.critical || 0} critical, ${repositoryAssessmentEvidence.securityScanResult.high || 0} high issue(s).`
+      : "",
+    competencyScores ? `Repository competency scores: ${competencyScores}.` : "",
+    passedChecks.length > 0 ? `Passed checklist items: ${passedChecks.join(" | ")}` : "",
+    failedChecks.length > 0 ? `Failed checklist items: ${failedChecks.join(" | ")}` : "",
+    failedExecutableRequirements.length > 0
+      ? `Failed executable requirements: ${failedExecutableRequirements.join(" | ")}`
+      : "",
     Number.isFinite(repositorySummary.codeQualityScore)
       ? `Repository quality score: ${repositorySummary.codeQualityScore}%.`
       : "",
@@ -97,50 +155,13 @@ export async function generateDraftRecommendation({
   );
 }
 
-function buildRuleBasedRecommendationDraft(context) {
-  const weakAreas = context.weakAreas?.length
-    ? context.weakAreas.join(", ")
-    : "the assessed competency";
-  const priority = getPriorityFromGap(context.gapLevel);
-  const actionItems = [
-    `Improve ${weakAreas} with a focused practical exercise.`,
-    "Fix failed repository checklist items and rerun the automated assessment.",
-    "Add automated tests that prove the practical task works end to end.",
-  ];
-
-  if (context.gapLevel === "No Gap") {
-    actionItems.unshift("Maintain the current standard by practicing a more advanced version of the task.");
-  }
-
-  return {
-    message: `Automatic recommendation: final score ${context.finalScore}% against benchmark ${context.benchmarkScore}% produced a ${context.gapLevel}. Focus next on ${weakAreas}.`,
-    actionItems,
-    resources: [
-      "Review the repository analysis checklist in the assessment report.",
-      "Use the RTB competency requirements as the improvement checklist.",
-    ],
-    priority,
-    provider: "rule_based",
-    model: "local-rubric-v1",
-    prompt: JSON.stringify(context),
-    rawResponse: "",
-  };
-}
-
 export async function generateAutomaticRecommendationDraft({
   assessment,
   competency,
 }) {
   const context = buildRecommendationContext({ assessment, competency });
 
-  try {
-    return await generateAiRecommendationDraft(context);
-  } catch (error) {
-    return {
-      ...buildRuleBasedRecommendationDraft(context),
-      aiFallbackReason: error.message,
-    };
-  }
+  return generateAiRecommendationDraft(context);
 }
 
 async function learnerIdsForOrganization(user) {

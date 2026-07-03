@@ -1,6 +1,6 @@
 import type { Role } from '../types'
 
-export const learnerRoles: Role[] = ['normal_user', 'organization_user', 'graduate']
+export const learnerRoles: Role[] = ['normal_user', 'organization_user']
 export const adminRoles: Role[] = ['admin', 'super_admin']
 
 export function isLearnerRole(role: Role) {
@@ -18,7 +18,6 @@ export function roleLabel(role: Role) {
     org_admin: 'Organization Admin',
     admin: 'Admin',
     super_admin: 'Super Admin',
-    graduate: 'Organization User',
     assessor: 'Assessor (legacy)',
   }
 

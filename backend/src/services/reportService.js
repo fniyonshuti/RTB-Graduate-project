@@ -5,20 +5,7 @@ import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import { AppError } from '../utils/errors.js';
 import { summarizeAssessments } from './gapAnalysisService.js';
-import { isLearnerRole, ROLES } from '../constants/roles.js';
-
-function organizationIdOf(user) {
-  return user?.organization?._id || user?.organization;
-}
-
-function assertSameOrganization(user, resourceOrganization) {
-  if (
-    user.role === ROLES.ORGANIZATION_ADMIN &&
-    String(resourceOrganization || '') !== String(organizationIdOf(user) || '')
-  ) {
-    throw new AppError('You can only manage reports for your organization', 403);
-  }
-}
+import { isLearnerRole } from '../constants/roles.js';
 
 export async function generateGraduateReport(graduateId, generatedBy) {
   const graduate = await User.findById(graduateId);
@@ -27,7 +14,13 @@ export async function generateGraduateReport(graduateId, generatedBy) {
     throw new AppError('Assessment user was not found', 404);
   }
 
-  assertSameOrganization(generatedBy, graduate.organization);
+  if (
+    generatedBy &&
+    isLearnerRole(generatedBy.role) &&
+    String(generatedBy._id) !== String(graduate._id)
+  ) {
+    throw new AppError('You can only generate your own report', 403);
+  }
 
   const assessments = await Assessment.find({
     graduate: graduateId,
@@ -112,14 +105,11 @@ export async function generateGraduateReport(graduateId, generatedBy) {
 }
 
 export async function listReportsForUser(user) {
-  const query =
-    isLearnerRole(user.role)
-      ? { graduate: user._id }
-      : user.role === ROLES.ORGANIZATION_ADMIN
-        ? { organization: organizationIdOf(user) }
-        : {};
+  if (!isLearnerRole(user.role)) {
+    throw new AppError('Only assessment users can access reports', 403);
+  }
 
-  return Report.find(query)
+  return Report.find({ graduate: user._id })
     .populate('graduate', 'name email institution')
     .populate('generatedBy', 'name email role')
     .populate({
@@ -140,13 +130,11 @@ export async function listReportsForUser(user) {
 }
 
 export async function getReportForUser(reportId, user) {
-  const query =
-    isLearnerRole(user.role)
-      ? { _id: reportId, graduate: user._id }
-      : user.role === ROLES.ORGANIZATION_ADMIN
-        ? { _id: reportId, organization: organizationIdOf(user) }
-        : { _id: reportId };
-  const report = await Report.findOne(query)
+  if (!isLearnerRole(user.role)) {
+    throw new AppError('Only assessment users can access reports', 403);
+  }
+
+  const report = await Report.findOne({ _id: reportId, graduate: user._id })
     .populate('graduate', 'name email institution')
     .populate('generatedBy', 'name email role')
     .populate({
@@ -172,6 +160,10 @@ export async function getReportForUser(reportId, user) {
 }
 
 export async function updateReportById(reportId, payload, user) {
+  if (!isLearnerRole(user.role)) {
+    throw new AppError('Only assessment users can access reports', 403);
+  }
+
   const allowedUpdates = ['title', 'summary', 'strengths', 'weaknesses'];
   const updates = {};
 
@@ -179,12 +171,7 @@ export async function updateReportById(reportId, payload, user) {
     if (payload[field] !== undefined) updates[field] = payload[field];
   });
 
-  const query =
-    user.role === ROLES.ORGANIZATION_ADMIN
-      ? { _id: reportId, organization: organizationIdOf(user) }
-      : { _id: reportId };
-
-  const report = await Report.findOneAndUpdate(query, updates, {
+  const report = await Report.findOneAndUpdate({ _id: reportId, graduate: user._id }, updates, {
     new: true,
     runValidators: true,
   }).populate('graduate', 'name email institution');
@@ -197,13 +184,11 @@ export async function updateReportById(reportId, payload, user) {
 }
 
 export async function deleteReportForUser(reportId, user) {
-  const query =
-    isLearnerRole(user.role)
-      ? { _id: reportId, graduate: user._id }
-      : user.role === ROLES.ORGANIZATION_ADMIN
-        ? { _id: reportId, organization: organizationIdOf(user) }
-        : { _id: reportId };
-  const report = await Report.findOneAndDelete(query);
+  if (!isLearnerRole(user.role)) {
+    throw new AppError('Only assessment users can access reports', 403);
+  }
+
+  const report = await Report.findOneAndDelete({ _id: reportId, graduate: user._id });
 
   if (!report) {
     throw new AppError('Report was not found', 404);

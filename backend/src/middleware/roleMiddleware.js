@@ -4,7 +4,7 @@ import { LEARNER_ROLES, ROLES, SYSTEM_ADMIN_ROLES } from '../constants/roles.js'
 function expandAllowedRoles(allowedRoles) {
   return new Set(
     allowedRoles.flatMap((role) => {
-      if (role === ROLES.LEGACY_GRADUATE || role === 'learner') {
+      if (role === 'learner') {
         return LEARNER_ROLES;
       }
 
