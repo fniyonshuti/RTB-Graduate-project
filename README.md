@@ -29,13 +29,10 @@ The system helps identify the gap between ICT skills demonstrated by TVET gradua
 
 ## Live Demo / Application URL
 
-Add the deployed system link here after hosting the frontend and backend.
+demo video and live application url :
 
-| Environment | URL |
-| --- | --- |
-| Demo Video / Live Application Document | [Open demo/live application document](https://docs.google.com/document/d/1c0gMfJDdh6FZgHur0QYa_gu9NMmWGgFYGAZr0C8HBaY/edit?tab=t.0) |
-| Live Application | `https://your-live-application-url.com` |
-| Backend API | `https://your-backend-api-url.com/api` |
+https://docs.google.com/document/d/1c0gMfJDdh6FZgHur0QYa_gu9NMmWGgFYGAZr0C8HBaY/edit?tab=t.0
+
 
 ## User Roles
 
