@@ -811,7 +811,66 @@ Body:
 - The profile icon opens a hover account menu with email, role, profile, dashboard, and logout actions.
 - Layouts are responsive for desktop, tablet, and mobile.
 
+## Render Deployment Settings
+
+Deploy the backend and frontend as separate Render services because this project is a two-folder application.
+
+### Backend Web Service
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `backend` |
+| Build Command | `npm install && npm run build` |
+| Start Command | `npm start` |
+
+Required backend environment variables include:
+
+```env
+NODE_ENV=production
+PORT=5000
+MONGO_URI=your_mongodb_atlas_uri
+JWT_SECRET=your_strong_secret
+FRONTEND_URL=https://your-frontend-url
+CORS_ORIGINS=https://your-frontend-url
+GITHUB_API_URL=https://api.github.com
+GITHUB_TOKEN=optional_for_private_repositories
+GEMINI_API_KEY=your_gemini_key
+GEMINI_RECOMMENDATION_MODEL=gemini-2.5-flash
+EMAIL_PROVIDER=resend
+EMAIL_API_KEY=your_resend_key
+EMAIL_FROM=Skills Gap Analysis Tool <noreply@your-verified-domain.com>
+EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE=false
+ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION=false
+```
+
+### Frontend Static Site
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `my-project` |
+| Build Command | `npm install && npm run build` |
+| Publish Directory | `dist` |
+
+Required frontend environment variable:
+
+```env
+VITE_API_URL=https://your-backend-url/api
+```
+
 ## Troubleshooting
+
+### Render build fails with Missing script: "build"
+
+This happens when Render runs `npm run build` in a folder whose `package.json` does not define a build script.
+
+Use these settings:
+
+- Backend service root directory: `backend`
+- Backend build command: `npm install && npm run build`
+- Backend start command: `npm start`
+- Frontend static site root directory: `my-project`
+- Frontend build command: `npm install && npm run build`
+- Frontend publish directory: `dist`
 
 ### Backend cannot connect to MongoDB Atlas
 

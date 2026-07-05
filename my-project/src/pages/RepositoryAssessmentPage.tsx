@@ -4,6 +4,36 @@ import { ReadMoreText } from "../components/common";
 import type { RepositoryAssessmentResult } from "../types";
 import { GITHUB_PLACEHOLDER } from "../constants/github";
 
+function getHiddenInstructorTestStatus(result: RepositoryAssessmentResult) {
+  const passed = result.passedRequirements.find(
+    (item) => item.id === "instructor-task-tests",
+  );
+  const failed = result.failedRequirements.find(
+    (item) => item.id === "instructor-task-tests",
+  );
+
+  if (passed) {
+    return {
+      label: "Passed",
+      detail: passed.evidence || "Hidden instructor tests passed.",
+    };
+  }
+
+  if (failed) {
+    const error = failed.error || "Hidden instructor tests did not pass.";
+    return {
+      label: /not configured/i.test(error) ? "Not configured" : "Failed",
+      detail: error,
+    };
+  }
+
+  return {
+    label: "Not available",
+    detail:
+      "No hidden instructor test result was returned for this repository review.",
+  };
+}
+
 type Props = {
   token: string;
   competency?: string;
@@ -43,6 +73,10 @@ export function RepositoryAssessmentPage({
       setLoading(false);
     }
   }
+
+  const hiddenTestStatus = result
+    ? getHiddenInstructorTestStatus(result)
+    : null;
 
   return (
     <section className="repository-assessment-page">
@@ -124,6 +158,17 @@ export function RepositoryAssessmentPage({
           <section>
             <h4>Repository review pipeline</h4>
             <div className="result-grid">
+              <div>
+                <small>Hidden expected output test</small>
+                <strong>{hiddenTestStatus?.label || "Not available"}</strong>
+                <ReadMoreText
+                  text={
+                    hiddenTestStatus?.detail ||
+                    "No hidden instructor test result was returned."
+                  }
+                  limit={130}
+                />
+              </div>
               <div>
                 <small>Automated tests</small>
                 <strong>

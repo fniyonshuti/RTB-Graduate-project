@@ -71,6 +71,40 @@ type AsyncState<T> = {
   error: string;
 };
 
+function getHiddenInstructorTaskCheck(review?: RepositoryTaskReview | null) {
+  const check = review?.checklist.find(
+    (item) => item.key === "instructor-task-tests",
+  );
+
+  if (!check) {
+    return {
+      label: "Not available",
+      detail:
+        "No hidden instructor test result was returned for this automatic review.",
+      passed: false,
+    };
+  }
+
+  if (check.passed) {
+    return {
+      label: "Passed",
+      detail: check.evidence || "Hidden instructor tests passed.",
+      passed: true,
+    };
+  }
+
+  return {
+    label: /not configured/i.test(check.evidence || check.advice || "")
+      ? "Not configured"
+      : "Failed",
+    detail:
+      check.evidence ||
+      check.advice ||
+      "Hidden instructor tests did not pass.",
+    passed: false,
+  };
+}
+
 function useAsyncData<T>(load: () => Promise<T>, initialData: T) {
   const loadRef = useRef(load);
   const initialDataRef = useRef(initialData);
@@ -820,6 +854,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     repositoryTaskReview.practicalTaskId === (selectedTask?._id || "")
       ? repositoryTaskReview.taskReview
       : null;
+  const hiddenInstructorTaskCheck = getHiddenInstructorTaskCheck(
+    activeRepositoryTaskReview,
+  );
   const theoryQuestions = selectedCompetency?.theoryQuestions || [];
   const answeredTheoryCount = theoryQuestions.filter(
     (question) => (theoryAnswers[question._id] || "").trim().length > 0,
@@ -1173,6 +1210,32 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                             {activeRepositoryTaskReview.passedCount}/
                             {activeRepositoryTaskReview.checklist.length} passed
                           </span>
+                        </div>
+                        <div className="result-grid">
+                          <div
+                            className={`task-check ${
+                              hiddenInstructorTaskCheck.passed
+                                ? "passed"
+                                : "failed"
+                            }`}
+                          >
+                            <span>{hiddenInstructorTaskCheck.label}</span>
+                            <div>
+                              <strong>Hidden expected output test</strong>
+                              <ReadMoreText
+                                text={hiddenInstructorTaskCheck.detail}
+                                limit={150}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <small>Correctness proof</small>
+                            <strong>
+                              {hiddenInstructorTaskCheck.passed
+                                ? "Expected output passed"
+                                : "Expected output failed"}
+                            </strong>
+                          </div>
                         </div>
                         {activeRepositoryTaskReview.implementationReview && (
                           <div className="assessor-note">
