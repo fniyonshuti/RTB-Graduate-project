@@ -184,8 +184,8 @@ PBKDF2_KEY_LENGTH=64
 PBKDF2_DIGEST=sha512
 
 DB_CONNECT_TIMEOUT_MS=8000
-FRONTEND_URL=https://rtb-graduate-project.onrender.com
-CORS_ORIGINS=https://rtb-graduate-project.onrender.com,http://127.0.0.1:5173
+FRONTEND_URL=http://localhost:5173
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=300
 AUTH_RATE_LIMIT_MAX_REQUESTS=20
@@ -827,7 +827,7 @@ HOST=0.0.0.0
 MONGO_URI=your_mongodb_atlas_uri
 JWT_SECRET=your_strong_secret
 FRONTEND_URL=https://your-frontend-url
-CORS_ORIGINS=https://your-frontend-url
+CORS_ORIGINS=https://your-frontend-url,https://*.vercel.app
 API_PUBLIC_URL=https://your-backend-url/api
 GITHUB_API_URL=https://api.github.com
 GITHUB_API_BASE_URL=https://api.github.com
@@ -858,6 +858,12 @@ Required frontend environment variable:
 
 ```env
 VITE_API_URL=https://your-backend-url/api
+```
+
+For your current deployed backend, Vercel should use:
+
+```env
+VITE_API_URL=https://rtb-graduate-project.onrender.com/api
 ```
 
 ## Troubleshooting
@@ -936,7 +942,7 @@ Check:
 - Backend is running on port `5000`.
 - `VITE_API_URL=http://localhost:5000/api`.
 - Backend did not crash during the request.
-- CORS allows `https://rtb-graduate-project.onrender.com`.
+- CORS allows the deployed frontend domain. For Vercel deployments, use the exact frontend URL or add `https://*.vercel.app` to `CORS_ORIGINS`.
 
 ### Password reset email fails
 
