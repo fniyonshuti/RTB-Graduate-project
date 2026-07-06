@@ -827,18 +827,25 @@ Required backend environment variables include:
 
 ```env
 NODE_ENV=production
-PORT=5000
+HOST=0.0.0.0
 MONGO_URI=your_mongodb_atlas_uri
 JWT_SECRET=your_strong_secret
 FRONTEND_URL=https://your-frontend-url
 CORS_ORIGINS=https://your-frontend-url
+API_PUBLIC_URL=https://your-backend-url/api
 GITHUB_API_URL=https://api.github.com
+GITHUB_API_BASE_URL=https://api.github.com
+GITHUB_RAW_BASE_URL=https://raw.githubusercontent.com
+GITHUB_WEB_BASE_URL=https://github.com
 GITHUB_TOKEN=optional_for_private_repositories
 GEMINI_API_KEY=your_gemini_key
+GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models
 GEMINI_RECOMMENDATION_MODEL=gemini-2.5-flash
 EMAIL_PROVIDER=resend
 EMAIL_API_KEY=your_resend_key
-EMAIL_FROM=Skills Gap Analysis Tool <noreply@your-verified-domain.com>
+EMAIL_RESEND_API_URL=https://api.resend.com/emails
+EMAIL_FROM=noreply@your-verified-domain.com
+EMAIL_FROM_NAME=Competra
 EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE=false
 ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION=false
 ```
@@ -868,9 +875,24 @@ Use these settings:
 - Backend service root directory: `backend`
 - Backend build command: `npm install && npm run build`
 - Backend start command: `npm start`
+- Do not use `npm run dev` on Render. It is for local development only.
 - Frontend static site root directory: `my-project`
 - Frontend build command: `npm install && npm run build`
 - Frontend publish directory: `dist`
+
+### Render starts with npm run dev and no port opens
+
+This happens when the Render service Start Command is set to the local development command.
+
+Use:
+
+```text
+npm start
+```
+
+The repository also includes `render.yaml`, which sets the backend start command to `npm start` for Render Blueprint deployments.
+
+If Render still reports no open port, check the runtime logs above the port scan message. The backend must connect to MongoDB and finish configuration validation before it can bind to `process.env.PORT`.
 
 ### Backend cannot connect to MongoDB Atlas
 

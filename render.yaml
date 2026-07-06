@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: competra-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE
+        value: false
+      - key: ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION
+        value: false
