@@ -19,12 +19,64 @@ import type {
 
 const configuredApiUrl = String(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 
+function currentFrontendOrigin() {
+  if (typeof window === 'undefined') return 'this frontend domain'
+  return window.location.origin
+}
+
 function apiBaseUrl() {
   if (!configuredApiUrl) {
-    throw new Error('VITE_API_URL is not configured in the frontend environment file.')
+    throw new Error(
+      'Backend API is not configured. Set VITE_API_URL in the frontend environment variables, then redeploy the frontend.',
+    )
   }
 
   return configuredApiUrl
+}
+
+function buildConnectionErrorMessage(baseUrl: string, details: string[]) {
+  const frontendOrigin = currentFrontendOrigin()
+
+  if (import.meta.env.PROD) {
+    return [
+      'Connection problem: the app could not reach the backend API.',
+      `Backend API: ${baseUrl}`,
+      `Frontend origin: ${frontendOrigin}`,
+      'Check that the Render backend is running, VITE_API_URL points to the deployed backend /api URL, and the backend CORS_ORIGINS includes this frontend origin.',
+      'After changing Vercel or Render environment variables, redeploy both services.',
+      details.length > 0 ? `Technical detail: ${details.join(' | ')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  return [
+    'Connection problem: the app could not reach the local backend API.',
+    `Backend API: ${baseUrl}`,
+    'Start the backend, confirm the port matches VITE_API_URL, and refresh the page.',
+    details.length > 0 ? `Technical detail: ${details.join(' | ')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+function buildHttpErrorMessage(path: string, response: Response, payload: ApiResponse<unknown>) {
+  const requestId = payload.requestId ? ` Request ID: ${payload.requestId}.` : ''
+  const message = payload.message || response.statusText || 'Request failed'
+
+  if (response.status === 401) {
+    return `${message}. Please sign in again.${requestId}`
+  }
+
+  if (response.status === 403) {
+    return `${message}. Your account may not have permission for this action, or the frontend origin is not allowed by backend CORS.${requestId}`
+  }
+
+  if (response.status >= 500) {
+    return `Backend server error while calling ${path}. Please try again shortly or check the Render backend logs.${requestId}`
+  }
+
+  return `${message}.${requestId}`.trim()
 }
 
 type RequestOptions = {
@@ -60,16 +112,7 @@ async function request<T>(path: string, options: RequestOptions = {}) {
   }
 
   if (!response) {
-    const isProduction = import.meta.env.PROD
-    const recoveryHint = isProduction
-      ? 'Confirm the deployed backend is running, the backend URL is correct, and the backend CORS_ORIGINS includes this Vercel frontend URL.'
-      : 'From the project root, run "npm.cmd run dev" to start both frontend and backend, or run "npm.cmd run dev" inside the backend folder if the frontend is already open. Then refresh the page.'
-
-    throw new Error(
-      `Cannot connect to the backend API configured by VITE_API_URL. ${recoveryHint} Details: ${connectionErrors.join(
-        ' | ',
-      )}`,
-    )
+    throw new Error(buildConnectionErrorMessage(baseUrl, connectionErrors))
   }
 
   let payload: ApiResponse<T>
@@ -78,12 +121,12 @@ async function request<T>(path: string, options: RequestOptions = {}) {
     payload = (await response.json()) as ApiResponse<T>
   } catch {
     throw new Error(
-      `Backend returned a non-JSON response for ${path}. Check the backend terminal for the real error.`,
+      `Backend returned an unexpected response while calling ${path}. Check that VITE_API_URL points to the API base URL and review the backend logs.`,
     )
   }
 
   if (!response.ok) {
-    throw new Error(payload.message || 'Request failed')
+    throw new Error(buildHttpErrorMessage(path, response, payload))
   }
 
   return payload.data

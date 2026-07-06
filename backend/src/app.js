@@ -33,16 +33,43 @@ const corsOrigins = String(
   .filter(Boolean);
 const authRateLimitMaxRequests = Number(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS) || 20;
 
+function wildcardOriginToRegExp(origin = '') {
+  const escaped = origin
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*');
+
+  return new RegExp(`^${escaped}$`);
+}
+
+function isOriginAllowed(origin = '') {
+  return corsOrigins.some((allowedOrigin) => {
+    if (allowedOrigin === origin) return true;
+    if (!allowedOrigin.includes('*')) return false;
+    return wildcardOriginToRegExp(allowedOrigin).test(origin);
+  });
+}
+
+function corsErrorForOrigin(origin = '') {
+  const allowed = corsOrigins.length > 0 ? corsOrigins.join(', ') : 'none configured';
+  const message = [
+    `Frontend origin is not allowed by backend CORS: ${origin || 'unknown origin'}.`,
+    `Allowed origins: ${allowed}.`,
+    'Set CORS_ORIGINS in the backend environment to include the deployed frontend URL, then redeploy the backend.',
+  ].join(' ');
+
+  return new AppError(message, 403);
+}
+
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || corsOrigins.includes(origin)) {
+    if (!origin || isOriginAllowed(origin)) {
       return callback(null, true);
     }
 
-    return callback(new AppError('Origin is not allowed by CORS', 403));
+    return callback(corsErrorForOrigin(origin));
   },
   credentials: true,
 };

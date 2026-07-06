@@ -48,6 +48,7 @@ export type ApiResponse<T> = {
   success: boolean
   message: string
   data: T
+  requestId?: string
 }
 
 export type AuthPayload = {
