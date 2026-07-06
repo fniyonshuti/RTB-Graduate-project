@@ -883,6 +883,34 @@ Check:
 - The database user has read/write permission.
 - Internet connection is working.
 
+If Windows DNS resolves Atlas but Node.js still fails with:
+
+```text
+querySrv ECONNREFUSED _mongodb._tcp...
+```
+
+use the standard Atlas connection string instead of the SRV string.
+
+In MongoDB Atlas:
+
+```text
+Database > Connect > Drivers > Show advanced connection options
+```
+
+Copy the connection string that starts with:
+
+```env
+MONGO_DIRECT_URI=mongodb://...
+```
+
+This avoids the `_mongodb._tcp` SRV lookup used by:
+
+```env
+MONGO_URI=mongodb+srv://...
+```
+
+Keep `MONGO_URI` in `.env`, but add `MONGO_DIRECT_URI`. When `MONGO_DIRECT_URI` is set, the backend uses it first. Keep the same Atlas username, password, database name, and options. If the password contains special characters, URL-encode it before saving it in `.env`.
+
 ### Frontend cannot connect to API
 
 Check:

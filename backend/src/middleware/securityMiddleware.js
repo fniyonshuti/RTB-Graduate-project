@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
-import { env } from '../config/env.js';
+import dotenv from 'dotenv';
 import { AppError } from '../utils/errors.js';
+
+dotenv.config({ quiet: true });
 
 const requestBuckets = new Map();
 
@@ -29,7 +31,7 @@ export function securityHeaders(req, res, next) {
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   );
 
-  if (env.isProduction) {
+  if (process.env.NODE_ENV === 'production') {
     res.setHeader(
       'Strict-Transport-Security',
       'max-age=31536000; includeSubDomains',
@@ -40,8 +42,8 @@ export function securityHeaders(req, res, next) {
 }
 
 export function createRateLimiter({
-  windowMs = env.rateLimitWindowMs,
-  maxRequests = env.rateLimitMaxRequests,
+  windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  maxRequests = Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 300,
   scope = 'global',
 } = {}) {
   return function rateLimiter(req, res, next) {

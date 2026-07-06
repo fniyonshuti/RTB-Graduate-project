@@ -1,10 +1,10 @@
-import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
 import connectDB from '../config/db.js';
 import Competency from '../models/Competency.js';
 import Benchmark from '../models/Benchmark.js';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const competencyPayload = {
   code: 'ICT-FSWD-001',

@@ -1,6 +1,8 @@
 import crypto from 'crypto';
-import { env } from '../config/env.js';
+import dotenv from 'dotenv';
 import { AppError } from './errors.js';
+
+dotenv.config({ quiet: true });
 
 function base64UrlEncode(value) {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -14,8 +16,11 @@ function base64UrlDecode(value) {
   }
 }
 
-export function signJwt(payload, expiresInSeconds = env.jwtExpiresInSeconds) {
-  const secret = env.jwtSecret;
+export function signJwt(
+  payload,
+  expiresInSeconds = Number(process.env.JWT_EXPIRES_IN_SECONDS) || 60 * 60 * 24,
+) {
+  const secret = String(process.env.JWT_SECRET || '').trim();
 
   if (!secret) {
     throw new Error('JWT_SECRET is missing from environment variables');
@@ -43,7 +48,7 @@ export function signJwt(payload, expiresInSeconds = env.jwtExpiresInSeconds) {
 }
 
 export function verifyJwt(token) {
-  const secret = env.jwtSecret;
+  const secret = String(process.env.JWT_SECRET || '').trim();
 
   if (!secret) {
     throw new Error('JWT_SECRET is missing from environment variables');

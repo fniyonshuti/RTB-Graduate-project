@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "Express API for the RTB ICT TVET Skills Gap Analysis Tool.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -14,18 +14,20 @@
     "seed:admin": "node src/scripts/createSuperAdmin.js",
     "seed:competency": "node src/scripts/seedCompetencyBenchmark.js",
     "seed:database-api": "node src/scripts/seedDatabaseApiCompetency.js"
-    
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "skills-gap-analysis",
+    "tvet",
+    "express",
+    "mongodb"
+  ],
+  "author": "Fred Niyonshuti",
+  "license": "UNLICENSED",
   "type": "module",
   "dependencies": {
-    "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.7.1",
     "resend": "^6.16.0"
   },

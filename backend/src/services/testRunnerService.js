@@ -1,14 +1,28 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { env } from '../config/env.js';
+import dotenv from 'dotenv';
 import { AppError } from '../utils/errors.js';
 import { runCommand } from '../utils/runCommand.js';
+
+dotenv.config({ quiet: true });
 
 function npmCommand() {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm';
 }
 
+function enableUnsafeLocalRepositoryExecution() {
+  return (
+    String(process.env.ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION || '').toLowerCase() ===
+    'true'
+  );
+}
+
+function repositoryAnalysisTimeoutMs() {
+  return Number(process.env.REPOSITORY_ANALYSIS_TIMEOUT_MS) || 120000;
+}
+
 function dockerArgs(localPath, command, { network = 'none' } = {}) {
+  const repositoryDockerImage = process.env.REPOSITORY_DOCKER_IMAGE || 'node:20-alpine';
   // Untrusted graduate code runs in a constrained container by default.
   // Dependency install can opt into network, while tests/builds stay offline.
   return [
@@ -24,7 +38,7 @@ function dockerArgs(localPath, command, { network = 'none' } = {}) {
     `${localPath}:/workspace`,
     '-w',
     '/workspace',
-    env.repositoryDockerImage,
+    repositoryDockerImage,
     'sh',
     '-lc',
     command,
@@ -40,13 +54,13 @@ async function runSafeCommand({
   dockerNetwork = 'none',
 }) {
   const startedAt = Date.now();
-  const result = env.enableUnsafeLocalRepositoryExecution
+  const result = enableUnsafeLocalRepositoryExecution()
     ? await runCommand(command, args, {
         cwd: localPath,
-        timeoutMs: env.repositoryAnalysisTimeoutMs,
+        timeoutMs: repositoryAnalysisTimeoutMs(),
       })
     : await runCommand('docker', dockerArgs(localPath, shellCommand, { network: dockerNetwork }), {
-        timeoutMs: env.repositoryAnalysisTimeoutMs,
+        timeoutMs: repositoryAnalysisTimeoutMs(),
       });
 
   return {
@@ -62,17 +76,17 @@ async function runSafeCommand({
 
 async function runInstructorCommand(localPath, commandText) {
   const startedAt = Date.now();
-  const result = env.enableUnsafeLocalRepositoryExecution
+  const result = enableUnsafeLocalRepositoryExecution()
     ? await runCommand(
         process.platform === 'win32' ? 'cmd' : 'sh',
         process.platform === 'win32' ? ['/c', commandText] : ['-lc', commandText],
         {
           cwd: localPath,
-          timeoutMs: env.repositoryAnalysisTimeoutMs,
+          timeoutMs: repositoryAnalysisTimeoutMs(),
         },
       )
     : await runCommand('docker', dockerArgs(localPath, commandText), {
-        timeoutMs: env.repositoryAnalysisTimeoutMs,
+        timeoutMs: repositoryAnalysisTimeoutMs(),
       });
 
   return {
@@ -110,7 +124,7 @@ async function writeInstructorTestFiles(localPath, testFiles = []) {
 }
 
 async function checkDockerAvailability() {
-  if (env.enableUnsafeLocalRepositoryExecution) {
+  if (enableUnsafeLocalRepositoryExecution()) {
     return {
       available: true,
       result: null,
@@ -159,7 +173,7 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
     };
   }
 
-  if (!env.enableUnsafeLocalRepositoryExecution) {
+  if (!enableUnsafeLocalRepositoryExecution()) {
     securityNotes.push(
       'Repository commands are executed through Docker isolation. Dependency installation may use network, while build and tests run without network access.',
     );
@@ -370,7 +384,7 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
   });
 
   return {
-    executionMode: env.enableUnsafeLocalRepositoryExecution ? 'local' : 'docker',
+    executionMode: enableUnsafeLocalRepositoryExecution() ? 'local' : 'docker',
     totalTestCases: testCases.length,
     passedTestCases: testCases.filter((test) => test.passed).length,
     commandResults,

@@ -1,11 +1,13 @@
 import User from '../models/User.js';
 import crypto from 'node:crypto';
-import { env } from '../config/env.js';
+import dotenv from 'dotenv';
 import { AppError } from '../utils/errors.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { signJwt } from '../utils/jwt.js';
 import { sendPasswordResetEmail } from './emailService.js';
 import { ROLES } from '../constants/roles.js';
+
+dotenv.config({ quiet: true });
 
 function hashResetToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -165,14 +167,27 @@ export async function requestPasswordReset(email) {
   }
 
   const resetToken = crypto.randomBytes(32).toString('hex');
+  const passwordResetTokenExpiresMinutes =
+    Number(process.env.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES) || 15;
+  const frontendUrl = process.env.FRONTEND_URL || '';
+  const exposePasswordResetLinkInResponse =
+    String(
+      process.env.EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE ||
+        (process.env.NODE_ENV !== 'production' ? 'true' : 'false'),
+    ).toLowerCase() === 'true';
   user.passwordResetTokenHash = hashResetToken(resetToken);
+
+  if (!frontendUrl) {
+    throw new AppError('FRONTEND_URL is required to generate password reset links', 500);
+  }
+
   user.passwordResetExpiresAt = new Date(
-    Date.now() + env.passwordResetTokenExpiresMinutes * 60 * 1000,
+    Date.now() + passwordResetTokenExpiresMinutes * 60 * 1000,
   );
   user.passwordResetUsedAt = undefined;
   await user.save();
 
-  const resetLink = `${env.frontendUrl.replace(/\/$/, '')}/?resetToken=${resetToken}`;
+  const resetLink = `${frontendUrl.replace(/\/$/, '')}/?resetToken=${resetToken}`;
   let emailResult;
 
   try {
@@ -180,7 +195,7 @@ export async function requestPasswordReset(email) {
       to: user.email,
       name: user.name,
       resetLink,
-      expiresInMinutes: env.passwordResetTokenExpiresMinutes,
+      expiresInMinutes: passwordResetTokenExpiresMinutes,
     });
   } catch (error) {
     user.passwordResetTokenHash = undefined;
@@ -195,8 +210,8 @@ export async function requestPasswordReset(email) {
       emailResult.sent
         ? 'If an active account exists for that email, a password reset link has been sent.'
         : 'Password reset link was created, but email delivery requires Resend domain verification.',
-    ...(env.exposePasswordResetLinkInResponse ? { resetLink } : {}),
-    expiresInMinutes: env.passwordResetTokenExpiresMinutes,
+    ...(exposePasswordResetLinkInResponse ? { resetLink } : {}),
+    expiresInMinutes: passwordResetTokenExpiresMinutes,
     emailSent: emailResult.sent,
     ...(emailResult.reason ? { emailStatus: emailResult.reason } : {}),
     ...(emailResult.message ? { emailMessage: emailResult.message } : {}),

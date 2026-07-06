@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { env } from './config/env.js';
+import dotenv from 'dotenv';
 import { AppError } from './utils/errors.js';
 
 import authRoutes from './routes/authRoutes.js';
@@ -22,14 +22,23 @@ import {
   securityHeaders,
 } from './middleware/securityMiddleware.js';
 
+dotenv.config({ quiet: true });
+
 const app = express();
+const corsOrigins = String(
+  process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '',
+)
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const authRateLimitMaxRequests = Number(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS) || 20;
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || env.corsOrigins.includes(origin)) {
+    if (!origin || corsOrigins.includes(origin)) {
       return callback(null, true);
     }
 
@@ -55,7 +64,7 @@ app.get('/api/health', (req, res) => {
 app.use(
   '/api/auth',
   createRateLimiter({
-    maxRequests: env.authRateLimitMaxRequests,
+    maxRequests: authRateLimitMaxRequests,
     scope: 'auth',
   }),
   authRoutes,
