@@ -25,12 +25,22 @@ import {
 dotenv.config({ quiet: true });
 
 const app = express();
-const corsOrigins = String(
-  process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '',
-)
+
+function listEnv(value = '') {
+  return String(value)
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+}
+
+const configuredCorsOrigins = listEnv(
+  process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '',
+);
+const localCorsOrigins =
+  process.env.NODE_ENV === 'production'
+    ? []
+    : listEnv(process.env.LOCAL_CORS_ORIGINS || '');
+const corsOrigins = [...new Set([...configuredCorsOrigins, ...localCorsOrigins])];
 const authRateLimitMaxRequests = Number(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS) || 20;
 
 function wildcardOriginToRegExp(origin = '') {

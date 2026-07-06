@@ -826,9 +826,9 @@ NODE_ENV=production
 HOST=0.0.0.0
 MONGO_URI=your_mongodb_atlas_uri
 JWT_SECRET=your_strong_secret
-FRONTEND_URL=https://your-frontend-url
-CORS_ORIGINS=https://your-frontend-url,https://*.vercel.app
-API_PUBLIC_URL=https://your-backend-url/api
+FRONTEND_URL=https://rtb-graduate-project.vercel.app
+CORS_ORIGINS=https://rtb-graduate-project.vercel.app,https://*.vercel.app
+API_PUBLIC_URL=https://rtb-graduate-project.onrender.com/api
 GITHUB_API_URL=https://api.github.com
 GITHUB_API_BASE_URL=https://api.github.com
 GITHUB_RAW_BASE_URL=https://raw.githubusercontent.com
@@ -939,10 +939,11 @@ Keep `MONGO_URI` in `.env`, but add `MONGO_DIRECT_URI`. When `MONGO_DIRECT_URI` 
 
 Check:
 
-- Backend is running on port `5000`.
-- `VITE_API_URL=http://localhost:5000/api`.
-- Backend did not crash during the request.
-- CORS allows the deployed frontend domain. For Vercel deployments, use the exact frontend URL or add `https://*.vercel.app` to `CORS_ORIGINS`.
+- Backend health endpoint returns success: `https://rtb-graduate-project.onrender.com/api/health`.
+- Vercel has `VITE_API_URL=https://rtb-graduate-project.onrender.com/api`.
+- Render has `FRONTEND_URL=https://rtb-graduate-project.vercel.app`.
+- Render has `CORS_ORIGINS=https://rtb-graduate-project.vercel.app,https://*.vercel.app`.
+- Both Render and Vercel were redeployed after environment variables changed.
 
 ### Password reset email fails
 
