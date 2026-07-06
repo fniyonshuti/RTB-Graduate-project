@@ -29,7 +29,7 @@ describe("Express app integration", () => {
   it("responds to the health endpoint", async () => {
     const { response, body } = await request("/api/health", {
       headers: {
-        Origin: "https://rtb-graduate-project.onrender.com",
+        Origin: "https://rtb-graduate-project.vercel.app",
       },
     });
 
@@ -42,7 +42,7 @@ describe("Express app integration", () => {
     const { response } = await request("/api/health", {
       headers: {
         "X-Request-Id": "test-request-id",
-        Origin: "https://rtb-graduate-project.onrender.com",
+        Origin: "https://rtb-graduate-project.vercel.app",
       },
     });
 
@@ -54,7 +54,7 @@ describe("Express app integration", () => {
   it("returns a structured 404 response for unknown routes", async () => {
     const { response, body } = await request("/api/does-not-exist", {
       headers: {
-        Origin: "https://rtb-graduate-project.onrender.com",
+        Origin: "https://rtb-graduate-project.vercel.app",
       },
     });
 

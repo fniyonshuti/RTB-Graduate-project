@@ -10,6 +10,12 @@ services:
         value: production
       - key: HOST
         value: 0.0.0.0
+      - key: API_PUBLIC_URL
+        value: https://rtb-graduate-project.onrender.com/api
+      - key: FRONTEND_URL
+        value: https://rtb-graduate-project.vercel.app
+      - key: CORS_ORIGINS
+        value: https://rtb-graduate-project.vercel.app,https://*.vercel.app
       - key: EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE
         value: false
       - key: ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION
