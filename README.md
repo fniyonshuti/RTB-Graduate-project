@@ -17,15 +17,15 @@ The system helps identify the gap between ICT skills demonstrated by TVET gradua
 
 ## Technology Stack
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | React, Vite, TypeScript, Tailwind CSS, Recharts, Lucide icons |
-| Backend | Node.js, Express.js, ES Modules |
-| Database | MongoDB Atlas, Mongoose |
-| Authentication | JWT |
-| Email | Resend email API for password reset links |
-| Repository Review | GitHub API, optional repository execution settings |
-| AI Recommendation | Gemini API |
+| Layer             | Technology                                                    |
+| ----------------- | ------------------------------------------------------------- |
+| Frontend          | React, Vite, TypeScript, Tailwind CSS, Recharts, Lucide icons |
+| Backend           | Node.js, Express.js, ES Modules                               |
+| Database          | MongoDB Atlas, Mongoose                                       |
+| Authentication    | JWT                                                           |
+| Email             | Resend email API for password reset links                     |
+| Repository Review | GitHub API, optional repository execution settings            |
+| AI Recommendation | Gemini API                                                    |
 
 ## Live Demo / Application URL
 
@@ -33,18 +33,17 @@ demo video and live application url :
 
 https://docs.google.com/document/d/1c0gMfJDdh6FZgHur0QYa_gu9NMmWGgFYGAZr0C8HBaY/edit?tab=t.0
 
-
 ## User Roles
 
 The active system roles are:
 
-| Role | Description |
-| --- | --- |
-| `normal_user` | Public learner account. Can register, complete profile, take assessments, view results, recommendations, reports, and notifications. |
-| `organization_user` | Learner account linked to an organization. Can take assessments and view own results/reports. |
-| `org_admin` | Organization administrator. Can manage organization users and review organization-scoped assessment data. |
-| `admin` | System administrator. Can manage organizations, organization admins, competencies, benchmarks, users, assessments, recommendations, and notifications. |
-| `super_admin` | Highest platform administrator. Can seed/manage platform-level admin access. |
+| Role                | Description                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `normal_user`       | Public learner account. Can register, complete profile, take assessments, view results, recommendations, reports, and notifications.                   |
+| `organization_user` | Learner account linked to an organization. Can take assessments and view own results/reports.                                                          |
+| `org_admin`         | Organization administrator. Can manage organization users and review organization-scoped assessment data.                                              |
+| `admin`             | System administrator. Can manage organizations, organization admins, competencies, benchmarks, users, assessments, recommendations, and notifications. |
+| `super_admin`       | Highest platform administrator. Can seed/manage platform-level admin access.                                                                           |
 
 `assessor` exists only as a legacy role label in code for old data compatibility. New accounts should use the active roles above.
 
@@ -73,12 +72,12 @@ Skill Gap = RTB Benchmark Score - Final Graduate Score
 If the skill gap is below zero, the system stores it as zero.
 
 | Skill Gap | Classification |
-| --- | --- |
-| 0 | No Gap |
-| 1-5 | Very Low Gap |
-| 6-15 | Low Gap |
-| 16-25 | Moderate Gap |
-| Above 25 | High Gap |
+| --------- | -------------- |
+| 0         | No Gap         |
+| 1-5       | Very Low Gap   |
+| 6-15      | Low Gap        |
+| 16-25     | Moderate Gap   |
+| Above 25  | High Gap       |
 
 ## Project Structure
 
@@ -142,22 +141,22 @@ MongoDB Atlas
 
 ## Important Files
 
-| File | Purpose |
-| --- | --- |
-| `backend/src/server.js` | Starts the API server and connects to MongoDB. |
-| `backend/src/app.js` | Configures Express, security middleware, CORS, rate limits, routes, and error handling. |
-| `backend/src/config/env.js` | Reads and normalizes environment variables. |
-| `backend/src/constants/roles.js` | Defines active system roles and role-management rules. |
-| `backend/src/routes/*.js` | Defines API endpoints. |
-| `backend/src/controllers/*.js` | Handles request/response logic. |
-| `backend/src/services/*.js` | Contains business logic for authentication, assessment, GitHub analysis, Gemini recommendation, reports, notifications, and dashboards. |
-| `backend/src/models/*.js` | Mongoose schemas. |
-| `my-project/src/api/client.ts` | Frontend API client. |
-| `my-project/src/context/AuthContext.tsx` | Authentication state and token storage. |
-| `my-project/src/pages/AuthPages.tsx` | Homepage, login, register, forgot password, and reset password pages. |
-| `my-project/src/pages/MainPages.tsx` | Role-based dashboards and system pages. |
-| `my-project/src/components/common.tsx` | Reusable UI components including cards, charts, buttons, and Read more/Read less text. |
-| `my-project/src/components/layout.tsx` | Sidebar, topbar, profile menu, and role navigation. |
+| File                                     | Purpose                                                                                                                                 |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/src/server.js`                  | Starts the API server and connects to MongoDB.                                                                                          |
+| `backend/src/app.js`                     | Configures Express, security middleware, CORS, rate limits, routes, and error handling.                                                 |
+| `backend/src/config/env.js`              | Reads and normalizes environment variables.                                                                                             |
+| `backend/src/constants/roles.js`         | Defines active system roles and role-management rules.                                                                                  |
+| `backend/src/routes/*.js`                | Defines API endpoints.                                                                                                                  |
+| `backend/src/controllers/*.js`           | Handles request/response logic.                                                                                                         |
+| `backend/src/services/*.js`              | Contains business logic for authentication, assessment, GitHub analysis, Gemini recommendation, reports, notifications, and dashboards. |
+| `backend/src/models/*.js`                | Mongoose schemas.                                                                                                                       |
+| `my-project/src/api/client.ts`           | Frontend API client.                                                                                                                    |
+| `my-project/src/context/AuthContext.tsx` | Authentication state and token storage.                                                                                                 |
+| `my-project/src/pages/AuthPages.tsx`     | Homepage, login, register, forgot password, and reset password pages.                                                                   |
+| `my-project/src/pages/MainPages.tsx`     | Role-based dashboards and system pages.                                                                                                 |
+| `my-project/src/components/common.tsx`   | Reusable UI components including cards, charts, buttons, and Read more/Read less text.                                                  |
+| `my-project/src/components/layout.tsx`   | Sidebar, topbar, profile menu, and role navigation.                                                                                     |
 
 ## Prerequisites
 
@@ -185,8 +184,8 @@ PBKDF2_KEY_LENGTH=64
 PBKDF2_DIGEST=sha512
 
 DB_CONNECT_TIMEOUT_MS=8000
-FRONTEND_URL=http://localhost:5173
-CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+FRONTEND_URL=https://rtb-graduate-project.onrender.com
+CORS_ORIGINS=https://rtb-graduate-project.onrender.com,http://127.0.0.1:5173
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=300
 AUTH_RATE_LIMIT_MAX_REQUESTS=20
@@ -280,34 +279,34 @@ npm run dev
 Frontend URL:
 
 ```text
-http://localhost:5173
+https://rtb-graduate-project.onrender.com
 ```
 
 ## Useful Scripts
 
 Backend:
 
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Start backend with nodemon. |
-| `npm start` | Start backend with Node. |
-| `npm run lint` | Run backend ESLint. |
-| `npm run check` | Check backend server syntax. |
-| `npm test` | Run backend tests. |
-| `npm run seed:admin` | Create the first super admin from `.env`. |
-| `npm run seed:competency` | Seed sample competency and benchmark data. |
-| `npm run seed:database-api` | Seed database/API competency data. |
-| `npm run test:resend` | Test Resend email configuration. |
+| Command                     | Purpose                                    |
+| --------------------------- | ------------------------------------------ |
+| `npm run dev`               | Start backend with nodemon.                |
+| `npm start`                 | Start backend with Node.                   |
+| `npm run lint`              | Run backend ESLint.                        |
+| `npm run check`             | Check backend server syntax.               |
+| `npm test`                  | Run backend tests.                         |
+| `npm run seed:admin`        | Create the first super admin from `.env`.  |
+| `npm run seed:competency`   | Seed sample competency and benchmark data. |
+| `npm run seed:database-api` | Seed database/API competency data.         |
+| `npm run test:resend`       | Test Resend email configuration.           |
 
 Frontend:
 
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Start Vite frontend. |
-| `npm run build` | Build production frontend. |
-| `npm run lint` | Run frontend ESLint. |
-| `npm test` | Run frontend Vitest tests. |
-| `npm run preview` | Preview production build. |
+| Command           | Purpose                    |
+| ----------------- | -------------------------- |
+| `npm run dev`     | Start Vite frontend.       |
+| `npm run build`   | Build production frontend. |
+| `npm run lint`    | Run frontend ESLint.       |
+| `npm test`        | Run frontend Vitest tests. |
+| `npm run preview` | Preview production build.  |
 
 ## First-Time Setup Order
 
@@ -352,20 +351,20 @@ Content-Type: application/json
 
 ### Health
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/health` | Public |
+| Method | Endpoint  | Access |
+| ------ | --------- | ------ |
+| GET    | `/health` | Public |
 
 ### Authentication
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| POST | `/auth/register` | Public |
-| POST | `/auth/login` | Public |
-| POST | `/auth/forgot-password` | Public |
-| POST | `/auth/reset-password` | Public |
-| GET | `/auth/me` | Authenticated |
-| PATCH | `/auth/change-password` | Authenticated |
+| Method | Endpoint                | Access        |
+| ------ | ----------------------- | ------------- |
+| POST   | `/auth/register`        | Public        |
+| POST   | `/auth/login`           | Public        |
+| POST   | `/auth/forgot-password` | Public        |
+| POST   | `/auth/reset-password`  | Public        |
+| GET    | `/auth/me`              | Authenticated |
+| PATCH  | `/auth/change-password` | Authenticated |
 
 Register learner example:
 
@@ -408,14 +407,14 @@ Reset password example:
 
 ### Organizations
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/organizations/public` | Public |
-| GET | `/organizations` | Admin, Organization Admin |
-| POST | `/organizations` | Admin |
-| GET | `/organizations/:id` | Admin, Organization Admin |
-| PUT | `/organizations/:id` | Admin |
-| DELETE | `/organizations/:id` | Admin |
+| Method | Endpoint                | Access                    |
+| ------ | ----------------------- | ------------------------- |
+| GET    | `/organizations/public` | Public                    |
+| GET    | `/organizations`        | Admin, Organization Admin |
+| POST   | `/organizations`        | Admin                     |
+| GET    | `/organizations/:id`    | Admin, Organization Admin |
+| PUT    | `/organizations/:id`    | Admin                     |
+| DELETE | `/organizations/:id`    | Admin                     |
 
 Create organization example:
 
@@ -431,14 +430,14 @@ Create organization example:
 
 ### Users
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/users` | Admin, Organization Admin |
-| POST | `/users` | Admin, Organization Admin |
-| GET | `/users/:id` | Admin, Organization Admin |
-| PUT | `/users/:id` | Admin, Organization Admin |
-| DELETE | `/users/:id` | Admin, Organization Admin |
-| PATCH | `/users/:id/deactivate` | Admin, Organization Admin |
+| Method | Endpoint                | Access                    |
+| ------ | ----------------------- | ------------------------- |
+| GET    | `/users`                | Admin, Organization Admin |
+| POST   | `/users`                | Admin, Organization Admin |
+| GET    | `/users/:id`            | Admin, Organization Admin |
+| PUT    | `/users/:id`            | Admin, Organization Admin |
+| DELETE | `/users/:id`            | Admin, Organization Admin |
+| PATCH  | `/users/:id/deactivate` | Admin, Organization Admin |
 
 Create organization admin example:
 
@@ -468,14 +467,14 @@ Create organization user example:
 
 ### Graduate Profiles
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/graduates/me` | Learner |
-| PUT | `/graduates/me` | Learner |
-| DELETE | `/graduates/me` | Learner |
-| GET | `/graduates` | Admin, Organization Admin |
-| GET | `/graduates/:userId` | Admin, Organization Admin |
-| DELETE | `/graduates/:userId` | Admin |
+| Method | Endpoint             | Access                    |
+| ------ | -------------------- | ------------------------- |
+| GET    | `/graduates/me`      | Learner                   |
+| PUT    | `/graduates/me`      | Learner                   |
+| DELETE | `/graduates/me`      | Learner                   |
+| GET    | `/graduates`         | Admin, Organization Admin |
+| GET    | `/graduates/:userId` | Admin, Organization Admin |
+| DELETE | `/graduates/:userId` | Admin                     |
 
 Profile example:
 
@@ -496,13 +495,13 @@ Profile example:
 
 ### Competencies
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/competencies` | Authenticated |
-| POST | `/competencies` | Admin |
-| GET | `/competencies/:id` | Authenticated |
-| PUT | `/competencies/:id` | Admin |
-| DELETE | `/competencies/:id` | Admin |
+| Method | Endpoint            | Access        |
+| ------ | ------------------- | ------------- |
+| GET    | `/competencies`     | Authenticated |
+| POST   | `/competencies`     | Admin         |
+| GET    | `/competencies/:id` | Authenticated |
+| PUT    | `/competencies/:id` | Admin         |
+| DELETE | `/competencies/:id` | Admin         |
 
 Create competency example:
 
@@ -543,13 +542,13 @@ Create competency example:
 
 ### RTB Benchmarks
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/benchmarks` | Authenticated |
-| POST | `/benchmarks` | Admin |
-| GET | `/benchmarks/:id` | Authenticated |
-| PUT | `/benchmarks/:id` | Admin |
-| DELETE | `/benchmarks/:id` | Admin |
+| Method | Endpoint          | Access        |
+| ------ | ----------------- | ------------- |
+| GET    | `/benchmarks`     | Authenticated |
+| POST   | `/benchmarks`     | Admin         |
+| GET    | `/benchmarks/:id` | Authenticated |
+| PUT    | `/benchmarks/:id` | Admin         |
+| DELETE | `/benchmarks/:id` | Admin         |
 
 Create benchmark example:
 
@@ -566,17 +565,17 @@ Create benchmark example:
 
 ### Assessments
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/assessments` | Authenticated |
-| POST | `/assessments` | Learner |
-| POST | `/assessments/repository-task-review` | Learner |
-| GET | `/assessments/results/me` | Learner |
-| GET | `/assessments/:id` | Authenticated |
-| PUT | `/assessments/:id` | Learner, Admin, Organization Admin |
-| DELETE | `/assessments/:id` | Learner, Admin, Organization Admin |
-| PUT | `/assessments/:id/review` | Admin |
-| POST | `/assessments/:id/recommendation-preview` | Admin |
+| Method | Endpoint                                  | Access                             |
+| ------ | ----------------------------------------- | ---------------------------------- |
+| GET    | `/assessments`                            | Authenticated                      |
+| POST   | `/assessments`                            | Learner                            |
+| POST   | `/assessments/repository-task-review`     | Learner                            |
+| GET    | `/assessments/results/me`                 | Learner                            |
+| GET    | `/assessments/:id`                        | Authenticated                      |
+| PUT    | `/assessments/:id`                        | Learner, Admin, Organization Admin |
+| DELETE | `/assessments/:id`                        | Learner, Admin, Organization Admin |
+| PUT    | `/assessments/:id/review`                 | Admin                              |
+| POST   | `/assessments/:id/recommendation-preview` | Admin                              |
 
 Repository task review example:
 
@@ -629,29 +628,26 @@ Review assessment example:
       "Add server-side validation.",
       "Add tests for authentication and profile update workflows."
     ],
-    "resources": [
-      "Express validation documentation",
-      "React testing guide"
-    ]
+    "resources": ["Express validation documentation", "React testing guide"]
   }
 }
 ```
 
 ### Repository Assessments
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/repository-assessments` | Authenticated |
-| POST | `/repository-assessments` | Learner, Admin |
-| GET | `/repository-assessments/:id` | Authenticated |
-| PUT | `/repository-assessments/:id` | Admin |
-| DELETE | `/repository-assessments/:id` | Authenticated |
+| Method | Endpoint                      | Access         |
+| ------ | ----------------------------- | -------------- |
+| GET    | `/repository-assessments`     | Authenticated  |
+| POST   | `/repository-assessments`     | Learner, Admin |
+| GET    | `/repository-assessments/:id` | Authenticated  |
+| PUT    | `/repository-assessments/:id` | Admin          |
+| DELETE | `/repository-assessments/:id` | Authenticated  |
 
 ### Recommendations
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/recommendations` | Learner, Organization Admin, Admin |
+| Method | Endpoint           | Access                             |
+| ------ | ------------------ | ---------------------------------- |
+| GET    | `/recommendations` | Learner, Organization Admin, Admin |
 
 Recommendations are generated through Gemini during:
 
@@ -664,31 +660,31 @@ PUT /api/assessments/:id/review
 
 Reports are learner-owned in the current system.
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/reports` | Learner |
-| POST | `/reports` | Learner |
-| GET | `/reports/:id` | Learner |
+| Method | Endpoint       | Access  |
+| ------ | -------------- | ------- |
+| GET    | `/reports`     | Learner |
+| POST   | `/reports`     | Learner |
+| GET    | `/reports/:id` | Learner |
 | DELETE | `/reports/:id` | Learner |
 
 ### Notifications
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/notifications` | Authenticated |
-| POST | `/notifications` | Admin |
-| GET | `/notifications/manage` | Admin |
-| PATCH | `/notifications/read-all` | Authenticated |
-| PATCH | `/notifications/:id/read` | Authenticated |
-| GET | `/notifications/:id` | Authenticated |
-| PUT | `/notifications/:id` | Admin |
-| DELETE | `/notifications/:id` | Authenticated |
+| Method | Endpoint                  | Access        |
+| ------ | ------------------------- | ------------- |
+| GET    | `/notifications`          | Authenticated |
+| POST   | `/notifications`          | Admin         |
+| GET    | `/notifications/manage`   | Admin         |
+| PATCH  | `/notifications/read-all` | Authenticated |
+| PATCH  | `/notifications/:id/read` | Authenticated |
+| GET    | `/notifications/:id`      | Authenticated |
+| PUT    | `/notifications/:id`      | Admin         |
+| DELETE | `/notifications/:id`      | Authenticated |
 
 ### Dashboard
 
-| Method | Endpoint | Access |
-| --- | --- | --- |
-| GET | `/dashboard` | Authenticated |
+| Method | Endpoint     | Access        |
+| ------ | ------------ | ------------- |
+| GET    | `/dashboard` | Authenticated |
 
 Dashboard charts use real system data from users, assessments, benchmarks, reports, recommendations, and notifications.
 
@@ -790,18 +786,18 @@ Body:
 
 ## Database Models
 
-| Model | Purpose |
-| --- | --- |
-| User | Account, role, organization, password hash, active status, reset tokens. |
-| Organization | TVET institution or organization records. |
-| GraduateProfile | Learner academic and profile data. |
-| Competency | ICT competency, practical tasks, theory questions, evidence requirements. |
-| Benchmark | RTB required score for a competency. |
-| Assessment | Evidence, GitHub summary, theory answers, scores, gap result, review status. |
-| RepositoryAssessmentResult | Standalone automated repository assessment results. |
-| Recommendation | Gemini draft and approved performance guidance. |
-| Report | Generated learner report summaries. |
-| Notification | User and system notifications. |
+| Model                      | Purpose                                                                      |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| User                       | Account, role, organization, password hash, active status, reset tokens.     |
+| Organization               | TVET institution or organization records.                                    |
+| GraduateProfile            | Learner academic and profile data.                                           |
+| Competency                 | ICT competency, practical tasks, theory questions, evidence requirements.    |
+| Benchmark                  | RTB required score for a competency.                                         |
+| Assessment                 | Evidence, GitHub summary, theory answers, scores, gap result, review status. |
+| RepositoryAssessmentResult | Standalone automated repository assessment results.                          |
+| Recommendation             | Gemini draft and approved performance guidance.                              |
+| Report                     | Generated learner report summaries.                                          |
+| Notification               | User and system notifications.                                               |
 
 ## UI/UX Notes
 
@@ -817,11 +813,11 @@ Deploy the backend and frontend as separate Render services because this project
 
 ### Backend Web Service
 
-| Setting | Value |
-| --- | --- |
-| Root Directory | `backend` |
-| Build Command | `npm install && npm run build` |
-| Start Command | `npm start` |
+| Setting        | Value                          |
+| -------------- | ------------------------------ |
+| Root Directory | `backend`                      |
+| Build Command  | `npm install && npm run build` |
+| Start Command  | `npm start`                    |
 
 Required backend environment variables include:
 
@@ -852,11 +848,11 @@ ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION=false
 
 ### Frontend Static Site
 
-| Setting | Value |
-| --- | --- |
-| Root Directory | `my-project` |
-| Build Command | `npm install && npm run build` |
-| Publish Directory | `dist` |
+| Setting           | Value                          |
+| ----------------- | ------------------------------ |
+| Root Directory    | `my-project`                   |
+| Build Command     | `npm install && npm run build` |
+| Publish Directory | `dist`                         |
 
 Required frontend environment variable:
 
@@ -940,7 +936,7 @@ Check:
 - Backend is running on port `5000`.
 - `VITE_API_URL=http://localhost:5000/api`.
 - Backend did not crash during the request.
-- CORS allows `http://localhost:5173`.
+- CORS allows `https://rtb-graduate-project.onrender.com`.
 
 ### Password reset email fails
 

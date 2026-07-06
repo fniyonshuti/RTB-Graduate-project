@@ -60,8 +60,13 @@ async function request<T>(path: string, options: RequestOptions = {}) {
   }
 
   if (!response) {
+    const isProduction = import.meta.env.PROD
+    const recoveryHint = isProduction
+      ? 'Confirm the deployed backend is running, the backend URL is correct, and the backend CORS_ORIGINS includes this Vercel frontend URL.'
+      : 'From the project root, run "npm.cmd run dev" to start both frontend and backend, or run "npm.cmd run dev" inside the backend folder if the frontend is already open. Then refresh the page.'
+
     throw new Error(
-      `Cannot connect to the backend API configured by VITE_API_URL. From the project root, run "npm.cmd run dev" to start both frontend and backend, or run "npm.cmd run dev" inside the backend folder if the frontend is already open. Then refresh the page. Details: ${connectionErrors.join(
+      `Cannot connect to the backend API configured by VITE_API_URL. ${recoveryHint} Details: ${connectionErrors.join(
         ' | ',
       )}`,
     )
