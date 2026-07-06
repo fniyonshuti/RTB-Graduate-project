@@ -17,15 +17,15 @@ import type {
   User,
 } from '../types'
 
-const configuredApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-const API_BASE_URLS = [
-  configuredApiUrl,
-  configuredApiUrl.includes('localhost')
-    ? configuredApiUrl.replace('localhost', '127.0.0.1')
-    : '',
-]
-  .filter(Boolean)
-  .filter((url, index, urls) => urls.indexOf(url) === index)
+const configuredApiUrl = String(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
+
+function apiBaseUrl() {
+  if (!configuredApiUrl) {
+    throw new Error('VITE_API_URL is not configured in the frontend environment file.')
+  }
+
+  return configuredApiUrl
+}
 
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -45,26 +45,23 @@ async function request<T>(path: string, options: RequestOptions = {}) {
   let response: Response | null = null
   const connectionErrors: string[] = []
 
-  for (const baseUrl of API_BASE_URLS) {
-    try {
-      response = await fetch(`${baseUrl}${path}`, {
-        method: options.method || 'GET',
-        headers,
-        body: options.body ? JSON.stringify(options.body) : undefined,
-      })
-      break
-    } catch (error) {
-      connectionErrors.push(
-        `${baseUrl}: ${error instanceof Error ? error.message : 'network error'}`,
-      )
-    }
+  const baseUrl = apiBaseUrl()
+
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      method: options.method || 'GET',
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    })
+  } catch (error) {
+    connectionErrors.push(
+      `${baseUrl}: ${error instanceof Error ? error.message : 'network error'}`,
+    )
   }
 
   if (!response) {
     throw new Error(
-      `Cannot connect to the backend API. Tried ${API_BASE_URLS.join(
-        ' and ',
-      )}. From the project root, run "npm.cmd run dev" to start both frontend and backend, or run "npm.cmd run dev" inside the backend folder if the frontend is already open. Then refresh the page. Details: ${connectionErrors.join(
+      `Cannot connect to the backend API configured by VITE_API_URL. From the project root, run "npm.cmd run dev" to start both frontend and backend, or run "npm.cmd run dev" inside the backend folder if the frontend is already open. Then refresh the page. Details: ${connectionErrors.join(
         ' | ',
       )}`,
     )

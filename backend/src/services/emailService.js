@@ -1,9 +1,25 @@
-import { env } from '../config/env.js';
+import dotenv from 'dotenv';
 import { AppError } from '../utils/errors.js';
 
+dotenv.config({ quiet: true });
+
+function exposePasswordResetLinkInResponse() {
+  return (
+    String(
+      process.env.EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE ||
+        (process.env.NODE_ENV !== 'production' ? 'true' : 'false'),
+    ).toLowerCase() === 'true'
+  );
+}
+
 function isEmailConfigured() {
-  if (!env.emailApiKey || !env.emailFrom) return false;
-  if (env.emailProvider === 'generic' && !env.emailApiUrl) return false;
+  const emailProvider = process.env.EMAIL_PROVIDER || 'generic';
+  const emailApiKey = process.env.EMAIL_API_KEY || '';
+  const emailFrom = process.env.EMAIL_FROM || '';
+  const emailApiUrl = process.env.EMAIL_API_URL || '';
+
+  if (!emailApiKey || !emailFrom) return false;
+  if (emailProvider === 'generic' && !emailApiUrl) return false;
   return true;
 }
 
@@ -38,14 +54,23 @@ function buildPasswordResetMessage({ name, resetLink, expiresInMinutes }) {
 }
 
 async function sendWithResend({ to, subject, text, html }) {
-  const response = await fetch('https://api.resend.com/emails', {
+  const emailApiKey = process.env.EMAIL_API_KEY || '';
+  const emailFrom = process.env.EMAIL_FROM || '';
+  const emailFromName = process.env.EMAIL_FROM_NAME || 'Skills Gap Analysis Tool';
+  const resendApiUrl = process.env.EMAIL_RESEND_API_URL || '';
+
+  if (!resendApiUrl) {
+    throw new AppError('EMAIL_RESEND_API_URL is required when EMAIL_PROVIDER=resend', 500);
+  }
+
+  const response = await fetch(resendApiUrl, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${env.emailApiKey}`,
+      Authorization: `Bearer ${emailApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: `${env.emailFromName} <${env.emailFrom}>`,
+      from: `${emailFromName} <${emailFrom}>`,
       to: [to],
       subject,
       text,
@@ -87,15 +112,24 @@ function isResendDomainVerificationError(status, body) {
 }
 
 async function sendWithBrevo({ to, subject, text, html }) {
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+  const emailApiKey = process.env.EMAIL_API_KEY || '';
+  const emailFrom = process.env.EMAIL_FROM || '';
+  const emailFromName = process.env.EMAIL_FROM_NAME || 'Skills Gap Analysis Tool';
+  const brevoApiUrl = process.env.EMAIL_BREVO_API_URL || '';
+
+  if (!brevoApiUrl) {
+    throw new AppError('EMAIL_BREVO_API_URL is required when EMAIL_PROVIDER=brevo', 500);
+  }
+
+  const response = await fetch(brevoApiUrl, {
     method: 'POST',
     headers: {
-      'api-key': env.emailApiKey,
+      'api-key': emailApiKey,
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
     body: JSON.stringify({
-      sender: { name: env.emailFromName, email: env.emailFrom },
+      sender: { name: emailFromName, email: emailFrom },
       to: [{ email: to }],
       subject,
       textContent: text,
@@ -107,16 +141,20 @@ async function sendWithBrevo({ to, subject, text, html }) {
 }
 
 async function sendWithGenericProvider({ to, subject, text, html, resetLink }) {
-  const response = await fetch(env.emailApiUrl, {
+  const emailApiUrl = process.env.EMAIL_API_URL || '';
+  const emailApiKey = process.env.EMAIL_API_KEY || '';
+  const emailFrom = process.env.EMAIL_FROM || '';
+  const emailFromName = process.env.EMAIL_FROM_NAME || 'Skills Gap Analysis Tool';
+  const response = await fetch(emailApiUrl, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${env.emailApiKey}`,
+      Authorization: `Bearer ${emailApiKey}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
     body: JSON.stringify({
-      from: env.emailFrom,
-      fromName: env.emailFromName,
+      from: emailFrom,
+      fromName: emailFromName,
       to,
       subject,
       text,
@@ -130,7 +168,7 @@ async function sendWithGenericProvider({ to, subject, text, html, resetLink }) {
 
 export async function sendPasswordResetEmail({ to, name, resetLink, expiresInMinutes }) {
   if (!isEmailConfigured()) {
-    if (env.exposePasswordResetLinkInResponse) return { sent: false };
+    if (exposePasswordResetLinkInResponse()) return { sent: false };
     throw new AppError('Email service is not configured for password reset', 500);
   }
 
@@ -145,20 +183,21 @@ export async function sendPasswordResetEmail({ to, name, resetLink, expiresInMin
     ...message,
   };
 
+  const emailProvider = process.env.EMAIL_PROVIDER || 'generic';
   const response =
-    env.emailProvider === 'resend'
+    emailProvider === 'resend'
       ? await sendWithResend(payload)
-      : env.emailProvider === 'brevo'
+      : emailProvider === 'brevo'
         ? await sendWithBrevo(payload)
         : await sendWithGenericProvider(payload);
 
   if (!response.ok) {
     const body = await response.text();
     const resendDomainVerificationRequired =
-      env.emailProvider === 'resend' &&
+      emailProvider === 'resend' &&
       isResendDomainVerificationError(response.status, body);
 
-    if (resendDomainVerificationRequired && env.exposePasswordResetLinkInResponse) {
+    if (resendDomainVerificationRequired && exposePasswordResetLinkInResponse()) {
       return {
         sent: false,
         reason: 'resend_domain_verification_required',
@@ -167,7 +206,7 @@ export async function sendPasswordResetEmail({ to, name, resetLink, expiresInMin
     }
 
     const providerMessage =
-      env.emailProvider === 'resend'
+      emailProvider === 'resend'
         ? resendErrorMessage(response.status, body)
         : `Email API failed to send password reset message: ${response.status}`;
 

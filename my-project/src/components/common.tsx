@@ -41,8 +41,6 @@ const toneClasses = {
   amber:
     "border-amber-100 bg-gradient-to-br from-amber-50 to-white text-amber-700",
   red: "border-rose-100 bg-gradient-to-br from-rose-50 to-white text-rose-700",
-  violet:
-    "border-violet-100 bg-gradient-to-br from-violet-50 to-white text-violet-700",
   slate:
     "border-slate-200 bg-gradient-to-br from-slate-50 to-white text-slate-700",
 };
@@ -89,9 +87,9 @@ export function Button({
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const variantClasses = {
     primary:
-      "border-teal-700 bg-gradient-to-r from-teal-700 to-emerald-700 text-white shadow-sm shadow-teal-900/15 hover:from-teal-800 hover:to-emerald-800 focus-visible:ring-teal-200",
+      "border-blue-600 bg-gradient-to-r from-blue-600 to-emerald-500 text-white shadow-sm shadow-blue-900/15 hover:from-blue-700 hover:to-emerald-600 focus-visible:ring-blue-200",
     secondary:
-      "border-slate-200 bg-white text-slate-900 shadow-sm hover:border-teal-200 hover:bg-teal-50 hover:text-teal-900 focus-visible:ring-teal-100",
+      "border-slate-200 bg-white text-slate-900 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-900 focus-visible:ring-blue-100",
     ghost:
       "border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:ring-slate-100",
     danger:
@@ -118,7 +116,7 @@ export function TextField({
     <label className="grid gap-2.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <input
-        className="min-h-12 min-w-0 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-100"
+        className="min-h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
         {...props}
       />
     </label>
@@ -133,7 +131,7 @@ export function TextArea({
     <label className="grid gap-2.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <textarea
-        className="min-h-32 min-w-0 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-100"
+        className="min-h-32 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
         {...props}
       />
     </label>
@@ -152,7 +150,7 @@ export function SelectField({
     <label className="grid gap-2.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <select
-        className="min-h-12 min-w-0 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition hover:border-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-100"
+        className="min-h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition hover:border-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
         {...props}
       >
         {children}
@@ -183,7 +181,7 @@ export function Badge({
     moderate: "border-amber-200 bg-amber-50 text-amber-700",
     high: "border-rose-200 bg-rose-50 text-rose-700",
     "gap-no": "border-emerald-200 bg-emerald-50 text-emerald-700",
-    "gap-very-low": "border-cyan-200 bg-cyan-50 text-cyan-700",
+    "gap-very-low": "border-blue-200 bg-blue-50 text-blue-700",
     "gap-low": "border-sky-200 bg-sky-50 text-sky-700",
     "gap-moderate": "border-amber-200 bg-amber-50 text-amber-700",
     "gap-high": "border-rose-200 bg-rose-50 text-rose-700",
@@ -215,7 +213,7 @@ export function StatCard({
   value: ReactNode;
   helper?: string;
   icon?: ReactNode;
-  tone?: "blue" | "green" | "amber" | "red" | "violet" | "slate";
+  tone?: "blue" | "green" | "amber" | "red" | "slate";
 }) {
   return (
     <div
@@ -239,7 +237,7 @@ export function ProgressBar({ value }: { value: number | undefined }) {
   return (
     <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200" aria-label={`Progress ${safeValue}%`}>
       <span
-        className="block h-full rounded-full bg-gradient-to-r from-teal-600 to-emerald-500"
+        className="block h-full rounded-full bg-gradient-to-r from-blue-600 to-emerald-500"
         style={{ width: `${safeValue}%` }}
       />
     </div>
@@ -343,7 +341,7 @@ function ChartShell({
   return (
     <div className="min-w-0 max-w-full rounded-lg border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/60 max-[640px]:p-3">
       {title && <h3 className="mb-4 break-words text-base font-extrabold text-slate-950 max-[640px]:mb-3">{title}</h3>}
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={220}>
         {children}
       </ResponsiveContainer>
     </div>
@@ -356,7 +354,7 @@ export function BarChartComponent({
   dataKey,
   xAxisKey,
   title,
-  color = "#3b82f6",
+  color = "#2563eb",
 }: {
   data: ChartDatum[];
   dataKey: string;
@@ -414,7 +412,7 @@ export function PieChartComponent({
   dataKey,
   nameKey,
   title,
-  colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444"],
+  colors = ["#2563eb", "#10b981", "#1f2937", "#60a5fa", "#34d399"],
 }: {
   data: ChartDatum[];
   dataKey: string;
@@ -453,7 +451,7 @@ export function IconBadge({
   tone = "blue",
 }: {
   icon: LucideIcon;
-  tone?: "blue" | "green" | "amber" | "red" | "violet" | "slate";
+  tone?: "blue" | "green" | "amber" | "red" | "slate";
 }) {
   return (
     <span className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border shadow-sm ${toneClasses[tone]}`}>

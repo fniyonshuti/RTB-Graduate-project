@@ -1,19 +1,22 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { env } from '../config/env.js';
+import dotenv from 'dotenv';
 import { AppError } from '../utils/errors.js';
 import { parseGithubUrl } from '../utils/parseGithubUrl.js';
 import { runCommand } from '../utils/runCommand.js';
 
+dotenv.config({ quiet: true });
+
 function githubHeaders() {
+  const githubToken = process.env.GITHUB_TOKEN || '';
   const headers = {
     Accept: 'application/vnd.github+json',
     'User-Agent': 'rtb-skills-gap-analysis-tool',
   };
 
-  if (env.githubToken) {
-    headers.Authorization = `Bearer ${env.githubToken}`;
+  if (githubToken) {
+    headers.Authorization = `Bearer ${githubToken}`;
   }
 
   return headers;
@@ -30,8 +33,19 @@ function withGitHubTimeout() {
 }
 
 function authenticatedCloneUrl(parsed) {
-  if (!env.githubToken) return parsed.cloneUrl;
-  return `https://x-access-token:${env.githubToken}@github.com/${parsed.owner}/${parsed.repo}.git`;
+  const githubToken = process.env.GITHUB_TOKEN || '';
+  if (!githubToken) return parsed.cloneUrl;
+  const githubWebBaseUrl = String(process.env.GITHUB_WEB_BASE_URL || '').replace(/\/+$/, '');
+
+  if (!githubWebBaseUrl) {
+    throw new AppError('GITHUB_WEB_BASE_URL is required to clone private repositories', 500);
+  }
+
+  const cloneBaseUrl = new URL(githubWebBaseUrl);
+  cloneBaseUrl.username = 'x-access-token';
+  cloneBaseUrl.password = githubToken;
+
+  return `${cloneBaseUrl.toString().replace(/\/+$/, '')}/${parsed.owner}/${parsed.repo}.git`;
 }
 
 export async function verifyGithubRepository(repositoryUrl) {
@@ -40,7 +54,15 @@ export async function verifyGithubRepository(repositoryUrl) {
   let response;
 
   try {
-    response = await fetch(`${env.githubApiUrl}/repos/${parsed.owner}/${parsed.repo}`, {
+    const githubApiUrl = String(
+      process.env.GITHUB_API_URL || process.env.GITHUB_API_BASE_URL || '',
+    ).replace(/\/+$/, '');
+
+    if (!githubApiUrl) {
+      throw new AppError('GITHUB_API_URL or GITHUB_API_BASE_URL is required', 500);
+    }
+
+    response = await fetch(`${githubApiUrl}/repos/${parsed.owner}/${parsed.repo}`, {
       headers: githubHeaders(),
       signal: controller.signal,
     });
@@ -76,17 +98,23 @@ export async function verifyGithubRepository(repositoryUrl) {
 
 export async function cloneGithubRepository(repositoryUrl) {
   const repository = await verifyGithubRepository(repositoryUrl);
-  await fs.mkdir(env.tempRepositoryDir, { recursive: true });
+  const tempRepositoryDir = path.resolve(
+    process.cwd(),
+    process.env.TEMP_REPOSITORY_DIR || 'tmp/repositories',
+  );
+  const repositoryAnalysisTimeoutMs =
+    Number(process.env.REPOSITORY_ANALYSIS_TIMEOUT_MS) || 120000;
+  await fs.mkdir(tempRepositoryDir, { recursive: true });
 
   const folderName = `${repository.owner}-${repository.repo}-${crypto.randomUUID()}`;
-  const destination = path.join(env.tempRepositoryDir, folderName);
+  const destination = path.join(tempRepositoryDir, folderName);
   const cloneUrl = authenticatedCloneUrl(repository);
 
   const cloneResult = await runCommand(
     'git',
     ['clone', '--depth', '1', cloneUrl, destination],
     {
-      timeoutMs: env.repositoryAnalysisTimeoutMs,
+      timeoutMs: repositoryAnalysisTimeoutMs,
     },
   );
 

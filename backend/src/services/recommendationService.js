@@ -10,6 +10,13 @@ const SCORE_AREA_LABELS = {
   quizScore: "Theory questions",
 };
 
+const SCORE_AREA_IMPROVEMENT_GUIDE = {
+  practicalTaskScore:
+    "Improve the GitHub practical project by fixing failed hidden tests, completing missing task requirements, adding working frontend/backend/database/authentication behavior where required, and proving the solution with automated tests.",
+  quizScore:
+    "Improve theory understanding by revising the concepts missed in the quiz, especially the concepts connected to the selected competency and failed practical evidence.",
+};
+
 export function getWeakAssessmentAreas(scores = {}) {
   return Object.entries({
     practicalTaskScore: scores.practicalTaskScore,
@@ -18,6 +25,98 @@ export function getWeakAssessmentAreas(scores = {}) {
     .filter(([, score]) => Number(score) < 70)
     .sort(([, first], [, second]) => Number(first) - Number(second))
     .map(([field]) => SCORE_AREA_LABELS[field]);
+}
+
+function getGapMeaning(gapLevel, skillGap) {
+  if (gapLevel === "No Gap") {
+    return "The learner meets or exceeds the benchmark. Recommendations should focus on maintaining competency and progressing to advanced practice.";
+  }
+
+  if (gapLevel === "Very Low Gap" || Number(skillGap) <= 5) {
+    return "The learner is close to the benchmark. Recommendations should focus on small corrections and confidence-building practice.";
+  }
+
+  if (gapLevel === "Low Gap" || Number(skillGap) <= 15) {
+    return "The learner has a manageable gap. Recommendations should focus on targeted improvement in the weakest evidence areas.";
+  }
+
+  if (gapLevel === "Moderate Gap" || Number(skillGap) <= 25) {
+    return "The learner needs structured practice. Recommendations should include concrete remediation steps, repeated implementation practice, and retesting.";
+  }
+
+  return "The learner has a serious gap. Recommendations should prioritize foundational rebuilding, guided practice, and verified resubmission evidence.";
+}
+
+function getScoreBand(score) {
+  const numericScore = Number(score);
+  if (!Number.isFinite(numericScore)) return "not measured";
+  if (numericScore >= 90) return "excellent";
+  if (numericScore >= 80) return "competent";
+  if (numericScore >= 70) return "acceptable but improvable";
+  if (numericScore >= 50) return "weak";
+  return "critical";
+}
+
+function buildImprovementPriorities(scores = {}) {
+  return Object.entries({
+    practicalTaskScore: scores.practicalTaskScore,
+    quizScore: scores.quizScore,
+  })
+    .map(([field, score]) => ({
+      area: SCORE_AREA_LABELS[field],
+      score: Number(score || 0),
+      scoreBand: getScoreBand(score),
+      improvementGuide: SCORE_AREA_IMPROVEMENT_GUIDE[field],
+    }))
+    .sort((first, second) => first.score - second.score);
+}
+
+function extractRepositoryEvidence(repositorySummary = {}) {
+  const taskReview = repositorySummary.taskReview || {};
+  const repositoryAssessmentEvidence =
+    taskReview.repositoryAssessmentEvidence || {};
+  const checklist = Array.isArray(taskReview.checklist)
+    ? taskReview.checklist
+    : [];
+
+  return {
+    repositoryScore: taskReview.score,
+    proofLevel: taskReview.proofLevel,
+    hiddenExpectedOutputTest:
+      checklist.find((item) => item.key === "instructor-task-tests") || null,
+    failedChecks: checklist
+      .filter((item) => !item.passed)
+      .map((item) => ({
+        title: item.label,
+        evidence: item.evidence,
+        advice: item.advice,
+        weight: item.weight,
+      }))
+      .slice(0, 8),
+    passedChecks: checklist
+      .filter((item) => item.passed)
+      .map((item) => ({
+        title: item.label,
+        evidence: item.evidence,
+        weight: item.weight,
+      }))
+      .slice(0, 8),
+    executableAssessment: {
+      accuracyScore: repositoryAssessmentEvidence.accuracyScore,
+      executionMode: repositoryAssessmentEvidence.executionMode,
+      automatedChecks:
+        Number.isFinite(repositoryAssessmentEvidence.passedTestCases) &&
+        Number.isFinite(repositoryAssessmentEvidence.totalTestCases)
+          ? `${repositoryAssessmentEvidence.passedTestCases}/${repositoryAssessmentEvidence.totalTestCases}`
+          : "",
+      eslintPassed: repositoryAssessmentEvidence.eslintResult?.success,
+      securityScanPassed:
+        repositoryAssessmentEvidence.securityScanResult?.success,
+      failedRequirements:
+        repositoryAssessmentEvidence.failedRequirements || [],
+      competencyScores: repositoryAssessmentEvidence.competencyScores || {},
+    },
+  };
 }
 
 function buildRepositorySummaryText(repositorySummary = {}) {
@@ -124,23 +223,45 @@ export function buildRecommendationContext({
 }) {
   // Gemini receives assessment facts and repository evidence, but scoring and
   // pass/fail decisions are already made by deterministic services.
+  const repositoryEvidence = extractRepositoryEvidence(
+    assessment.evidence?.repositorySummary,
+  );
+  const improvementPriorities = buildImprovementPriorities(assessment.scores);
+
   return {
     competencyTitle: competency.title,
     competencyCode: competency.code,
+    competencyCategory: competency.category,
+    competencyDescription: competency.description,
     benchmarkScore: assessment.benchmarkScore,
     finalScore: assessment.scores.finalScore,
     skillGap: assessment.skillGap,
     gapLevel: assessment.gapLevel,
+    gapMeaning: getGapMeaning(assessment.gapLevel, assessment.skillGap),
     weakAreas: getWeakAssessmentAreas(assessment.scores),
+    improvementPriorities,
     assessorComment: assessorComment || assessment.assessorComment || "",
     assessmentScores: {
       githubPracticalTaskScore: assessment.scores?.practicalTaskScore,
+      githubPracticalTaskBand: getScoreBand(
+        assessment.scores?.practicalTaskScore,
+      ),
       theoryQuizScore: assessment.scores?.quizScore,
+      theoryQuizBand: getScoreBand(assessment.scores?.quizScore),
     },
     evidenceVerification: assessment.evidenceVerification || {},
+    repositoryEvidence,
     repositorySummary: buildRepositorySummaryText(
       assessment.evidence?.repositorySummary,
     ),
+    recommendationRules: [
+      "Base every recommendation on the measured scores, skill gap, failed checks, hidden expected-output test result, repository evidence, and assessor comment.",
+      "Prioritize the lowest scoring area first.",
+      "If hidden expected-output tests failed, include an action to fix the behavior required by the practical task and rerun the tests.",
+      "If theory score is weak, include one action for revising the related concepts and one action for applying the concepts in code.",
+      "Do not invent technologies, failures, or evidence not present in this context.",
+      "Avoid generic advice such as 'study more'; give specific, observable actions the learner can complete before resubmission.",
+    ],
     assessmentId: assessment._id,
   };
 }

@@ -4,9 +4,6 @@ const DEFAULT_GEMINI_MODEL =
   process.env.GEMINI_RECOMMENDATION_MODEL ||
   "gemini-2.5-flash";
 
-const GEMINI_API_BASE_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models";
-
 function safeString(value, defaultValue = "") {
   return String(value ?? defaultValue).trim();
 }
@@ -19,9 +16,21 @@ function normalizeList(values = []) {
 
 function buildGeminiUrl(apiKey) {
   const configuredUrl = safeString(process.env.GEMINI_RECOMMENDATION_API_URL);
+  const geminiApiBaseUrl = safeString(process.env.GEMINI_API_BASE_URL).replace(
+    /\/+$/,
+    "",
+  );
+
+  if (!configuredUrl && !geminiApiBaseUrl) {
+    throw new AppError(
+      "GEMINI_API_BASE_URL or GEMINI_RECOMMENDATION_API_URL is required for Gemini recommendation generation",
+      500,
+    );
+  }
+
   const url =
     configuredUrl ||
-    `${GEMINI_API_BASE_URL}/${DEFAULT_GEMINI_MODEL}:generateContent`;
+    `${geminiApiBaseUrl}/${DEFAULT_GEMINI_MODEL}:generateContent`;
   const separator = url.includes("?") ? "&" : "?";
 
   return `${url}${separator}key=${encodeURIComponent(apiKey)}`;
@@ -79,15 +88,22 @@ function extractResponseText(payload) {
 
 function buildPrompt(context) {
   return [
-    "You are an assessment recommendation engine for an ICT skills gap analysis system.",
+    "You are an evidence-based recommendation engine for an ICT TVET skills gap analysis system.",
     "Return only valid JSON. Do not wrap the JSON in markdown fences.",
     "Return a single JSON object with exactly these keys: message, actionItems, resources, priority.",
-    "The message must be a concise learner-ready recommendation in plain language.",
-    "actionItems must be an array of short improvement actions.",
-    "resources must be an array of short resource suggestions or an empty array if none are needed.",
+    "The message must be a concise learner-ready recommendation in plain language and must mention the gap level, final score, benchmark, and strongest improvement priority.",
+    "actionItems must be an array of 3 to 6 short, measurable improvement actions.",
+    "Each action item must be directly connected to the weakest score area, failed repository checks, hidden expected-output test result, theory score, assessor comment, or benchmark gap.",
+    "resources must be an array of 1 to 4 short resource suggestions or an empty array only when the learner has No Gap.",
     "priority must be one of low, medium, or high.",
-    "Use the supplied RTB benchmark, final score, skill gap, weak areas, repository summary, and automatic review note.",
+    "Use the supplied RTB benchmark, final score, skill gap, gap meaning, weak areas, improvement priorities, repository evidence, repository summary, and automatic review note.",
     "Keep the recommendation aligned to the selected competency and the evidence reviewed.",
+    "If the hidden expected-output test failed or was not configured, include a practical action that improves objective proof before resubmission.",
+    "If GitHub/practical score is lower than theory score, focus first on implementation, tests, and repository evidence.",
+    "If theory score is lower than practical score, focus first on concepts and applying those concepts in the code.",
+    "If there is No Gap, recommend advanced practice, portfolio strengthening, and maintaining evidence quality instead of remediation.",
+    "Do not invent facts, tools, scores, failures, or technologies that are not present in the context.",
+    "Do not provide generic advice; every action must be observable and assessable.",
     JSON.stringify(context, null, 2),
   ].join("\n");
 }
@@ -118,6 +134,10 @@ function parseDraftResponse(rawText, prompt) {
 
     if (!message) {
       throw new Error("Gemini JSON is missing message");
+    }
+
+    if (actionItems.length < 2) {
+      throw new Error("Gemini JSON must include evidence-based action items");
     }
 
     return {

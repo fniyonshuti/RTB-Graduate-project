@@ -1,7 +1,10 @@
-import { env } from '../config/env.js';
+import dotenv from 'dotenv';
 import { runCommand } from '../utils/runCommand.js';
 
+dotenv.config({ quiet: true });
+
 function dockerArgs(localPath) {
+  const repositoryDockerImage = process.env.REPOSITORY_DOCKER_IMAGE || 'node:20-alpine';
   return [
     'run',
     '--rm',
@@ -15,7 +18,7 @@ function dockerArgs(localPath) {
     `${localPath}:/workspace`,
     '-w',
     '/workspace',
-    env.repositoryDockerImage,
+    repositoryDockerImage,
     'sh',
     '-lc',
     'npx eslint . --format json',
@@ -50,7 +53,11 @@ export async function runEslint(localPath, analysis) {
 
   const hasLintScript = typeof analysis.packageScripts.lint === 'string';
   const shellCommand = hasLintScript ? 'npm run lint -- --format json' : 'npx eslint . --format json';
-  const command = env.enableUnsafeLocalRepositoryExecution
+  const enableUnsafeLocalRepositoryExecution =
+    String(process.env.ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION || '').toLowerCase() === 'true';
+  const repositoryAnalysisTimeoutMs =
+    Number(process.env.REPOSITORY_ANALYSIS_TIMEOUT_MS) || 120000;
+  const command = enableUnsafeLocalRepositoryExecution
     ? hasLintScript
       ? process.platform === 'win32'
         ? 'npm.cmd'
@@ -59,7 +66,7 @@ export async function runEslint(localPath, analysis) {
         ? 'npx.cmd'
         : 'npx'
     : 'docker';
-  const args = env.enableUnsafeLocalRepositoryExecution
+  const args = enableUnsafeLocalRepositoryExecution
     ? hasLintScript
       ? ['run', 'lint', '--', '--format', 'json']
       : ['eslint', '.', '--format', 'json']
@@ -67,7 +74,7 @@ export async function runEslint(localPath, analysis) {
 
   const result = await runCommand(command, args, {
     cwd: localPath,
-    timeoutMs: env.repositoryAnalysisTimeoutMs,
+    timeoutMs: repositoryAnalysisTimeoutMs,
   }).catch((error) => ({
     success: false,
     stdout: '',

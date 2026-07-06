@@ -1,5 +1,7 @@
-import { env } from '../config/env.js';
+import dotenv from 'dotenv';
 import { runCommand } from '../utils/runCommand.js';
+
+dotenv.config({ quiet: true });
 
 const SECRET_PATTERNS = [
   {
@@ -21,6 +23,7 @@ const SECRET_PATTERNS = [
 ];
 
 function dockerArgs(localPath) {
+  const repositoryDockerImage = process.env.REPOSITORY_DOCKER_IMAGE || 'node:20-alpine';
   return [
     'run',
     '--rm',
@@ -34,7 +37,7 @@ function dockerArgs(localPath) {
     `${localPath}:/workspace`,
     '-w',
     '/workspace',
-    env.repositoryDockerImage,
+    repositoryDockerImage,
     'sh',
     '-lc',
     'npm audit --json --audit-level=high',
@@ -87,17 +90,21 @@ export async function runSecurityScan(localPath, analysis) {
     };
   }
 
-  const command = env.enableUnsafeLocalRepositoryExecution
+  const enableUnsafeLocalRepositoryExecution =
+    String(process.env.ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION || '').toLowerCase() === 'true';
+  const repositoryAnalysisTimeoutMs =
+    Number(process.env.REPOSITORY_ANALYSIS_TIMEOUT_MS) || 120000;
+  const command = enableUnsafeLocalRepositoryExecution
     ? process.platform === 'win32'
       ? 'npm.cmd'
       : 'npm'
     : 'docker';
-  const args = env.enableUnsafeLocalRepositoryExecution
+  const args = enableUnsafeLocalRepositoryExecution
     ? ['audit', '--json', '--audit-level=high']
     : dockerArgs(localPath);
   const result = await runCommand(command, args, {
     cwd: localPath,
-    timeoutMs: env.repositoryAnalysisTimeoutMs,
+    timeoutMs: repositoryAnalysisTimeoutMs,
   }).catch((error) => ({
     success: false,
     stdout: '',

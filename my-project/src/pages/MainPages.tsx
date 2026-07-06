@@ -292,7 +292,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
       icon: <ClipboardCheck size={24} />,
       tone: "green" as const,
     },
-    { label: "Organization Admins", value: orgAdmins, icon: <Zap size={24} />, tone: "violet" as const },
+    { label: "Organization Admins", value: orgAdmins, icon: <Zap size={24} />, tone: "slate" as const },
     {
       label: "Active Competencies",
       value: totalCompetencies,
@@ -345,7 +345,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={roleDistributionData}
               dataKey="value"
               nameKey="name"
-              colors={["#2563eb", "#059669", "#7c3aed", "#0f172a", "#f59e0b", "#14b8a6", "#ef4444"]}
+              colors={["#2563eb", "#10b981", "#1f2937", "#60a5fa", "#34d399", "#93c5fd", "#6ee7b7"]}
             />
           )}
         </Card>
@@ -358,7 +358,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={gapChartData}
               dataKey="value"
               nameKey="name"
-              colors={["#10b981", "#22c55e", "#f59e0b", "#ef4444", "#b91c1c", "#64748b"]}
+              colors={["#10b981", "#34d399", "#2563eb", "#60a5fa", "#1f2937", "#64748b"]}
             />
           )}
         </Card>
@@ -389,7 +389,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={competencyScoreData}
               dataKey="score"
               xAxisKey="name"
-              color="#059669"
+              color="#10b981"
             />
           )}
         </Card>
@@ -402,7 +402,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={competencyScoreData}
               dataKey="gap"
               xAxisKey="name"
-              color="#f59e0b"
+              color="#1f2937"
             />
           )}
         </Card>
@@ -415,7 +415,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={benchmarkCoverageData}
               dataKey="count"
               nameKey="name"
-              colors={["#10b981", "#ef4444"]}
+              colors={["#10b981", "#1f2937"]}
             />
           )}
         </Card>

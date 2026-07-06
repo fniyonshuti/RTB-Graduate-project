@@ -198,10 +198,12 @@ export function AuthPages() {
     <main className="auth-page">
       <header className="home-header">
         <div className="auth-brand">
-          <div className="brand-mark">SG</div>
+          <div className="brand-logo-frame">
+            <img src="/competra-icon.png" alt="Competra logo" />
+          </div>
           <div>
-            <strong>Skills Gap</strong>
-            <span>RTB-aligned ICT assessment</span>
+            <strong>Competra</strong>
+            <span>Competency tracking & assessment platform</span>
           </div>
         </div>
         <nav className="home-nav-links" aria-label="Homepage sections">
@@ -234,7 +236,7 @@ export function AuthPages() {
       <section className="home-hero">
         <div className="home-hero__content">
           <BadgeLine />
-          <h1>Skills Gap Analysis Tool</h1>
+          <h1>Competra</h1>
           <p>
             A web-based system for ICT learners to submit practical evidence,
             complete theory questions, receive instant automated scores, and
@@ -282,9 +284,11 @@ export function AuthPages() {
         <section className="auth-panel">
           <div className="auth-window">
             <aside className="auth-window__brand">
-              <div className="brand-mark">SG</div>
+              <div className="brand-logo-frame brand-logo-frame--large">
+                <img src="/competra-logo.png" alt="Competra logo" />
+              </div>
               <span className="auth-window__eyebrow">
-                <ShieldCheck size={16} /> Skills Gap Access
+                <ShieldCheck size={16} /> Competra Access
               </span>
               <h2>{authContent.brandTitle}</h2>
               <p>{authContent.brandDescription}</p>
@@ -596,10 +600,12 @@ export function AuthPages() {
       <footer className="home-footer scroll-reveal">
         <div className="home-footer__brand">
           <div className="brand">
-            <div className="brand-mark">SG</div>
+            <div className="brand-logo-frame brand-logo-frame--footer">
+              <img src="/competra-icon.png" alt="Competra logo" />
+            </div>
             <div>
-              <strong>Skills Gap Analysis Tool</strong>
-              <span>Kicukiro TVET ICT readiness</span>
+              <strong>Competra</strong>
+              <span>Competency tracking & assessment platform</span>
             </div>
           </div>
           <p>
@@ -654,7 +660,7 @@ export function AuthPages() {
           <a href="#features">System logic</a>
         </div>
         <div className="home-footer__bottom">
-          <span>Skills Gap Analysis Tool for ICT competency readiness</span>
+          <span>Competra for ICT competency readiness</span>
           <span>
             Practical evidence, RTB benchmarks, gap levels, and recommendations
           </span>

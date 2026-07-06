@@ -1,11 +1,11 @@
-import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
 import connectDB from '../config/db.js';
 import User from '../models/User.js';
 import { hashPassword } from '../utils/password.js';
 import { ROLES } from '../constants/roles.js';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const adminName = process.env.SUPER_ADMIN_NAME || 'System Admin';
 const adminEmail = String(process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase();

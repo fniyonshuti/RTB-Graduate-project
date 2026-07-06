@@ -3,7 +3,7 @@ import Organization from "../models/Organization.js";
 import { sanitizeUser } from "./authService.js";
 import { AppError } from "../utils/errors.js";
 import { hashPassword } from "../utils/password.js";
-import { env } from "../config/env.js";
+import dotenv from "dotenv";
 import {
   ROLES,
   ORGANIZATION_SCOPED_ROLES,
@@ -11,6 +11,8 @@ import {
   canManageRole,
   creatableRolesFor,
 } from "../constants/roles.js";
+
+dotenv.config({ quiet: true });
 
 const MANAGED_USER_POPULATE = "name district type status";
 
@@ -164,8 +166,10 @@ export async function createManagedUser(payload, actor) {
   }
 
   const { passwordHash, passwordSalt } = hashPassword(password);
+  const temporaryPasswordExpiresHours =
+    Number(process.env.TEMPORARY_PASSWORD_EXPIRES_HOURS) || 72;
   const temporaryPasswordExpiresAt = new Date(
-    Date.now() + env.temporaryPasswordExpiresHours * 60 * 60 * 1000,
+    Date.now() + temporaryPasswordExpiresHours * 60 * 60 * 1000,
   );
   const user = await User.create({
     name,

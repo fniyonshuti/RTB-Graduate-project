@@ -3,9 +3,8 @@
  * These are examples only and should not be used as actual values.
  */
 export const GITHUB_PLACEHOLDER = {
-  // Example format for individual projects
-  INDIVIDUAL_PROJECT: 'https://github.com/username/project',
-  
-  // Example format for organization repositories
-  ORGANIZATION_REPO: 'https://github.com/owner/repository',
+  INDIVIDUAL_PROJECT:
+    import.meta.env.VITE_GITHUB_INDIVIDUAL_PROJECT_PLACEHOLDER || '',
+  ORGANIZATION_REPO:
+    import.meta.env.VITE_GITHUB_ORGANIZATION_REPO_PLACEHOLDER || '',
 };

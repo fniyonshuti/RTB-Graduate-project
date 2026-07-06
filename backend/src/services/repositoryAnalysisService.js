@@ -1,8 +1,5 @@
 import { AppError } from "../utils/errors.js";
 
-const GITHUB_REPO_PATTERN =
-  /^https?:\/\/(www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?:\/)?$/;
-
 const SUPPORTED_CODE_EXTENSIONS = new Set([
   ".js",
   ".jsx",
@@ -188,16 +185,22 @@ function trimTrailingSlash(value) {
   return String(value || "").replace(/\/+$/, "");
 }
 
+function requiredEnvUrl(name) {
+  const value = trimTrailingSlash(process.env[name]);
+
+  if (!value) {
+    throw new AppError(`${name} is required for GitHub repository analysis`, 500);
+  }
+
+  return value;
+}
+
 function githubApiBaseUrl() {
-  return trimTrailingSlash(
-    process.env.GITHUB_API_BASE_URL || "https://api.github.com",
-  );
+  return requiredEnvUrl("GITHUB_API_BASE_URL");
 }
 
 function githubRawBaseUrl() {
-  return trimTrailingSlash(
-    process.env.GITHUB_RAW_BASE_URL || "https://raw.githubusercontent.com",
-  );
+  return requiredEnvUrl("GITHUB_RAW_BASE_URL");
 }
 
 function getExtension(path = "") {
@@ -624,17 +627,29 @@ function scoreRepositoryEvidence({
 
 export function parseGitHubRepositoryUrl(url = "") {
   const trimmedUrl = String(url).trim();
-  const match = trimmedUrl.match(GITHUB_REPO_PATTERN);
 
-  if (!match) {
+  try {
+    const parsedUrl = new URL(trimmedUrl);
+    const configuredHost = new URL(requiredEnvUrl("GITHUB_WEB_BASE_URL")).hostname.replace(
+      /^www\./,
+      "",
+    );
+    const submittedHost = parsedUrl.hostname.replace(/^www\./, "");
+    const [owner, rawRepo] = parsedUrl.pathname.split("/").filter(Boolean);
+    const repo = rawRepo?.replace(/\.git$/i, "");
+
+    if (submittedHost !== configuredHost || !owner || !repo) {
+      return null;
+    }
+
+    return {
+      url: trimmedUrl,
+      owner,
+      repo,
+    };
+  } catch {
     return null;
   }
-
-  return {
-    url: trimmedUrl,
-    owner: match[2],
-    repo: match[3],
-  };
 }
 
 export function validateGitHubRepositoryUrl(url = "") {
