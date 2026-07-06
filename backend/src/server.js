@@ -55,8 +55,16 @@ function validateRuntimeConfig() {
 
   if (!mongoUri) errors.push("MONGO_URI or MONGO_DIRECT_URI is required");
   if (!jwtSecret) errors.push("JWT_SECRET is required");
-  if (!frontendUrl) errors.push("FRONTEND_URL is required");
-  if (corsOrigins.length === 0) errors.push("CORS_ORIGINS is required");
+  if (!frontendUrl) {
+    warnings.push(
+      "FRONTEND_URL is missing; password reset links will fail until it is set to the deployed frontend URL",
+    );
+  }
+  if (corsOrigins.length === 0) {
+    warnings.push(
+      "CORS_ORIGINS is missing; browser requests from the frontend will be rejected until it is configured",
+    );
+  }
   if (jwtSecret && jwtSecret.length < 32) {
     errors.push("JWT_SECRET must be at least 32 characters");
   }
@@ -108,8 +116,8 @@ function validateRuntimeConfig() {
         emailDomain(emailFrom),
       )
     ) {
-      errors.push(
-        "EMAIL_FROM must use your verified Resend domain in production, not a personal or testing email domain",
+      warnings.push(
+        "EMAIL_FROM should use your verified Resend domain in production; password reset emails to normal users may fail until the sender domain is verified",
       );
     }
   } else if (
