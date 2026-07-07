@@ -345,7 +345,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={roleDistributionData}
               dataKey="value"
               nameKey="name"
-              colors={["#2563eb", "#10b981", "#1f2937", "#60a5fa", "#34d399", "#93c5fd", "#6ee7b7"]}
+              colors={["#0077B6", "#10b981", "#1f2937", "#0077B6", "#34d399", "#0077B6", "#6ee7b7"]}
             />
           )}
         </Card>
@@ -358,7 +358,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={gapChartData}
               dataKey="value"
               nameKey="name"
-              colors={["#10b981", "#34d399", "#2563eb", "#60a5fa", "#1f2937", "#64748b"]}
+              colors={["#10b981", "#34d399", "#0077B6", "#0077B6", "#1f2937", "#64748b"]}
             />
           )}
         </Card>
@@ -374,7 +374,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={assessmentStatusData}
               dataKey="value"
               xAxisKey="name"
-              color="#2563eb"
+              color="#0077B6"
             />
           )}
         </Card>
@@ -533,7 +533,7 @@ function GraduateDashboard({
               data={scoreChartData}
               dataKey="score"
               xAxisKey="name"
-              color="#2563eb"
+              color="#0077B6"
             />
           )}
         </Card>
@@ -559,7 +559,7 @@ function GraduateDashboard({
               data={statusChartData}
               dataKey="value"
               nameKey="name"
-              colors={["#2563eb", "#f59e0b", "#10b981", "#64748b"]}
+              colors={["#0077B6", "#f59e0b", "#10b981", "#64748b"]}
             />
           )}
         </Card>
