@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 
 const toneClasses = {
-  blue: "border-blue-100 bg-gradient-to-br from-blue-50 to-white text-blue-700",
+  blue: "border-[#0077B6]/15 bg-gradient-to-br from-[#0077B6]/10 to-white text-[#0077B6]",
   green:
     "border-emerald-100 bg-gradient-to-br from-emerald-50 to-white text-emerald-700",
   amber:
@@ -87,9 +87,9 @@ export function Button({
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const variantClasses = {
     primary:
-      "border-blue-600 bg-gradient-to-r from-blue-600 to-emerald-500 text-white shadow-sm shadow-blue-900/15 hover:from-blue-700 hover:to-emerald-600 focus-visible:ring-blue-200",
+      "border-[#0077B6] bg-[#0077B6] text-white shadow-sm shadow-[#0077B6]/15 hover:border-[#0077B6] hover:bg-[#0077B6] focus-visible:ring-[#0077B6]/20",
     secondary:
-      "border-slate-200 bg-white text-slate-900 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-900 focus-visible:ring-blue-100",
+      "border-slate-200 bg-white text-slate-900 shadow-sm hover:border-[#0077B6]/25 hover:bg-[#0077B6]/10 hover:text-[#0077B6] focus-visible:ring-[#0077B6]/15",
     ghost:
       "border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:ring-slate-100",
     danger:
@@ -116,7 +116,7 @@ export function TextField({
     <label className="grid gap-2.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <input
-        className="min-h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+        className="min-h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-[#0077B6] focus:ring-4 focus:ring-[#0077B6]/15"
         {...props}
       />
     </label>
@@ -131,7 +131,7 @@ export function TextArea({
     <label className="grid gap-2.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <textarea
-        className="min-h-32 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+        className="min-h-32 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-[#0077B6] focus:ring-4 focus:ring-[#0077B6]/15"
         {...props}
       />
     </label>
@@ -150,7 +150,7 @@ export function SelectField({
     <label className="grid gap-2.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <select
-        className="min-h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition hover:border-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+        className="min-h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition hover:border-slate-400 focus:border-[#0077B6] focus:ring-4 focus:ring-[#0077B6]/15"
         {...props}
       >
         {children}
@@ -174,14 +174,14 @@ export function Badge({
     success: "border-emerald-200 bg-emerald-50 text-emerald-700",
     warning: "border-amber-200 bg-amber-50 text-amber-700",
     danger: "border-rose-200 bg-rose-50 text-rose-700",
-    info: "border-blue-200 bg-blue-50 text-blue-700",
-    role: "border-blue-200 bg-blue-100 text-blue-800",
+    info: "border-[#0077B6]/25 bg-[#0077B6]/10 text-[#0077B6]",
+    role: "border-[#0077B6]/25 bg-[#0077B6]/15 text-[#0077B6]",
     none: "border-emerald-200 bg-emerald-50 text-emerald-700",
     low: "border-sky-200 bg-sky-50 text-sky-700",
     moderate: "border-amber-200 bg-amber-50 text-amber-700",
     high: "border-rose-200 bg-rose-50 text-rose-700",
     "gap-no": "border-emerald-200 bg-emerald-50 text-emerald-700",
-    "gap-very-low": "border-blue-200 bg-blue-50 text-blue-700",
+    "gap-very-low": "border-[#0077B6]/25 bg-[#0077B6]/10 text-[#0077B6]",
     "gap-low": "border-sky-200 bg-sky-50 text-sky-700",
     "gap-moderate": "border-amber-200 bg-amber-50 text-amber-700",
     "gap-high": "border-rose-200 bg-rose-50 text-rose-700",
@@ -237,7 +237,7 @@ export function ProgressBar({ value }: { value: number | undefined }) {
   return (
     <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200" aria-label={`Progress ${safeValue}%`}>
       <span
-        className="block h-full rounded-full bg-gradient-to-r from-blue-600 to-emerald-500"
+        className="block h-full rounded-full bg-gradient-to-r from-[#0077B6] to-emerald-500"
         style={{ width: `${safeValue}%` }}
       />
     </div>
@@ -259,7 +259,7 @@ export function Alert({
   const alertClasses = {
     success: "border-emerald-200 bg-emerald-50 text-emerald-800",
     error: "border-rose-200 bg-rose-50 text-rose-800",
-    info: "border-blue-200 bg-blue-50 text-blue-800",
+    info: "border-[#0077B6]/25 bg-[#0077B6]/10 text-[#0077B6]",
   };
 
   return (
@@ -354,7 +354,7 @@ export function BarChartComponent({
   dataKey,
   xAxisKey,
   title,
-  color = "#2563eb",
+  color = "#0077B6",
 }: {
   data: ChartDatum[];
   dataKey: string;
@@ -368,7 +368,7 @@ export function BarChartComponent({
           <CartesianGrid strokeDasharray="3 3" stroke="#dbe4f0" vertical={false} />
           <XAxis dataKey={xAxisKey} interval="preserveStartEnd" tick={{ fontSize: 11 }} />
           <YAxis width={36} tick={{ fontSize: 11 }} />
-          <Tooltip cursor={{ fill: "rgba(37, 99, 235, 0.08)" }} />
+          <Tooltip cursor={{ fill: "rgba(0, 119, 182, 0.08)" }} />
           <Bar dataKey={dataKey} fill={color} radius={[8, 8, 0, 0]} />
         </BarChart>
     </ChartShell>
@@ -412,7 +412,7 @@ export function PieChartComponent({
   dataKey,
   nameKey,
   title,
-  colors = ["#2563eb", "#10b981", "#1f2937", "#60a5fa", "#34d399"],
+  colors = ["#0077B6", "#10b981", "#1f2937", "#0077B6", "#34d399"],
 }: {
   data: ChartDatum[];
   dataKey: string;

@@ -10,10 +10,12 @@ import {
   GitBranch,
   GraduationCap,
   LockKeyhole,
+  Menu,
   ShieldCheck,
   Sparkles,
   Target,
   Users,
+  X,
 } from "lucide-react";
 import { Alert, Button, TextField } from "../components/common";
 import { api } from "../api/client";
@@ -137,6 +139,7 @@ export function AuthPages() {
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [isHomeMenuOpen, setIsHomeMenuOpen] = useState(false);
   const authContent = getAuthContent(mode);
 
   useEffect(() => {
@@ -236,10 +239,53 @@ export function AuthPages() {
             <span>Competency tracking & assessment platform</span>
           </div>
         </div>
-        <nav className="home-nav-links" aria-label="Homepage sections">
-          <a href="#project-description">Overview</a>
-          <a href="#workflow">Workflow</a>
-          <a href="#features">System Logic</a>
+        <button
+          aria-controls="home-nav-menu"
+          aria-expanded={isHomeMenuOpen}
+          aria-label="Toggle homepage navigation"
+          className="home-menu-button"
+          type="button"
+          onClick={() => setIsHomeMenuOpen((open) => !open)}
+        >
+          {isHomeMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          <span>Menu</span>
+        </button>
+        <nav
+          className={`home-nav-links ${isHomeMenuOpen ? "is-open" : ""}`}
+          id="home-nav-menu"
+          aria-label="Homepage sections"
+        >
+          <a href="#project-description" onClick={() => setIsHomeMenuOpen(false)}>
+            Overview
+          </a>
+          <a href="#workflow" onClick={() => setIsHomeMenuOpen(false)}>
+            Workflow
+          </a>
+          <a href="#features" onClick={() => setIsHomeMenuOpen(false)}>
+            System Logic
+          </a>
+                  <div className="home-mobile-actions">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setShowAuthPanel(true);
+                setIsHomeMenuOpen(false);
+              }}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("register");
+                setShowAuthPanel(true);
+                setIsHomeMenuOpen(false);
+              }}
+            >
+              Create account
+            </button>
+          </div>
         </nav>
         <div className="auth-nav-actions">
           <button
@@ -319,7 +365,7 @@ export function AuthPages() {
                 type="button"
                 onClick={() => setShowAuthPanel(false)}
               >
-                Back to website
+                Back to home
               </button>
               <span className="auth-window__eyebrow">
                 <ShieldCheck size={16} /> Competra Access

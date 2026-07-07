@@ -41,7 +41,7 @@ function buildPasswordResetMessage({ name, resetLink, expiresInMinutes }) {
       <p>Hello ${safeName},</p>
       <p>We received a request to reset your Skills Gap Analysis Tool password.</p>
       <p>
-        <a href="${resetLink}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700;">
+        <a href="${resetLink}" style="display:inline-block;background:#0077B6;color:#ffffff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700;">
           Reset password
         </a>
       </p>
