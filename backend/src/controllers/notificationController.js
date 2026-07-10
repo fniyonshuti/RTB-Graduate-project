@@ -1,55 +1,60 @@
-import {
-  createManagedNotification,
-  deleteNotificationForUser,
-  getNotificationForUser,
-  listManagedNotifications,
-  listNotificationsForUser,
-  markAllNotificationsReadForUser,
-  markNotificationReadForUser,
-  updateManagedNotification,
-} from '../services/notificationService.js';
-import { asyncHandler } from '../utils/errors.js';
-import { sendSuccess } from '../utils/response.js';
+import notificationService from '../services/notificationService.js';
+import { asyncHandler } from '../services/errorService.js';
+import { sendSuccess } from '../services/responseService.js';
 
-export const listNotifications = asyncHandler(async (req, res) => {
-  const notifications = await listNotificationsForUser(req.user._id, req.query);
-  sendSuccess(res, 'Notifications loaded', notifications);
-});
+class NotificationController {
+  listNotifications = asyncHandler(async (req, res) => {
+    const notifications = await notificationService.listNotificationsForUser(req.user._id, req.query);
+    sendSuccess(res, 'Notifications loaded', notifications);
+  });
 
-export const markNotificationRead = asyncHandler(async (req, res) => {
-  const notification = await markNotificationReadForUser(
-    req.params.id,
-    req.user._id,
-  );
-  sendSuccess(res, 'Notification marked as read', notification);
-});
+  markNotificationRead = asyncHandler(async (req, res) => {
+    const notification = await notificationService.markNotificationReadForUser(
+      req.params.id,
+      req.user._id,
+    );
+    sendSuccess(res, 'Notification marked as read', notification);
+  });
 
-export const markAllNotificationsRead = asyncHandler(async (req, res) => {
-  const result = await markAllNotificationsReadForUser(req.user._id);
-  sendSuccess(res, 'All notifications marked as read', result);
-});
+  markAllNotificationsRead = asyncHandler(async (req, res) => {
+    const result = await notificationService.markAllNotificationsReadForUser(req.user._id);
+    sendSuccess(res, 'All notifications marked as read', result);
+  });
 
-export const listAllNotifications = asyncHandler(async (req, res) => {
-  const notifications = await listManagedNotifications(req.query);
-  sendSuccess(res, 'All notifications loaded', notifications);
-});
+  listAllNotifications = asyncHandler(async (req, res) => {
+    const notifications = await notificationService.listManagedNotifications(req.query);
+    sendSuccess(res, 'All notifications loaded', notifications);
+  });
 
-export const createNotification = asyncHandler(async (req, res) => {
-  const notifications = await createManagedNotification(req.body);
-  sendSuccess(res, 'Notification sent successfully', notifications, 201);
-});
+  createNotification = asyncHandler(async (req, res) => {
+    const notifications = await notificationService.createManagedNotification(req.body);
+    sendSuccess(res, 'Notification sent successfully', notifications, 201);
+  });
 
-export const getNotification = asyncHandler(async (req, res) => {
-  const notification = await getNotificationForUser(req.params.id, req.user);
-  sendSuccess(res, 'Notification loaded', notification);
-});
+  getNotification = asyncHandler(async (req, res) => {
+    const notification = await notificationService.getNotificationForUser(req.params.id, req.user);
+    sendSuccess(res, 'Notification loaded', notification);
+  });
 
-export const updateNotification = asyncHandler(async (req, res) => {
-  const notification = await updateManagedNotification(req.params.id, req.body);
-  sendSuccess(res, 'Notification updated', notification);
-});
+  updateNotification = asyncHandler(async (req, res) => {
+    const notification = await notificationService.updateManagedNotification(req.params.id, req.body);
+    sendSuccess(res, 'Notification updated', notification);
+  });
 
-export const deleteNotification = asyncHandler(async (req, res) => {
-  const notification = await deleteNotificationForUser(req.params.id, req.user);
-  sendSuccess(res, 'Notification deleted', notification);
-});
+  deleteNotification = asyncHandler(async (req, res) => {
+    const notification = await notificationService.deleteNotificationForUser(req.params.id, req.user);
+    sendSuccess(res, 'Notification deleted', notification);
+  });
+}
+
+const notificationController = new NotificationController();
+
+export const listNotifications = notificationController.listNotifications;
+export const markNotificationRead = notificationController.markNotificationRead;
+export const markAllNotificationsRead = notificationController.markAllNotificationsRead;
+export const listAllNotifications = notificationController.listAllNotifications;
+export const createNotification = notificationController.createNotification;
+export const getNotification = notificationController.getNotification;
+export const updateNotification = notificationController.updateNotification;
+export const deleteNotification = notificationController.deleteNotification;
+export default notificationController;

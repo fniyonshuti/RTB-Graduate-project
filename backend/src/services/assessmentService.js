@@ -4,8 +4,7 @@ import Competency from "../models/Competency.js";
 import Notification from "../models/Notification.js";
 import Recommendation from "../models/Recommendation.js";
 import User from "../models/User.js";
-import { AppError } from "../utils/errors.js";
-import { analyzeCompetency } from "./gapAnalysisService.js";
+import { AppError } from "./errorService.js";
 import { isLearnerRole, ROLES } from "../constants/roles.js";
 import {
   buildRecommendationContext,
@@ -14,13 +13,97 @@ import {
   upsertAssessmentRecommendation,
 } from "./recommendationService.js";
 import {
+  assessGithubRepository,
   reviewGitHubRepositoryForTask,
   validateGitHubRepositoryUrl,
-} from "./repositoryAnalysisService.js";
-import { assessGithubRepository } from "./repositoryAssessmentService.js";
+} from "./githubService.js";
 import { generateGraduateReport } from "./reportService.js";
 
-function populateAssessment(query) {
+// Assessment scoring and gap analysis are part of assessment logic.
+
+export const SCORE_WEIGHTS = {
+  practicalTask: 0.7,
+  quiz: 0.3,
+};
+
+function isValidScore(score) {
+  return typeof score === "number" && score >= 0 && score <= 100;
+}
+
+function normalizeScore(score) {
+  const numberScore = Number(score);
+  return Number.isFinite(numberScore) ? numberScore : null;
+}
+
+export function validateScoreInputs(scores) {
+  const normalizedScores = {
+    practicalTaskScore: normalizeScore(scores.practicalTaskScore),
+    quizScore: normalizeScore(scores.quizScore),
+  };
+  const invalidField = Object.entries(normalizedScores).find(([, score]) => !isValidScore(score));
+  if (invalidField) return { isValid: false, field: invalidField[0] };
+  return { isValid: true, scores: normalizedScores };
+}
+
+export function calculateWeightedScore(scores) {
+  const validation = validateScoreInputs(scores);
+  if (!validation.isValid) throw new Error(`${validation.field} must be a number between 0 and 100`);
+  const finalScore =
+    validation.scores.practicalTaskScore * SCORE_WEIGHTS.practicalTask +
+    validation.scores.quizScore * SCORE_WEIGHTS.quiz;
+  return Math.round(finalScore * 100) / 100;
+}
+
+export function calculateSkillGap(benchmarkScore, finalScore) {
+  const gap = Number(benchmarkScore) - Number(finalScore);
+  return Math.max(Math.round(gap * 100) / 100, 0);
+}
+
+export function classifyGap(skillGap) {
+  if (skillGap === 0) return "No Gap";
+  if (skillGap <= 5) return "Very Low Gap";
+  if (skillGap <= 15) return "Low Gap";
+  if (skillGap <= 25) return "Moderate Gap";
+  return "High Gap";
+}
+
+export function getPriorityFromGap(gapLevel) {
+  if (gapLevel === "High Gap") return "high";
+  if (gapLevel === "Moderate Gap") return "medium";
+  return "low";
+}
+
+export function analyzeCompetency(scores, benchmarkScore) {
+  const validation = validateScoreInputs(scores);
+  if (!validation.isValid) throw new AppError(`${validation.field} must be a number between 0 and 100`, 400);
+  const benchmark = Number(benchmarkScore);
+  if (!Number.isFinite(benchmark) || benchmark < 0 || benchmark > 100) {
+    throw new AppError("Benchmark score must be a number between 0 and 100", 400);
+  }
+  const finalScore = calculateWeightedScore(validation.scores);
+  const skillGap = calculateSkillGap(benchmark, finalScore);
+  const gapLevel = classifyGap(skillGap);
+  return { scores: { ...validation.scores, finalScore }, benchmarkScore: benchmark, skillGap, gapLevel };
+}
+
+export function summarizeAssessments(assessments) {
+  const reviewed = assessments.filter((assessment) => assessment.status === "reviewed");
+  if (reviewed.length === 0) {
+    return { overallScore: 0, averageGap: 0, overallGapLevel: "Not Available" };
+  }
+  const totalScore = reviewed.reduce((sum, assessment) => sum + (assessment.scores.finalScore || 0), 0);
+  const totalGap = reviewed.reduce((sum, assessment) => sum + (assessment.skillGap || 0), 0);
+  const averageGap = Math.round((totalGap / reviewed.length) * 100) / 100;
+  return {
+    overallScore: Math.round((totalScore / reviewed.length) * 100) / 100,
+    averageGap,
+    overallGapLevel: classifyGap(averageGap),
+  };
+}
+
+
+// Assessment query presentation
+function populateAssessmentRelations(query) {
   return query
     .populate("graduate", "name email institution role organization")
     .populate("organization", "name district type status")
@@ -31,7 +114,7 @@ function populateAssessment(query) {
     );
 }
 
-function hideCorrectAnswersFromAssessment(assessment) {
+function removeCorrectTheoryAnswers(assessment) {
   const data = assessment.toObject ? assessment.toObject() : assessment;
 
   if (data.competency?.theoryQuestions) {
@@ -48,11 +131,12 @@ function hideCorrectAnswersFromAssessment(assessment) {
   return data;
 }
 
-function normalizeAnswer(value = "") {
+// Theory answer scoring
+function normalizeTheoryAnswerText(value = "") {
   return String(value).trim().toLowerCase();
 }
 
-const THEORY_STOP_WORDS = new Set([
+const THEORY_ANSWER_STOP_WORDS = new Set([
   "the",
   "and",
   "for",
@@ -73,19 +157,19 @@ const THEORY_STOP_WORDS = new Set([
   "application",
 ]);
 
-function tokenizeTheoryAnswer(value = "") {
-  return normalizeAnswer(value)
+function extractMeaningfulTheoryAnswerTokens(value = "") {
+  return normalizeTheoryAnswerText(value)
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter((token) => token.length >= 3 && !THEORY_STOP_WORDS.has(token));
+    .filter((token) => token.length >= 3 && !THEORY_ANSWER_STOP_WORDS.has(token));
 }
 
-function scoreShortAnswer({ answerText, expectedAnswer, points }) {
-  const expectedTokens = [...new Set(tokenizeTheoryAnswer(expectedAnswer))];
+function scoreShortTheoryAnswer({ answerText, expectedAnswer, points }) {
+  const expectedTokens = [...new Set(extractMeaningfulTheoryAnswerTokens(expectedAnswer))];
 
   if (expectedTokens.length === 0) return 0;
 
-  const answerTokens = new Set(tokenizeTheoryAnswer(answerText));
+  const answerTokens = new Set(extractMeaningfulTheoryAnswerTokens(answerText));
   const matchedTokens = expectedTokens.filter((token) =>
     answerTokens.has(token),
   );
@@ -96,7 +180,7 @@ function scoreShortAnswer({ answerText, expectedAnswer, points }) {
   return Math.round(points * Math.min(coverage, 1) * 100) / 100;
 }
 
-function calculateTheoryResult(competency, submittedAnswers = []) {
+function calculateTheoryQuestionResult(competency, submittedAnswers = []) {
   const questions = competency.theoryQuestions || [];
   const totalPoints = questions.reduce(
     (sum, question) => sum + question.points,
@@ -120,12 +204,12 @@ function calculateTheoryResult(competency, submittedAnswers = []) {
       question.type === "multiple_choice" && question.correctAnswer;
     const isCorrect =
       isObjective &&
-      normalizeAnswer(answerText) === normalizeAnswer(question.correctAnswer);
+      normalizeTheoryAnswerText(answerText) === normalizeTheoryAnswerText(question.correctAnswer);
     const pointsAwarded = isObjective
       ? isCorrect
         ? question.points
         : 0
-      : scoreShortAnswer({
+      : scoreShortTheoryAnswer({
           answerText,
           expectedAnswer: question.expectedAnswer,
           points: question.points,
@@ -155,14 +239,15 @@ function calculateTheoryResult(competency, submittedAnswers = []) {
   };
 }
 
-function resolveReviewScores({ assessment, payload }) {
+// Assessment submission validation
+function resolveAssessmentReviewScores({ assessment, payload }) {
   return {
-    practicalTaskScore: payload.practicalTaskScore,
+    practicalRepositoryScore: payload.practicalRepositoryScore,
     quizScore: payload.quizScore ?? assessment.scores.quizScore,
   };
 }
 
-function validateAssessmentSubmission({ competency, payload, theoryResult }) {
+function validateAssessmentEvidenceSubmission({ competency, payload, theoryScoringResult }) {
   const theoryQuestions = competency.theoryQuestions || [];
   const missingTheoryAnswer = theoryQuestions.find((question) => {
     const answer = (payload.theoryAnswers || []).find(
@@ -188,7 +273,7 @@ function validateAssessmentSubmission({ competency, payload, theoryResult }) {
 
   validateGitHubRepositoryUrl(payload.githubRepositoryUrl);
 
-  if (theoryQuestions.length > 0 && theoryResult.theoryAnswers.length === 0) {
+  if (theoryQuestions.length > 0 && theoryScoringResult.theoryAnswers.length === 0) {
     throw new AppError("Theory answers are required for this competency", 400);
   }
 }
@@ -200,42 +285,42 @@ export async function submitAssessment(user, payload) {
     throw new AppError("Active competency was not found", 404);
   }
 
-  const selectedTask =
+  const selectedPracticalTask =
     competency.practicalTasks.find(
       (task) => String(task._id) === String(payload.practicalTaskId),
     ) || competency.practicalTasks[0];
-  const theoryResult = calculateTheoryResult(
+  const theoryScoringResult = calculateTheoryQuestionResult(
     competency,
     payload.theoryAnswers || [],
   );
-  validateAssessmentSubmission({
+  validateAssessmentEvidenceSubmission({
     competency,
     payload,
-    theoryResult,
+    theoryScoringResult,
   });
-  const repositoryReview = payload.repositoryTaskReview
+  const submittedRepositoryTaskReview = payload.repositoryTaskReview
     ? null
     : await previewRepositoryTaskReview(
         {
           competency: competency._id,
-          practicalTaskId: selectedTask?._id,
+          practicalTaskId: selectedPracticalTask?._id,
           githubRepositoryUrl: payload.githubRepositoryUrl,
         },
         user,
       );
-  const staticRepositoryReview = repositoryReview
-    ? repositoryReview
+  const staticRepositoryTaskReview = submittedRepositoryTaskReview
+    ? submittedRepositoryTaskReview
     : await reviewGitHubRepositoryForTask({
         repositoryUrl: payload.githubRepositoryUrl,
         competency,
-        practicalTask: selectedTask,
+        practicalTask: selectedPracticalTask,
       });
-  const repositorySummary = staticRepositoryReview?.repositorySummary || null;
+  const repositoryEvidenceSummary = staticRepositoryTaskReview?.repositoryEvidenceSummary || null;
 
-  if (repositorySummary && payload.repositoryTaskReview) {
-    repositorySummary.taskReview = payload.repositoryTaskReview;
-  } else if (repositorySummary && staticRepositoryReview?.taskReview) {
-    repositorySummary.taskReview = staticRepositoryReview.taskReview;
+  if (repositoryEvidenceSummary && payload.repositoryTaskReview) {
+    repositoryEvidenceSummary.taskReview = payload.repositoryTaskReview;
+  } else if (repositoryEvidenceSummary && staticRepositoryTaskReview?.taskReview) {
+    repositoryEvidenceSummary.taskReview = staticRepositoryTaskReview.taskReview;
   }
 
   const graduate = await User.findById(user._id);
@@ -256,16 +341,16 @@ export async function submitAssessment(user, payload) {
     );
   }
 
-  const practicalTaskScore = Number(repositorySummary?.taskReview?.score || 0);
-  const analysis = analyzeCompetency(
+  const practicalRepositoryScore = Number(repositoryEvidenceSummary?.taskReview?.score || 0);
+  const skillGapAnalysis = analyzeCompetency(
     {
-      practicalTaskScore,
-      quizScore: theoryResult.quizScore,
+      practicalRepositoryScore,
+      quizScore: theoryScoringResult.quizScore,
     },
     benchmark.requiredScore,
   );
-  const assessorComment =
-    "Automatically reviewed using repository analysis, automated checks, theory answers, and RTB benchmark comparison.";
+  const automaticAssessmentComment =
+    "Automatically reviewed using repository skillGapAnalysis, automated checks, theory answers, and RTB benchmark comparison.";
   const evidenceVerification = {
     githubReviewed: true,
     practicalEvidenceReviewed: true,
@@ -275,12 +360,12 @@ export async function submitAssessment(user, payload) {
   };
   const automaticDraft = await generateAutomaticRecommendationDraft({
     assessment: {
-      scores: analysis.scores,
-      benchmarkScore: analysis.benchmarkScore,
-      skillGap: analysis.skillGap,
-      gapLevel: analysis.gapLevel,
-      evidence: { repositorySummary },
-      assessorComment,
+      scores: skillGapAnalysis.scores,
+      benchmarkScore: skillGapAnalysis.benchmarkScore,
+      skillGap: skillGapAnalysis.skillGap,
+      gapLevel: skillGapAnalysis.gapLevel,
+      evidence: { repositoryEvidenceSummary },
+      automaticAssessmentComment,
       evidenceVerification,
     },
     competency,
@@ -295,23 +380,23 @@ export async function submitAssessment(user, payload) {
     scoringEngineVersion: "automatic-rubric-v1",
     evidence: {
       practicalSubmissionMode: payload.practicalSubmissionMode || "direct_test",
-      practicalTaskId: selectedTask?._id,
-      practicalTaskTitle: selectedTask?.title,
-      practicalTaskInstructions: selectedTask?.instructions,
+      practicalTaskId: selectedPracticalTask?._id,
+      practicalTaskTitle: selectedPracticalTask?.title,
+      practicalTaskInstructions: selectedPracticalTask?.instructions,
       practicalTask: payload.practicalTask,
       githubRepositoryUrl: payload.githubRepositoryUrl,
-      repositorySummary,
-      quizAnswers: theoryResult.quizAnswers || payload.quizAnswers,
-      theoryAnswers: theoryResult.theoryAnswers,
+      repositoryEvidenceSummary,
+      quizAnswers: theoryScoringResult.quizAnswers || payload.quizAnswers,
+      theoryAnswers: theoryScoringResult.theoryAnswers,
       fileUrls: payload.fileUrls || [],
       evidenceFiles: payload.evidenceFiles || [],
     },
-    scores: analysis.scores,
-    benchmarkScore: analysis.benchmarkScore,
-    skillGap: analysis.skillGap,
-    gapLevel: analysis.gapLevel,
+    scores: skillGapAnalysis.scores,
+    benchmarkScore: skillGapAnalysis.benchmarkScore,
+    skillGap: skillGapAnalysis.skillGap,
+    gapLevel: skillGapAnalysis.gapLevel,
     status: "reviewed",
-    assessorComment,
+    automaticAssessmentComment,
     evidenceVerification,
     reviewedAt: new Date(),
   });
@@ -332,10 +417,11 @@ export async function submitAssessment(user, payload) {
 
   await generateGraduateReport(graduate._id, user).catch(() => null);
 
-  return populateAssessment(Assessment.findById(assessment._id));
+  return populateAssessmentRelations(Assessment.findById(assessment._id));
 }
 
-function repositoryAssessmentToChecklist(repositoryAssessment) {
+// Repository review normalization
+function convertRepositoryAssessmentToChecklist(repositoryAssessment) {
   // Convert the executable repository assessment into the same checklist shape
   // used by the static GitHub review, so the frontend can render one result.
   const passed = (repositoryAssessment.passedRequirements || []).map(
@@ -382,10 +468,10 @@ function repositoryAssessmentToChecklist(repositoryAssessment) {
   return checklist;
 }
 
-function buildStaticReviewFallback({
+function buildStaticRepositoryReviewFallback({
   payload,
   competency,
-  selectedTask,
+  selectedPracticalTask,
   error,
 }) {
   // Static review failures should still produce a review-shaped response.
@@ -395,7 +481,7 @@ function buildStaticReviewFallback({
     "GitHub static repository review failed before producing a result.";
 
   return {
-    repositorySummary: {
+    repositoryEvidenceSummary: {
       url: payload.githubRepositoryUrl,
       owner: "",
       repo: "",
@@ -418,8 +504,8 @@ function buildStaticReviewFallback({
       summaryText: message,
     },
     taskReview: {
-      taskId: selectedTask?._id,
-      taskTitle: selectedTask?.title || competency?.title || "Practical task",
+      taskId: selectedPracticalTask?._id,
+      taskTitle: selectedPracticalTask?.title || competency?.title || "Practical task",
       score: 0,
       pointsEarned: 0,
       pointsPossible: 100,
@@ -455,12 +541,12 @@ export async function previewRepositoryTaskReview(payload, user) {
     throw new AppError("Active competency was not found", 404);
   }
 
-  const selectedTask =
+  const selectedPracticalTask =
     competency.practicalTasks.find(
       (task) => String(task._id) === String(payload.practicalTaskId),
     ) || competency.practicalTasks[0];
 
-  if (!selectedTask) {
+  if (!selectedPracticalTask) {
     throw new AppError("Practical task was not found for this competency", 404);
   }
 
@@ -474,9 +560,9 @@ export async function previewRepositoryTaskReview(payload, user) {
   const staticReview = await reviewGitHubRepositoryForTask({
     repositoryUrl: payload.githubRepositoryUrl,
     competency,
-    practicalTask: selectedTask,
+    practicalTask: selectedPracticalTask,
   }).catch((error) =>
-    buildStaticReviewFallback({ payload, competency, selectedTask, error }),
+    buildStaticRepositoryReviewFallback({ payload, competency, selectedPracticalTask, error }),
   );
   // The executable assessment is best-effort: Docker, cloning, or dependency
   // failures lower the automatic score but do not block the user from seeing
@@ -484,7 +570,7 @@ export async function previewRepositoryTaskReview(payload, user) {
   const repositoryAssessment = await assessGithubRepository({
     repositoryUrl: payload.githubRepositoryUrl,
     competencyId: competency._id,
-    practicalTaskId: selectedTask._id,
+    practicalTaskId: selectedPracticalTask._id,
     user,
   }).catch((error) => ({
     _id: undefined,
@@ -515,12 +601,12 @@ export async function previewRepositoryTaskReview(payload, user) {
     assessorValidationRequired: false,
     errorMessage: error.message,
   }));
-  const checklist = repositoryAssessmentToChecklist(repositoryAssessment);
+  const checklist = convertRepositoryAssessmentToChecklist(repositoryAssessment);
   const passedCount = checklist.filter((item) => item.passed).length;
 
   return {
-    repositorySummary: {
-      ...staticReview.repositorySummary,
+    repositoryEvidenceSummary: {
+      ...staticReview.repositoryEvidenceSummary,
       repositoryAssessmentResult: repositoryAssessment,
     },
     taskReview: {
@@ -607,17 +693,17 @@ export async function listAssessments(user, filters = {}) {
     query.competency = filters.competency;
   }
 
-  const assessments = await populateAssessment(
+  const assessments = await populateAssessmentRelations(
     Assessment.find(query).sort({ createdAt: -1 }),
   );
 
   return isLearnerRole(user.role)
-    ? assessments.map(hideCorrectAnswersFromAssessment)
+    ? assessments.map(removeCorrectTheoryAnswers)
     : assessments;
 }
 
 export async function getAssessmentById(assessmentId, user) {
-  const assessment = await populateAssessment(
+  const assessment = await populateAssessmentRelations(
     Assessment.findById(assessmentId),
   );
 
@@ -644,7 +730,7 @@ export async function getAssessmentById(assessmentId, user) {
   }
 
   return isLearnerRole(user.role)
-    ? hideCorrectAnswersFromAssessment(assessment)
+    ? removeCorrectTheoryAnswers(assessment)
     : assessment;
 }
 
@@ -680,7 +766,7 @@ export async function updateAssessmentById(assessmentId, user, payload) {
   }
 
   const allowedUpdates = [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ORGANIZATION_ADMIN].includes(user.role)
-    ? ["evidence", "status", "assessorComment", "evidenceVerification"]
+    ? ["evidence", "status", "automaticAssessmentComment", "evidenceVerification"]
     : ["evidence", "status"];
   const updates = {};
 
@@ -693,7 +779,7 @@ export async function updateAssessmentById(assessmentId, user, payload) {
     runValidators: true,
   });
 
-  return populateAssessment(Assessment.findById(updated._id));
+  return populateAssessmentRelations(Assessment.findById(updated._id));
 }
 
 export async function deleteAssessmentById(assessmentId, user) {
@@ -758,17 +844,17 @@ export async function reviewAssessment(assessmentId, assessorId, payload) {
     );
   }
 
-  const reviewScores = resolveReviewScores({ assessment, payload });
-  const analysis = analyzeCompetency(reviewScores, benchmark.requiredScore);
+  const assessorReviewScores = resolveAssessmentReviewScores({ assessment, payload });
+  const skillGapAnalysis = analyzeCompetency(assessorReviewScores, benchmark.requiredScore);
 
   assessment.assessor = assessorId;
   assessment.reviewMode = "manual_legacy";
   assessment.reviewedBySystem = false;
-  assessment.scores = analysis.scores;
-  assessment.benchmarkScore = analysis.benchmarkScore;
-  assessment.skillGap = analysis.skillGap;
-  assessment.gapLevel = analysis.gapLevel;
-  assessment.assessorComment = payload.assessorComment;
+  assessment.scores = skillGapAnalysis.scores;
+  assessment.benchmarkScore = skillGapAnalysis.benchmarkScore;
+  assessment.skillGap = skillGapAnalysis.skillGap;
+  assessment.gapLevel = skillGapAnalysis.gapLevel;
+  assessment.automaticAssessmentComment = payload.automaticAssessmentComment;
   assessment.evidenceVerification = {
     githubReviewed: Boolean(payload.evidenceVerification?.githubReviewed),
     practicalEvidenceReviewed: Boolean(
@@ -800,7 +886,7 @@ export async function reviewAssessment(assessmentId, assessorId, payload) {
   const assessor = await User.findById(assessorId).select("_id role");
   await generateGraduateReport(assessment.graduate, assessor).catch(() => null);
 
-  const reviewedAssessment = await populateAssessment(
+  const reviewedAssessment = await populateAssessmentRelations(
     Assessment.findById(assessment._id),
   );
 
@@ -835,24 +921,24 @@ export async function previewRecommendationDraft(assessmentId, payload) {
     );
   }
 
-  const reviewScores = resolveReviewScores({ assessment, payload });
-  const analysis = analyzeCompetency(reviewScores, benchmark.requiredScore);
+  const assessorReviewScores = resolveAssessmentReviewScores({ assessment, payload });
+  const skillGapAnalysis = analyzeCompetency(assessorReviewScores, benchmark.requiredScore);
 
   const draftAssessment = {
     ...assessment.toObject(),
-    scores: analysis.scores,
-    benchmarkScore: analysis.benchmarkScore,
-    skillGap: analysis.skillGap,
-    gapLevel: analysis.gapLevel,
-    assessorComment:
-      payload.assessorComment || assessment.assessorComment || "",
+    scores: skillGapAnalysis.scores,
+    benchmarkScore: skillGapAnalysis.benchmarkScore,
+    skillGap: skillGapAnalysis.skillGap,
+    gapLevel: skillGapAnalysis.gapLevel,
+    automaticAssessmentComment:
+      payload.automaticAssessmentComment || assessment.automaticAssessmentComment || "",
     evidenceVerification: payload.evidenceVerification,
   };
 
   const draft = await generateDraftRecommendation({
     assessment: draftAssessment,
     competency,
-    assessorComment: payload.assessorComment,
+    automaticAssessmentComment: payload.automaticAssessmentComment,
   });
 
   return {
@@ -862,10 +948,10 @@ export async function previewRecommendationDraft(assessmentId, payload) {
       title: competency.title,
       code: competency.code,
     },
-    benchmarkScore: analysis.benchmarkScore,
-    finalScore: analysis.scores.finalScore,
-    skillGap: analysis.skillGap,
-    gapLevel: analysis.gapLevel,
+    benchmarkScore: skillGapAnalysis.benchmarkScore,
+    finalScore: skillGapAnalysis.scores.finalScore,
+    skillGap: skillGapAnalysis.skillGap,
+    gapLevel: skillGapAnalysis.gapLevel,
     recommendation: {
       draftMessage: draft.message,
       message: draft.message,
@@ -880,17 +966,33 @@ export async function previewRecommendationDraft(assessmentId, payload) {
     context: buildRecommendationContext({
       assessment: draftAssessment,
       competency,
-      assessorComment: payload.assessorComment,
+      automaticAssessmentComment: payload.automaticAssessmentComment,
     }),
   };
 }
 
 export async function getGraduateResults(graduateId) {
-  const assessments = await populateAssessment(
+  const assessments = await populateAssessmentRelations(
     Assessment.find({ graduate: graduateId, status: "reviewed" }).sort({
       reviewedAt: -1,
     }),
   );
 
-  return assessments.map(hideCorrectAnswersFromAssessment);
+  return assessments.map(removeCorrectTheoryAnswers);
 }
+
+class AssessmentService {
+  submitAssessment = submitAssessment;
+  previewRepositoryTaskReview = previewRepositoryTaskReview;
+  listAssessments = listAssessments;
+  getAssessmentById = getAssessmentById;
+  updateAssessmentById = updateAssessmentById;
+  deleteAssessmentById = deleteAssessmentById;
+  reviewAssessment = reviewAssessment;
+  previewRecommendationDraft = previewRecommendationDraft;
+  getGraduateResults = getGraduateResults;
+}
+
+const assessmentService = new AssessmentService();
+
+export default assessmentService;

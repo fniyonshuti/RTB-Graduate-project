@@ -1,4 +1,4 @@
-import { AppError } from '../utils/errors.js';
+import { AppError } from '../services/errorService.js';
 
 export function requireFields(...fields) {
   return function fieldValidator(req, res, next) {

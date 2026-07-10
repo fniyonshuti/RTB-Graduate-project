@@ -4,7 +4,7 @@ import {
   calculateSkillGap,
   classifyGap,
   getPriorityFromGap,
-} from '../../src/utils/gapClassifier.js';
+} from '../../src/services/assessmentService.js';
 
 describe('gap classifier utilities', () => {
   it('never returns a negative skill gap', () => {

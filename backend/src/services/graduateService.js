@@ -1,5 +1,5 @@
 import GraduateProfile from "../models/GraduateProfile.js";
-import { AppError } from "../utils/errors.js";
+import { AppError } from "./errorService.js";
 import { ROLES } from "../constants/roles.js";
 
 const PROFILE_USER_FIELDS = "name email institution role";
@@ -80,3 +80,16 @@ export async function deleteGraduateProfileByUserId(userId) {
 
   return profile;
 }
+
+class GraduateService {
+  getProfileByGraduateId = getProfileByGraduateId;
+  upsertProfileByGraduateId = upsertProfileByGraduateId;
+  listGraduateProfiles = listGraduateProfiles;
+  getGraduateProfileByUserId = getGraduateProfileByUserId;
+  deleteProfileByGraduateId = deleteProfileByGraduateId;
+  deleteGraduateProfileByUserId = deleteGraduateProfileByUserId;
+}
+
+const graduateService = new GraduateService();
+
+export default graduateService;

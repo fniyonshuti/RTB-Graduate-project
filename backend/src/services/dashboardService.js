@@ -3,7 +3,7 @@ import Competency from '../models/Competency.js';
 import Assessment from '../models/Assessment.js';
 import Recommendation from '../models/Recommendation.js';
 import Benchmark from '../models/Benchmark.js';
-import { summarizeAssessments } from './gapAnalysisService.js';
+import { summarizeAssessments } from './assessmentService.js';
 import { ROLES, LEARNER_ROLES, USER_ROLE_VALUES, displayRole } from '../constants/roles.js';
 
 function countBy(items, getKey) {
@@ -157,3 +157,12 @@ export async function getAdminDashboard(user) {
     ],
   };
 }
+
+class DashboardService {
+  getGraduateDashboard = getGraduateDashboard;
+  getAdminDashboard = getAdminDashboard;
+}
+
+const dashboardService = new DashboardService();
+
+export default dashboardService;

@@ -1,43 +1,48 @@
-import {
-  changePassword,
-  loginUser,
-  registerUser,
-  requestPasswordReset,
-  resetPassword,
-  sanitizeUser,
-} from '../services/authService.js';
-import { asyncHandler } from '../utils/errors.js';
-import { sendSuccess } from '../utils/response.js';
+import authService from '../services/authService.js';
+import { asyncHandler } from '../services/errorService.js';
+import { sendSuccess } from '../services/responseService.js';
 
-export const register = asyncHandler(async (req, res) => {
-  const result = await registerUser(req.body);
-  sendSuccess(res, 'Account registered successfully', result, 201);
-});
+class AuthController {
+  register = asyncHandler(async (req, res) => {
+    const result = await authService.registerUser(req.body);
+    sendSuccess(res, 'Account registered successfully', result, 201);
+  });
 
-export const login = asyncHandler(async (req, res) => {
-  const result = await loginUser(req.body.email, req.body.password);
-  sendSuccess(res, 'Logged in successfully', result);
-});
+  login = asyncHandler(async (req, res) => {
+    const result = await authService.loginUser(req.body.email, req.body.password);
+    sendSuccess(res, 'Logged in successfully', result);
+  });
 
-export const getMe = asyncHandler(async (req, res) => {
-  sendSuccess(res, 'Current user loaded', sanitizeUser(req.user));
-});
+  getMe = asyncHandler(async (req, res) => {
+    sendSuccess(res, 'Current user loaded', authService.sanitizeUser(req.user));
+  });
 
-export const changeMyPassword = asyncHandler(async (req, res) => {
-  const user = await changePassword(
-    req.user._id,
-    req.body.currentPassword,
-    req.body.newPassword,
-  );
-  sendSuccess(res, 'Password changed successfully', user);
-});
+  changeMyPassword = asyncHandler(async (req, res) => {
+    const user = await authService.changePassword(
+      req.user._id,
+      req.body.currentPassword,
+      req.body.newPassword,
+    );
+    sendSuccess(res, 'Password changed successfully', user);
+  });
 
-export const forgotPassword = asyncHandler(async (req, res) => {
-  const result = await requestPasswordReset(req.body.email);
-  sendSuccess(res, result.message, result);
-});
+  forgotPassword = asyncHandler(async (req, res) => {
+    const result = await authService.requestPasswordReset(req.body.email);
+    sendSuccess(res, result.message, result);
+  });
 
-export const resetPasswordWithToken = asyncHandler(async (req, res) => {
-  const user = await resetPassword(req.body.token, req.body.newPassword);
-  sendSuccess(res, 'Password reset successfully', user);
-});
+  resetPasswordWithToken = asyncHandler(async (req, res) => {
+    const user = await authService.resetPassword(req.body.token, req.body.newPassword);
+    sendSuccess(res, 'Password reset successfully', user);
+  });
+}
+
+const authController = new AuthController();
+
+export const register = authController.register;
+export const login = authController.login;
+export const getMe = authController.getMe;
+export const changeMyPassword = authController.changeMyPassword;
+export const forgotPassword = authController.forgotPassword;
+export const resetPasswordWithToken = authController.resetPasswordWithToken;
+export default authController;

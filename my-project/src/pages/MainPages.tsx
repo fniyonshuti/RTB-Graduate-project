@@ -5,7 +5,18 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
+import {
+  BookOpenCheck,
+  CalendarDays,
+  FileText,
+  IdCard,
+  MapPin,
+  Phone,
+  School,
+  UserRound,
+} from "lucide-react";
 import { api } from "../api/client";
 import type { ViewKey } from "../components/layout";
 import {
@@ -597,7 +608,7 @@ function GraduateDashboard({
         </Card>
 
         <Card title="Assessment workflow">
-          <div className="workflow-list">
+          <div className="workflow-list dashboard-workflow-list">
             <WorkflowStep
               label="1"
               text="Select an RTB-aligned ICT competency."
@@ -718,102 +729,272 @@ function GraduateProfileForm({
 }) {
   const [profile, setProfile] = useState<GraduateProfile>(initialProfile);
   const [message, setMessage] = useState("");
+  const {
+    data: organizations,
+    isLoading: isLoadingOrganizations,
+    error: organizationLoadError,
+  } = useAsyncData(() => api.publicOrganizations(), [] as Organization[]);
+  const [formError, setFormError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const profileCompletion = [
+    profile.registrationNumber,
+    profile.phone,
+    profile.gender,
+    profile.district,
+    profile.sector,
+    profile.institution,
+    profile.program,
+    profile.graduationYear,
+    profile.specialization,
+    profile.bio,
+  ].filter((value) => String(value || "").trim().length > 0).length;
+  const completionPercent = Math.round((profileCompletion / 10) * 100);
+  const displayProgram = profile.program || "ICT TVET graduate";
+  const displayInstitution = profile.institution || "Organisation not selected";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
-    const savedProfile = await api.saveProfile(token, profile);
-    setProfile(savedProfile);
-    setMessage("Profile saved successfully.");
+    setFormError("");
+    setIsSaving(true);
+
+    try {
+      const savedProfile = await api.saveProfile(token, profile);
+      setProfile(savedProfile);
+      setMessage("Profile saved successfully.");
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Profile could not be saved. Please try again.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
-    <section className="page-stack">
+    <section className="page-stack profile-page">
       <PageHeader
         title="User Profile"
-        description="Keep academic and contact details ready for assessment reports."
+        description="Manage the academic, contact, organisation, and program details used in competency assessments and reports."
       />
       {error && <Alert type="error">{error}</Alert>}
+      {formError && <Alert type="error">{formError}</Alert>}
+      {organizationLoadError && <Alert type="error">{organizationLoadError}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
-      <Card title="Profile details">
-        <form className="form-grid" onSubmit={handleSubmit}>
-          <TextField
-            label="Registration number"
-            value={profile.registrationNumber || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, registrationNumber: event.target.value })
-            }
-          />
-          <TextField
-            label="Phone"
-            value={profile.phone || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, phone: event.target.value })
-            }
-          />
-          <TextField
-            label="District"
-            value={profile.district || "Kicukiro"}
-            onChange={(event) =>
-              setProfile({ ...profile, district: event.target.value })
-            }
-          />
-          <TextField
-            label="Sector"
-            value={profile.sector || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, sector: event.target.value })
-            }
-          />
-          <TextField
-            label="Institution"
-            value={profile.institution || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, institution: event.target.value })
-            }
-          />
-          <TextField
-            label="Program"
-            value={profile.program || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, program: event.target.value })
-            }
-          />
-          <TextField
-            label="Graduation year"
-            type="number"
-            value={profile.graduationYear || ""}
-            onChange={(event) =>
-              setProfile({
-                ...profile,
-                graduationYear: Number(event.target.value),
-              })
-            }
-          />
-          <TextField
-            label="Specialization"
-            value={profile.specialization || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, specialization: event.target.value })
-            }
-          />
-          <div className="full-span">
-            <TextArea
-              label="Bio"
-              rows={4}
-              value={profile.bio || ""}
+
+      <div className="profile-layout">
+        <aside className="profile-summary-card" aria-label="Profile summary">
+          <div className="profile-avatar-wrap">
+            <div className="profile-avatar" aria-hidden="true">
+              <UserRound size={64} />
+            </div>
+            <Badge tone="role">Graduate profile</Badge>
+          </div>
+
+          <div className="profile-summary-copy">
+            <h2>{displayProgram}</h2>
+            <p>{displayInstitution}</p>
+          </div>
+
+          <div className="profile-progress-panel">
+            <div className="profile-progress-heading">
+              <span>Profile completion</span>
+              <strong>{completionPercent}%</strong>
+            </div>
+            <ProgressBar value={completionPercent} />
+            <p>Complete your profile so assessment reports can identify your organisation, program, and ICT specialization clearly.</p>
+          </div>
+
+          <div className="profile-quick-list">
+            <ProfileFact icon={<IdCard size={17} />} label="Full name" value={profile.registrationNumber} />
+            <ProfileFact icon={<Phone size={17} />} label="Phone" value={profile.phone} />
+            <ProfileFact icon={<MapPin size={17} />} label="Location" value={[profile.sector, profile.district || "Kicukiro"].filter(Boolean).join(", ")} />
+            <ProfileFact icon={<CalendarDays size={17} />} label="Graduation year" value={profile.graduationYear ? String(profile.graduationYear) : ""} />
+          </div>
+        </aside>
+
+        <form className="profile-editor-card" onSubmit={handleSubmit}>
+          <div className="profile-editor-header">
+            <div>
+              <span>Edit profile details</span>
+              <h2>Academic and contact information</h2>
+              <p>These details appear in your assessment history, gap reports, and organisation review records.</p>
+            </div>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save Profile"}
+            </Button>
+          </div>
+
+          <div className="profile-detail-strip">
+            <ProfileDetail icon={<School size={18} />} label="Organisation" value={profile.institution} />
+            <ProfileDetail icon={<BookOpenCheck size={18} />} label="Program" value={profile.program} />
+            <ProfileDetail icon={<FileText size={18} />} label="Specialization" value={profile.specialization} />
+          </div>
+
+          <div className="profile-form-grid">
+            <TextField
+              label="Full name"
+              value={profile.registrationNumber || ""}
               onChange={(event) =>
-                setProfile({ ...profile, bio: event.target.value })
+                setProfile({ ...profile, registrationNumber: event.target.value })
               }
             />
+            <TextField
+              label="Phone"
+              value={profile.phone || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, phone: event.target.value })
+              }
+            />
+            <SelectField
+              label="Gender"
+              value={profile.gender || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, gender: event.target.value })
+              }
+            >
+              <option value="">Select gender</option>
+              <option value="Female">Female</option>
+              <option value="Male">Male</option>
+              <option value="Prefer not to say">Prefer not to say</option>
+            </SelectField>
+            <TextField
+              label="District"
+              value={profile.district || "Kicukiro"}
+              onChange={(event) =>
+                setProfile({ ...profile, district: event.target.value })
+              }
+            />
+            <TextField
+              label="Sector"
+              value={profile.sector || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, sector: event.target.value })
+              }
+            />
+            <SelectField
+              label="Organisation"
+              value={profile.institution || ""}
+              disabled={isLoadingOrganizations}
+              onChange={(event) =>
+                setProfile({ ...profile, institution: event.target.value })
+              }
+            >
+              <option value="">
+                {isLoadingOrganizations
+                  ? "Loading organisations..."
+                  : "Select organisation"}
+              </option>
+              {organizations
+                .filter((organization) => organization.status !== "inactive")
+                .map((organization) => (
+                  <option key={organization._id} value={organization.name}>
+                    {organization.name}
+                  </option>
+                ))}
+              {profile.institution &&
+                !organizations.some(
+                  (organization) => organization.name === profile.institution,
+                ) && (
+                  <option value={profile.institution}>{profile.institution}</option>
+                )}
+            </SelectField>
+            <TextField
+              label="Program"
+              value={profile.program || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, program: event.target.value })
+              }
+            />
+            <TextField
+              label="Graduation year"
+              type="number"
+              min="2000"
+              max="2100"
+              value={profile.graduationYear || ""}
+              onChange={(event) =>
+                setProfile({
+                  ...profile,
+                  graduationYear: event.target.value
+                    ? Number(event.target.value)
+                    : undefined,
+                })
+              }
+            />
+            <TextField
+              label="Specialization"
+              value={profile.specialization || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, specialization: event.target.value })
+              }
+            />
+            <div className="full-span">
+              <TextArea
+                label="Bio"
+                rows={5}
+                value={profile.bio || ""}
+                placeholder="Briefly describe your ICT interests, practical experience, and career goal."
+                onChange={(event) =>
+                  setProfile({ ...profile, bio: event.target.value })
+                }
+              />
+            </div>
           </div>
-          <Button type="submit">Save Profile</Button>
+
+          <div className="profile-save-bar">
+            <p>Review your details before saving. Accurate profile information improves report clarity.</p>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
         </form>
-      </Card>
+      </div>
     </section>
   );
 }
 
+function ProfileFact({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value?: string;
+}) {
+  return (
+    <div className="profile-fact">
+      <span aria-hidden="true">{icon}</span>
+      <div>
+        <strong>{label}</strong>
+        <p>{value || "Not added yet"}</p>
+      </div>
+    </div>
+  );
+}
+
+function ProfileDetail({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value?: string;
+}) {
+  return (
+    <div className="profile-detail-card">
+      <span aria-hidden="true">{icon}</span>
+      <div>
+        <strong>{label}</strong>
+        <p>{value || "Not added yet"}</p>
+      </div>
+    </div>
+  );
+}
 export function SubmitAssessmentPage({ token }: { token: string }) {
   const { data: competencies, isLoading } = useAsyncData(
     () => api.competencies(token),

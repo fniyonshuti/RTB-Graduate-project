@@ -1,6 +1,6 @@
 import Notification from "../models/Notification.js";
 import User from "../models/User.js";
-import { AppError } from "../utils/errors.js";
+import { AppError } from "./errorService.js";
 import { isAdminRole } from "../constants/roles.js";
 
 export function listNotificationsForUser(userId, filters = {}) {
@@ -138,3 +138,18 @@ export async function deleteNotificationForUser(notificationId, user) {
 
   return notification;
 }
+
+class NotificationService {
+  listNotificationsForUser = listNotificationsForUser;
+  getNotificationForUser = getNotificationForUser;
+  markNotificationReadForUser = markNotificationReadForUser;
+  markAllNotificationsReadForUser = markAllNotificationsReadForUser;
+  listManagedNotifications = listManagedNotifications;
+  createManagedNotification = createManagedNotification;
+  updateManagedNotification = updateManagedNotification;
+  deleteNotificationForUser = deleteNotificationForUser;
+}
+
+const notificationService = new NotificationService();
+
+export default notificationService;

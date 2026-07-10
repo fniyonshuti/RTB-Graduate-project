@@ -1,5 +1,5 @@
 import Competency from "../models/Competency.js";
-import { AppError } from "../utils/errors.js";
+import { AppError } from "./errorService.js";
 import { isLearnerRole } from "../constants/roles.js";
 
 function hideCorrectAnswers(competency) {
@@ -84,3 +84,15 @@ export async function deactivateCompetencyById(competencyId) {
 
   return competency;
 }
+
+class CompetencyService {
+  listCompetenciesForRole = listCompetenciesForRole;
+  getCompetencyForRole = getCompetencyForRole;
+  createCompetency = createCompetency;
+  updateCompetencyById = updateCompetencyById;
+  deactivateCompetencyById = deactivateCompetencyById;
+}
+
+const competencyService = new CompetencyService();
+
+export default competencyService;

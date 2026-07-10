@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import dotenv from 'dotenv';
-import { AppError } from '../utils/errors.js';
+import { AppError } from '../services/errorService.js';
 
 dotenv.config({ quiet: true });
 

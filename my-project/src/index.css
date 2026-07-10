@@ -28,6 +28,46 @@
   button {
     @apply max-w-full;
   }
+  button,
+  a,
+  select,
+  summary,
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  input[type="checkbox"],
+  input[type="radio"],
+  label:has(input[type="checkbox"]),
+  label:has(input[type="radio"]),
+  [role="button"],
+  .button,
+  .read-more-toggle,
+  .home-menu-button,
+  .home-footer-link,
+  .auth-switch button,
+  .auth-nav-actions button,
+  .home-mobile-actions button,
+  .table-action-row button,
+  .button-row button,
+  .status-filter-group button,
+  .assessment-queue-card,
+  .review-line,
+  .upload-card,
+  .option-card,
+  .task-option-card,
+  .repository-result-card button,
+  .notification-item button {
+    @apply cursor-pointer;
+  }
+
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  textarea:disabled,
+  .button:disabled,
+  [aria-disabled="true"] {
+    @apply cursor-not-allowed;
+  }
 
   table {
     @apply w-full min-w-[760px] border-collapse text-sm;
@@ -460,6 +500,23 @@
     @apply leading-7 text-slate-600;
   }
 
+  .dashboard-workflow-list {
+    @apply grid grid-cols-1 gap-4;
+  }
+
+  .dashboard-workflow-list .workflow-step {
+    @apply min-h-0 max-w-full items-start gap-4 overflow-hidden p-5 max-[640px]:p-4;
+  }
+
+  .dashboard-workflow-list .workflow-step span {
+    @apply flex-none;
+  }
+
+  .dashboard-workflow-list .read-more-text,
+  .dashboard-workflow-list .read-more-text p {
+    @apply min-w-0 max-w-full break-words;
+  }
+
   .workflow-step span,
   .task-number,
   .mandatory-pill {
@@ -482,6 +539,121 @@
     @apply border-emerald-200 bg-emerald-50 text-emerald-700;
   }
 
+
+  .profile-layout {
+    @apply grid grid-cols-[minmax(280px,380px)_minmax(0,1fr)] gap-6 max-[1120px]:grid-cols-1;
+  }
+
+  .profile-summary-card,
+  .profile-editor-card {
+    @apply min-w-0 rounded-lg border border-slate-200/80 bg-white shadow-sm shadow-slate-200/60;
+  }
+
+  .profile-summary-card {
+    @apply sticky top-24 self-start overflow-hidden max-[1120px]:static;
+  }
+
+  .profile-summary-card::before {
+    @apply block h-28 bg-gradient-to-r from-[#0F5257] via-[#0B3142] to-[#0077B6] content-[''];
+  }
+
+  .profile-avatar-wrap {
+    @apply -mt-16 grid justify-items-center gap-4 px-6 text-center;
+  }
+
+  .profile-avatar {
+    @apply flex h-36 w-36 items-center justify-center rounded-full border-[10px] border-white bg-[#D6D3F0] text-[#0B3142] shadow-xl shadow-slate-900/15;
+  }
+
+  .profile-summary-copy {
+    @apply grid gap-2 px-6 pb-5 pt-4 text-center;
+  }
+
+  .profile-summary-copy h2 {
+    @apply text-2xl font-black leading-tight text-slate-950;
+  }
+
+  .profile-summary-copy p {
+    @apply text-sm font-bold text-slate-500;
+  }
+
+  .profile-progress-panel {
+    @apply mx-6 grid gap-3 rounded-lg border border-[#0077B6]/15 bg-[#0077B6]/10 p-4;
+  }
+
+  .profile-progress-heading {
+    @apply flex items-center justify-between gap-3 text-sm font-black text-[#0B3142];
+  }
+
+  .profile-progress-panel p {
+    @apply text-sm leading-6 text-slate-600;
+  }
+
+  .profile-quick-list {
+    @apply grid gap-3 p-6;
+  }
+
+  .profile-fact,
+  .profile-detail-card {
+    @apply grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4;
+  }
+
+  .profile-fact > span,
+  .profile-detail-card > span {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-lg bg-white text-[#0077B6] ring-1 ring-[#0077B6]/15;
+  }
+
+  .profile-fact strong,
+  .profile-detail-card strong {
+    @apply text-xs font-black uppercase tracking-wide text-slate-500;
+  }
+
+  .profile-fact p,
+  .profile-detail-card p {
+    @apply mt-1 break-words text-sm font-bold leading-6 text-slate-800;
+  }
+
+  .profile-editor-card {
+    @apply grid gap-6 p-6 max-[640px]:gap-5 max-[640px]:p-4;
+  }
+
+  .profile-editor-header {
+    @apply flex flex-wrap items-start justify-between gap-5 border-b border-slate-100 pb-6 max-[640px]:pb-5;
+  }
+
+  .profile-editor-header > div {
+    @apply grid max-w-2xl gap-2;
+  }
+
+  .profile-editor-header span {
+    @apply text-sm font-black uppercase tracking-wide text-[#0077B6];
+  }
+
+  .profile-editor-header h2 {
+    @apply text-2xl font-black leading-tight text-slate-950 max-[640px]:text-xl;
+  }
+
+  .profile-editor-header p,
+  .profile-save-bar p {
+    @apply text-sm leading-6 text-slate-600;
+  }
+
+  .profile-detail-strip {
+    @apply grid grid-cols-3 gap-4 max-[920px]:grid-cols-1;
+  }
+
+  .profile-form-grid {
+    @apply grid grid-cols-2 gap-5 max-[760px]:grid-cols-1 max-[640px]:gap-4;
+  }
+
+  .profile-save-bar {
+    @apply flex flex-wrap items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 max-[640px]:items-stretch;
+  }
+
+  .profile-save-bar .button,
+  .profile-editor-header .button {
+    @apply max-[640px]:w-full;
+  }
   .recommendation-preview {
     @apply grid gap-4 p-5 max-[640px]:gap-3 max-[640px]:p-4;
   }

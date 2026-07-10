@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import {
   OBJECTIVE_CHECK_WEIGHTS,
   scoreRepositoryAssessment,
-} from '../../src/services/competencyScoringService.js';
+} from '../../src/services/githubService.js';
 
 describe('repository assessment scoring', () => {
   it('uses explicit weights instead of equal-count scoring', () => {

@@ -3,8 +3,8 @@ import Recommendation from '../models/Recommendation.js';
 import Report from '../models/Report.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
-import { AppError } from '../utils/errors.js';
-import { summarizeAssessments } from './gapAnalysisService.js';
+import { AppError } from './errorService.js';
+import { summarizeAssessments } from './assessmentService.js';
 import { isLearnerRole } from '../constants/roles.js';
 
 export async function generateGraduateReport(graduateId, generatedBy) {
@@ -196,3 +196,15 @@ export async function deleteReportForUser(reportId, user) {
 
   return report;
 }
+
+class ReportService {
+  generateGraduateReport = generateGraduateReport;
+  listReportsForUser = listReportsForUser;
+  getReportForUser = getReportForUser;
+  updateReportById = updateReportById;
+  deleteReportForUser = deleteReportForUser;
+}
+
+const reportService = new ReportService();
+
+export default reportService;

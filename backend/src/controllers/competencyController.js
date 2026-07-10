@@ -1,34 +1,39 @@
-import {
-  createCompetency as createCompetencyService,
-  deactivateCompetencyById,
-  getCompetencyForRole,
-  listCompetenciesForRole,
-  updateCompetencyById,
-} from '../services/competencyService.js';
-import { asyncHandler } from '../utils/errors.js';
-import { sendSuccess } from '../utils/response.js';
+import competencyService from '../services/competencyService.js';
+import { asyncHandler } from '../services/errorService.js';
+import { sendSuccess } from '../services/responseService.js';
 
-export const listCompetencies = asyncHandler(async (req, res) => {
-  const competencies = await listCompetenciesForRole(req.query, req.user.role);
-  sendSuccess(res, 'Competencies loaded', competencies);
-});
+class CompetencyController {
+  listCompetencies = asyncHandler(async (req, res) => {
+    const competencies = await competencyService.listCompetenciesForRole(req.query, req.user.role);
+    sendSuccess(res, 'Competencies loaded', competencies);
+  });
 
-export const getCompetency = asyncHandler(async (req, res) => {
-  const competency = await getCompetencyForRole(req.params.id, req.user.role);
-  sendSuccess(res, 'Competency loaded', competency);
-});
+  getCompetency = asyncHandler(async (req, res) => {
+    const competency = await competencyService.getCompetencyForRole(req.params.id, req.user.role);
+    sendSuccess(res, 'Competency loaded', competency);
+  });
 
-export const createCompetency = asyncHandler(async (req, res) => {
-  const competency = await createCompetencyService(req.body, req.user._id);
-  sendSuccess(res, 'Competency created', competency, 201);
-});
+  createCompetency = asyncHandler(async (req, res) => {
+    const competency = await competencyService.createCompetency(req.body, req.user._id);
+    sendSuccess(res, 'Competency created', competency, 201);
+  });
 
-export const updateCompetency = asyncHandler(async (req, res) => {
-  const competency = await updateCompetencyById(req.params.id, req.body);
-  sendSuccess(res, 'Competency updated', competency);
-});
+  updateCompetency = asyncHandler(async (req, res) => {
+    const competency = await competencyService.updateCompetencyById(req.params.id, req.body);
+    sendSuccess(res, 'Competency updated', competency);
+  });
 
-export const deleteCompetency = asyncHandler(async (req, res) => {
-  const competency = await deactivateCompetencyById(req.params.id);
-  sendSuccess(res, 'Competency deactivated', competency);
-});
+  deleteCompetency = asyncHandler(async (req, res) => {
+    const competency = await competencyService.deactivateCompetencyById(req.params.id);
+    sendSuccess(res, 'Competency deactivated', competency);
+  });
+}
+
+const competencyController = new CompetencyController();
+
+export const listCompetencies = competencyController.listCompetencies;
+export const getCompetency = competencyController.getCompetency;
+export const createCompetency = competencyController.createCompetency;
+export const updateCompetency = competencyController.updateCompetency;
+export const deleteCompetency = competencyController.deleteCompetency;
+export default competencyController;
