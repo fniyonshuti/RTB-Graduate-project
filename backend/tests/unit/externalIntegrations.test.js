@@ -104,10 +104,10 @@ test('Gemini integration builds the recommendation request and parses JSON respo
     assert.equal(result.actionItems.length, 3);
     assert.equal(result.learningResources.length, 2);
     assert.equal(result.learningResources[0].type, 'video');
-    assert.match(result.learningResources[0].url, /^https:\/\/www\\.google\\.com\/search/);
+    assert.ok(result.learningResources[0].url.startsWith('https://www.google.com/search')); 
     assert.equal(result.learningResources[1].skillArea, 'Backend APIs');
-    assert.match(result.learningResources[1].url, /^https:\/\/www\\.google\\.com\/search/);
-    assert.match(result.resources[0], /https:\/\/www\\.google\\.com\/search/);
+    assert.ok(result.learningResources[1].url.startsWith('https://www.google.com/search')); 
+    assert.match(result.resources[0], /https:\/\/www\.google\.com\/search/);
     assert.match(result.message, /Moderate Gap/);
   } finally {
     restoreTestEnvironment();

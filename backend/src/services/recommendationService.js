@@ -100,7 +100,6 @@ function normalizeResourceSummaries(values = []) {
 
   return values
     .map((value) => {
-      if (typeof value === "string") return safeString(value);
       return learningResourceToSummary(normalizeLearningResource(value) || {});
     })
     .filter(Boolean)

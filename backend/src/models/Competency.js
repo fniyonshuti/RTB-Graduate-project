@@ -239,6 +239,10 @@ const practicalTaskSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    reviewChecklist: {
+      type: [practicalTaskChecklistItemSchema],
+      default: [],
+    },
   },
   { timestamps: false }
 );
