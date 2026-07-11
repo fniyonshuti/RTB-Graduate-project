@@ -9,6 +9,7 @@ import type {
   NotificationItem,
   Organization,
   Recommendation,
+  LearningResource,
   RepositoryAssessmentResult,
   Report,
   RepositorySummary,
@@ -328,10 +329,12 @@ export const api = {
         message?: string
         actionItems?: string[]
         resources?: string[]
+        learningResources?: LearningResource[]
         geminiDraft?: {
           message: string
           actionItems: string[]
           resources: string[]
+          learningResources?: LearningResource[]
           priority: 'low' | 'medium' | 'high'
           provider: string
           model: string
@@ -370,6 +373,7 @@ export const api = {
       message: string
       actionItems: string[]
       resources: string[]
+      learningResources?: LearningResource[]
       priority: 'low' | 'medium' | 'high'
       provider: string
       model: string

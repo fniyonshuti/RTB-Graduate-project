@@ -659,6 +659,443 @@ async function checkDockerAvailability() {
   };
 }
 
+
+const SUPPORTED_SUBMISSION_LANGUAGES = new Set([
+  'javascript',
+  'typescript',
+  'node',
+  'nodejs',
+  'python',
+]);
+
+const LANGUAGE_ADAPTERS = {
+  javascript: { image: process.env.REPOSITORY_NODE_DOCKER_IMAGE || 'node:20-alpine', runtime: 'node' },
+  typescript: { image: process.env.REPOSITORY_NODE_DOCKER_IMAGE || 'node:20-alpine', runtime: 'node' },
+  node: { image: process.env.REPOSITORY_NODE_DOCKER_IMAGE || 'node:20-alpine', runtime: 'node' },
+  nodejs: { image: process.env.REPOSITORY_NODE_DOCKER_IMAGE || 'node:20-alpine', runtime: 'node' },
+  python: { image: process.env.REPOSITORY_PYTHON_DOCKER_IMAGE || 'python:3.12-alpine', runtime: 'python' },
+};
+
+function normalizeSubmissionLanguage(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeProtocol(value = '') {
+  return String(value || '').trim().toLowerCase().replace(/-/g, '_');
+}
+
+function getSafeWorkingDirectory(localPath, workingDirectory = '.') {
+  const targetPath = path.resolve(localPath, workingDirectory || '.');
+  const relativePath = path.relative(localPath, targetPath);
+
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    throw new AppError('competra.json workingDirectory cannot escape the repository.', 400);
+  }
+
+  return targetPath;
+}
+
+async function readSubmissionManifest(localPath) {
+  const manifestPath = path.join(localPath, 'competra.json');
+
+  try {
+    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+    return { manifest, path: 'competra.json' };
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return { manifest: null, path: 'competra.json' };
+    }
+
+    throw new AppError('competra.json exists but is not valid JSON.', 400);
+  }
+}
+
+function commandOrEmpty(value) {
+  return String(value || '').trim();
+}
+
+function buildDefaultExecutionCommand(manifest) {
+  const mainEntry = commandOrEmpty(manifest.mainEntry || manifest.mainEntryPoint);
+  const language = normalizeSubmissionLanguage(manifest.language);
+
+  if (manifest.runCommand) return commandOrEmpty(manifest.runCommand);
+  if (manifest.startCommand && normalizeProtocol(manifest.inputOutputProtocol || manifest.protocol) === 'stdin_stdout') {
+    return commandOrEmpty(manifest.startCommand);
+  }
+  if (!mainEntry) return '';
+  if (['javascript', 'typescript', 'node', 'nodejs'].includes(language)) return `node ${mainEntry}`;
+  if (language === 'python') return `python ${mainEntry}`;
+  return '';
+}
+
+function validateSubmissionManifest(manifest, practicalTask = {}) {
+  const checks = [];
+
+  if (!manifest) {
+    return {
+      manifest: null,
+      adapter: null,
+      workingDirectory: '.',
+      executionCommand: '',
+      protocol: '',
+      checks: [
+        {
+          id: 'competra-manifest',
+          title: 'Submission includes competra.json execution manifest',
+          competency: 'documentation',
+          passed: false,
+          evidence: '',
+          error: 'Missing competra.json. The system cannot reliably execute arbitrary code without a submission contract.',
+          weight: 12,
+        },
+      ],
+      assessorValidationRequired: true,
+    };
+  }
+
+  const language = normalizeSubmissionLanguage(manifest.language);
+  const protocol = normalizeProtocol(manifest.inputOutputProtocol || manifest.protocol || practicalTask.executionInterface);
+  const adapter = LANGUAGE_ADAPTERS[language];
+  const allowedLanguages = (practicalTask.allowedLanguages || [])
+    .map(normalizeSubmissionLanguage)
+    .filter(Boolean);
+  const executionCommand = buildDefaultExecutionCommand(manifest);
+
+  checks.push({
+    id: 'competra-manifest',
+    title: 'Submission includes competra.json execution manifest',
+    competency: 'documentation',
+    passed: true,
+    evidence: 'competra.json was found and parsed.',
+    error: '',
+    weight: 12,
+  });
+  checks.push({
+    id: 'supported-language-adapter',
+    title: 'Submission language has a supported execution adapter',
+    competency: 'deployment',
+    passed: Boolean(adapter) && SUPPORTED_SUBMISSION_LANGUAGES.has(language),
+    evidence: adapter ? `${language} adapter selected.` : '',
+    error: adapter ? '' : `Unsupported language '${language || 'not provided'}'. Supported MVP languages are JavaScript/TypeScript and Python.`,
+    weight: 12,
+  });
+  checks.push({
+    id: 'task-language-compliance',
+    title: 'Submission language is allowed for the practical task',
+    competency: 'documentation',
+    passed: allowedLanguages.length === 0 || allowedLanguages.includes(language),
+    evidence: allowedLanguages.length > 0 ? `${language} is listed in task allowedLanguages.` : 'Task does not restrict languages.',
+    error: allowedLanguages.length === 0 || allowedLanguages.includes(language) ? '' : `${language} is not allowed for this task.`,
+    weight: 8,
+  });
+  checks.push({
+    id: 'observable-execution-contract',
+    title: 'Submission exposes an observable execution interface',
+    competency: 'testing',
+    passed: ['stdin_stdout', 'rest_api', 'cli', 'frontend', 'instructor_tests'].includes(protocol),
+    evidence: protocol ? `Protocol: ${protocol}.` : '',
+    error: protocol ? `Unsupported protocol '${protocol}'.` : 'inputOutputProtocol is required in competra.json.',
+    weight: 10,
+  });
+  checks.push({
+    id: 'execution-command-defined',
+    title: 'Submission defines how the evaluator should execute it',
+    competency: 'deployment',
+    passed: Boolean(executionCommand || manifest.testCommand || manifest.startCommand),
+    evidence: executionCommand || manifest.testCommand || manifest.startCommand || '',
+    error: 'Provide runCommand, startCommand, testCommand, or mainEntry in competra.json.',
+    weight: 10,
+  });
+
+  return {
+    manifest: { ...manifest, language, inputOutputProtocol: protocol },
+    adapter,
+    workingDirectory: manifest.workingDirectory || '.',
+    executionCommand,
+    protocol,
+    checks,
+    assessorValidationRequired: checks.some((check) => !check.passed),
+  };
+}
+
+function sandboxDockerArgs({ localPath, workingDirectory, command, image, network = 'none', memoryLimitMb = 512 }) {
+  return [
+    'run',
+    '--rm',
+    '--network',
+    network,
+    '--memory',
+    `${memoryLimitMb}m`,
+    '--cpus',
+    '1',
+    '--pids-limit',
+    '128',
+    '--read-only',
+    '--tmpfs',
+    '/tmp:rw,noexec,nosuid,size=64m',
+    '-v',
+    `${localPath}:/workspace:rw`,
+    '-w',
+    `/workspace/${workingDirectory === '.' ? '' : workingDirectory}`,
+    image,
+    'sh',
+    '-lc',
+    command,
+  ];
+}
+
+async function runManifestCommand({
+  name,
+  localPath,
+  workingDirectory = '.',
+  command,
+  image,
+  network = 'none',
+  timeoutMs,
+  memoryLimitMb,
+}) {
+  if (!command) return null;
+
+  const startedAt = Date.now();
+  const cwd = getSafeWorkingDirectory(localPath, workingDirectory);
+  const result = enableUnsafeLocalRepositoryExecution()
+    ? await runCommand(
+        process.platform === 'win32' ? 'cmd' : 'sh',
+        process.platform === 'win32' ? ['/c', command] : ['-lc', command],
+        { cwd, timeoutMs },
+      )
+    : await runCommand(
+        'docker',
+        sandboxDockerArgs({ localPath, workingDirectory, command, image, network, memoryLimitMb }),
+        { timeoutMs },
+      );
+
+  return {
+    name,
+    command,
+    success: result.success,
+    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+function normalizeEvaluatorOutput(value = '') {
+  return String(value || '').replace(/\r\n/g, '\n').trim().replace(/[ \t]+/g, ' ');
+}
+
+function compareTestOutput(actual, expected, validator = 'normalized_text', tolerance = 0) {
+  if (validator === 'exact_text') return String(actual).trim() === String(expected).trim();
+
+  if (validator === 'numeric') {
+    const actualNumber = Number(String(actual).trim());
+    const expectedNumber = Number(String(expected).trim());
+    return Number.isFinite(actualNumber) &&
+      Number.isFinite(expectedNumber) &&
+      Math.abs(actualNumber - expectedNumber) <= Number(tolerance || 0);
+  }
+
+  if (validator === 'json') {
+    try {
+      return JSON.stringify(JSON.parse(actual)) === JSON.stringify(JSON.parse(expected));
+    } catch {
+      return false;
+    }
+  }
+
+  return normalizeEvaluatorOutput(actual) === normalizeEvaluatorOutput(expected);
+}
+
+function normalizeTaskTestCases(practicalTask = {}) {
+  const publicTests = (practicalTask.publicTestCases || []).map((testCase, index) => ({
+    ...testCase,
+    id: testCase.id || `public-${index + 1}`,
+    isHidden: false,
+  }));
+  const hiddenTests = (practicalTask.hiddenTestCases || []).map((testCase, index) => ({
+    ...testCase,
+    id: testCase.id || `hidden-${index + 1}`,
+    isHidden: true,
+  }));
+
+  return [...publicTests, ...hiddenTests];
+}
+
+async function writeBlackBoxInput(localPath, index, input = '') {
+  const testDir = path.join(localPath, '.competra-runtime');
+  await fs.mkdir(testDir, { recursive: true });
+  const relativePath = `.competra-runtime/input-${index}.txt`;
+  await fs.writeFile(path.join(localPath, relativePath), String(input ?? ''), 'utf8');
+  return relativePath;
+}
+
+async function runBlackBoxStdoutTests({ localPath, contract, practicalTask }) {
+  const testCases = [];
+  const commandResults = [];
+  const configuredTests = normalizeTaskTestCases(practicalTask);
+
+  if (contract.protocol !== 'stdin_stdout' || !contract.executionCommand || configuredTests.length === 0) {
+    return { testCases, commandResults };
+  }
+
+  for (const [index, testCase] of configuredTests.entries()) {
+    const inputPath = await writeBlackBoxInput(localPath, index, testCase.input);
+    const command = `${contract.executionCommand} < ${inputPath}`;
+    const commandResult = await runManifestCommand({
+      name: `${testCase.isHidden ? 'Hidden' : 'Public'} black-box test: ${testCase.title || testCase.id}`,
+      localPath,
+      workingDirectory: contract.workingDirectory,
+      command,
+      image: contract.adapter.image,
+      network: 'none',
+      timeoutMs: Number(practicalTask.timeLimitMs || contract.manifest.timeout || 10000),
+      memoryLimitMb: Number(practicalTask.memoryLimitMb || contract.manifest.memoryLimitMb || 512),
+    }).catch((error) => ({
+      name: `${testCase.isHidden ? 'Hidden' : 'Public'} black-box test: ${testCase.title || testCase.id}`,
+      command,
+      success: false,
+      exitCode: 1,
+      stdout: '',
+      stderr: error.message,
+      durationMs: 0,
+    }));
+    const passed = commandResult.success && compareTestOutput(
+      commandResult.stdout,
+      testCase.expectedOutput,
+      testCase.validator,
+      testCase.tolerance,
+    );
+
+    commandResults.push(commandResult);
+    testCases.push({
+      id: `black-box-${testCase.isHidden ? 'hidden' : 'public'}-${testCase.id}`,
+      title: `${testCase.isHidden ? 'Hidden' : 'Public'} platform-owned correctness test passed`,
+      competency: 'testing',
+      passed,
+      weight: Number(testCase.weight || (testCase.isHidden ? 18 : 10)),
+      evidence: passed
+        ? 'Observed output matched the platform-owned validator.'
+        : testCase.isHidden
+          ? 'Hidden test failed. Inputs and expected outputs are hidden to preserve assessment integrity.'
+          : `Expected ${JSON.stringify(testCase.expectedOutput)}, received ${JSON.stringify(commandResult.stdout.trim())}.`,
+      error: passed
+        ? ''
+        : commandResult.stderr || 'Output did not satisfy the task validator.',
+    });
+  }
+
+  return { testCases, commandResults };
+}
+
+async function evaluateSubmissionContract(localPath, practicalTask, analysis) {
+  const { manifest } = await readSubmissionManifest(localPath);
+  const contract = validateSubmissionManifest(manifest, practicalTask);
+  const commandResults = [];
+  const testCases = [...contract.checks];
+  const securityNotes = manifest
+    ? ['competra.json was used as the submission execution contract.']
+    : ['No competra.json was found; automatic execution is limited and assessor validation is required.'];
+
+  if (!contract.adapter) {
+    return {
+      ...contract,
+      executionMode: 'static_only',
+      commandResults,
+      testCases,
+      securityNotes,
+    };
+  }
+
+  const networkPolicy = practicalTask.networkPolicy || 'install_only';
+  const installNetwork = networkPolicy === 'enabled' || networkPolicy === 'install_only' ? 'bridge' : 'none';
+  const timeoutMs = Number(practicalTask.timeLimitMs || contract.manifest.timeout || repositoryAnalysisTimeoutMs());
+  const memoryLimitMb = Number(practicalTask.memoryLimitMb || contract.manifest.memoryLimitMb || 512);
+
+  const installCommand = commandOrEmpty(contract.manifest.installCommand) ||
+    (analysis.projectType === 'node' && analysis.hasPackageJson ? 'npm install --ignore-scripts' : '');
+  const buildCommand = commandOrEmpty(contract.manifest.buildCommand);
+  const userTestCommand = commandOrEmpty(contract.manifest.testCommand);
+
+  for (const commandConfig of [
+    { name: 'Install dependencies from manifest', command: installCommand, network: installNetwork },
+    { name: 'Build project from manifest', command: buildCommand, network: 'none' },
+    { name: 'Run user-written tests from manifest', command: userTestCommand, network: 'none' },
+  ]) {
+    if (!commandConfig.command) continue;
+    commandResults.push(
+      await runManifestCommand({
+        name: commandConfig.name,
+        localPath,
+        workingDirectory: contract.workingDirectory,
+        command: commandConfig.command,
+        image: contract.adapter.image,
+        network: commandConfig.network,
+        timeoutMs,
+        memoryLimitMb,
+      }).catch((error) => ({
+        name: commandConfig.name,
+        command: commandConfig.command,
+        success: false,
+        exitCode: 1,
+        stdout: '',
+        stderr: error.message,
+        durationMs: 0,
+      })),
+    );
+  }
+
+  const installResult = commandResults.find((result) => result.name === 'Install dependencies from manifest');
+  const buildResult = commandResults.find((result) => result.name === 'Build project from manifest');
+  const userTestResult = commandResults.find((result) => result.name === 'Run user-written tests from manifest');
+
+  if (installCommand) {
+    testCases.push({
+      id: 'manifest-dependency-install',
+      title: 'Manifest install command completed',
+      competency: 'deployment',
+      passed: Boolean(installResult?.success),
+      evidence: installResult?.success ? 'Install command completed in sandbox.' : '',
+      error: installResult?.success ? '' : installResult?.stderr || 'Manifest install command failed.',
+      weight: 8,
+    });
+  }
+
+  if (buildCommand) {
+    testCases.push({
+      id: 'manifest-build-command',
+      title: 'Manifest build command completed',
+      competency: 'deployment',
+      passed: Boolean(buildResult?.success),
+      evidence: buildResult?.success ? 'Build command completed in sandbox.' : '',
+      error: buildResult?.success ? '' : buildResult?.stderr || 'Manifest build command failed.',
+      weight: 8,
+    });
+  }
+
+  if (userTestCommand) {
+    testCases.push({
+      id: 'manifest-user-tests',
+      title: 'User-written tests ran from manifest',
+      competency: 'testing',
+      passed: Boolean(userTestResult?.success),
+      evidence: userTestResult?.success ? 'User-written tests passed. These are secondary evidence, not the main correctness proof.' : '',
+      error: userTestResult?.success ? '' : userTestResult?.stderr || 'User-written tests failed or were not runnable.',
+      weight: 5,
+    });
+  }
+
+  const blackBoxResult = await runBlackBoxStdoutTests({ localPath, contract, practicalTask });
+
+  return {
+    ...contract,
+    executionMode: enableUnsafeLocalRepositoryExecution() ? 'local' : 'docker',
+    commandResults: [...commandResults, ...blackBoxResult.commandResults],
+    testCases: [...testCases, ...blackBoxResult.testCases],
+    securityNotes,
+  };
+}
+
 export async function runRepositoryTests(localPath, analysis, practicalTask = {}) {
   const commandResults = [];
   const testCases = [];
@@ -667,18 +1104,27 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
   const instructorTestCommand = String(practicalTask.automatedTestCommand || '').trim();
   const hasInstructorTests =
     instructorTestFiles.length > 0 && instructorTestCommand.length > 0;
+  const contractEvaluation = await evaluateSubmissionContract(localPath, practicalTask, analysis);
 
-  if (analysis.projectType !== 'node') {
-    // The execution engine currently knows how to run Node projects. Other
-    // stacks still receive static review and score lower without executable proof.
+  commandResults.push(...contractEvaluation.commandResults);
+  testCases.push(...contractEvaluation.testCases);
+  securityNotes.push(...contractEvaluation.securityNotes);
+
+  const manifestLanguage = contractEvaluation.manifest?.language;
+  const shouldRunLegacyNodeChecks =
+    analysis.projectType === 'node' &&
+    (!manifestLanguage || ['javascript', 'typescript', 'node', 'nodejs'].includes(manifestLanguage));
+
+  if (!shouldRunLegacyNodeChecks) {
     return {
-      executionMode: 'static_only',
-      totalTestCases: 0,
-      passedTestCases: 0,
+      executionMode: contractEvaluation.executionMode || 'static_only',
+      totalTestCases: testCases.length,
+      passedTestCases: testCases.filter((test) => test.passed).length,
       commandResults,
       testCases,
-      assessorValidationRequired: true,
-      securityNotes: ['Project type is not supported for automatic execution yet.'],
+      assessorValidationRequired: contractEvaluation.assessorValidationRequired,
+      securityNotes,
+      submissionManifest: contractEvaluation.manifest,
     };
   }
 
@@ -898,8 +1344,10 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
     passedTestCases: testCases.filter((test) => test.passed).length,
     commandResults,
     testCases,
-    assessorValidationRequired: !hasTestScript || !hasInstructorTests,
+    assessorValidationRequired:
+      contractEvaluation.assessorValidationRequired || !hasTestScript || !hasInstructorTests,
     securityNotes,
+    submissionManifest: contractEvaluation.manifest,
   };
 }
 
@@ -1349,6 +1797,24 @@ export async function assessGithubRepository({
       executionMode: testResult.executionMode,
       projectType: analysis.projectType,
       detectedTechnologies: analysis.detectedTechnologies,
+      submissionManifest: testResult.submissionManifest || null,
+      evaluatorResult: {
+        status: 'completed',
+        language: testResult.submissionManifest?.language || analysis.projectType,
+        executionMode: testResult.executionMode,
+        correctness: {
+          score: score.accuracyScore,
+          passed: score.passedTestCases,
+          failed: score.totalTestCases - score.passedTestCases,
+          total: score.totalTestCases,
+        },
+        failedRequirements: score.failedRequirements.map((item) => item.id || item.title),
+        build: {
+          success: !score.failedRequirements.some((item) => item.id === 'build-script' || item.id === 'manifest-build-command'),
+        },
+        security: securityScanResult,
+        quality: eslintResult,
+      },
       totalTestCases: score.totalTestCases,
       passedTestCases: score.passedTestCases,
       totalWeight: score.totalWeight,
@@ -1403,6 +1869,12 @@ export async function assessGithubRepository({
       passedWeight: 0,
       accuracyScore: 0,
       gapClassification: 'High Gap',
+      submissionManifest: null,
+      evaluatorResult: {
+        status: 'failed',
+        error: error.message || 'Repository assessment failed before objective checks could be completed.',
+        correctness: { score: 0, passed: 0, failed: 1, total: 1 },
+      },
       competencyScores: {
         frontend: 0,
         backend: 0,

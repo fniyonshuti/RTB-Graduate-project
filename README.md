@@ -59,6 +59,11 @@ The active system roles are:
 8. System notifies the user.
 9. System generates a report for the assessed user.
 
+
+## Repository Evaluator Contract
+
+Competra uses a controlled submission contract for automatic repository assessment. A submission should include `competra.json` so the system knows the language, runtime, commands, working directory, and observable input/output protocol. See [Evaluator Architecture](docs/evaluator-architecture.md) for task specification examples, manifest examples, Docker sandbox rules, scoring design, and the MVP language-adapter plan.
+
 ## Scoring Logic
 
 ```text

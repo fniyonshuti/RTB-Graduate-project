@@ -64,6 +64,14 @@ const repositoryAssessmentResultSchema = new mongoose.Schema(
     },
     projectType: String,
     detectedTechnologies: [String],
+    submissionManifest: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    evaluatorResult: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
     totalTestCases: {
       type: Number,
       min: 0,

@@ -1,5 +1,41 @@
 import mongoose from "mongoose";
 
+
+const learningResourceSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["video", "course", "documentation", "practice", "article", "tool", "other"],
+      default: "other",
+    },
+    title: {
+      type: String,
+      trim: true,
+    },
+    provider: {
+      type: String,
+      trim: true,
+    },
+    url: {
+      type: String,
+      trim: true,
+    },
+    searchQuery: {
+      type: String,
+      trim: true,
+    },
+    skillArea: {
+      type: String,
+      trim: true,
+    },
+    reason: {
+      type: String,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
 const recommendationSchema = new mongoose.Schema(
   {
     assessment: {
@@ -47,6 +83,10 @@ const recommendationSchema = new mongoose.Schema(
         trim: true,
       },
     ],
+    learningResources: {
+      type: [learningResourceSchema],
+      default: [],
+    },
     priority: {
       type: String,
       enum: ["low", "medium", "high"],

@@ -242,7 +242,10 @@ function calculateTheoryQuestionResult(competency, submittedAnswers = []) {
 // Assessment submission validation
 function resolveAssessmentReviewScores({ assessment, payload }) {
   return {
-    practicalRepositoryScore: payload.practicalRepositoryScore,
+    practicalTaskScore:
+      payload.practicalTaskScore ??
+      payload.practicalRepositoryScore ??
+      assessment.scores.practicalTaskScore,
     quizScore: payload.quizScore ?? assessment.scores.quizScore,
   };
 }
@@ -344,13 +347,13 @@ export async function submitAssessment(user, payload) {
   const practicalRepositoryScore = Number(repositoryEvidenceSummary?.taskReview?.score || 0);
   const skillGapAnalysis = analyzeCompetency(
     {
-      practicalRepositoryScore,
+      practicalTaskScore: practicalRepositoryScore,
       quizScore: theoryScoringResult.quizScore,
     },
     benchmark.requiredScore,
   );
   const automaticAssessmentComment =
-    "Automatically reviewed using repository skillGapAnalysis, automated checks, theory answers, and RTB benchmark comparison.";
+    "Automatically reviewed using repository analysis, automated checks, theory answers, and RTB benchmark comparison.";
   const evidenceVerification = {
     githubReviewed: true,
     practicalEvidenceReviewed: true,
@@ -468,6 +471,175 @@ function convertRepositoryAssessmentToChecklist(repositoryAssessment) {
   return checklist;
 }
 
+
+function roundReviewScore(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? Math.round(numericValue * 100) / 100 : 0;
+}
+
+function clampReviewScore(value, min = 0, max = 100) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return min;
+  return Math.min(Math.max(numericValue, min), max);
+}
+
+function enrichChecklistScore(item) {
+  const weight = clampReviewScore(item.weight || 1, 1, 100);
+  const maxScore = clampReviewScore(item.maxScore || item.weight || 1, 1, 100);
+  const scoreAwarded = clampReviewScore(
+    item.scoreAwarded ?? (item.passed ? maxScore : 0),
+    0,
+    maxScore,
+  );
+  const weightedScore = roundReviewScore((scoreAwarded / maxScore) * weight);
+
+  return {
+    ...item,
+    weight,
+    maxScore,
+    scoreAwarded,
+    weightedScore,
+    passed: item.passed ?? scoreAwarded >= maxScore * 0.7,
+  };
+}
+
+function calculateRepositoryReviewTotals(checklist = []) {
+  const pointsPossible = roundReviewScore(
+    checklist.reduce((sum, item) => sum + Number(item.weight || 0), 0),
+  );
+  const pointsEarned = roundReviewScore(
+    checklist.reduce((sum, item) => sum + Number(item.weightedScore || 0), 0),
+  );
+
+  return {
+    pointsEarned,
+    pointsPossible,
+    score: pointsPossible > 0 ? roundReviewScore((pointsEarned / pointsPossible) * 100) : 0,
+  };
+}
+
+function requirementEvidenceScore(requirements = []) {
+  const totalWeight = requirements.reduce((sum, item) => sum + Number(item.weight || 1), 0);
+  const passedWeight = requirements
+    .filter((item) => item.passed)
+    .reduce((sum, item) => sum + Number(item.weight || 1), 0);
+  return totalWeight > 0 ? roundReviewScore((passedWeight / totalWeight) * 100) : 0;
+}
+
+function checklistTerms(item = {}) {
+  return [item.title, item.description, item.category, item.validationType]
+    .join(' ')
+    .toLowerCase();
+}
+
+function relatedRequirementsForChecklist(repositoryAssessment = {}, item = {}) {
+  const requirements = [
+    ...(repositoryAssessment.passedRequirements || []).map((requirement) => ({ ...requirement, passed: true })),
+    ...(repositoryAssessment.failedRequirements || []).map((requirement) => ({ ...requirement, passed: false })),
+  ];
+  const terms = checklistTerms(item);
+  const category = String(item.category || '').toLowerCase();
+  const related = requirements.filter((requirement) => {
+    const text = [requirement.id, requirement.title, requirement.competency, requirement.evidence, requirement.error]
+      .join(' ')
+      .toLowerCase();
+    return (category && text.includes(category)) || terms.split(/\s+/).some((term) => term.length > 4 && text.includes(term));
+  });
+
+  return related.length > 0 ? related : requirements;
+}
+
+function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessment }) {
+  const validationType = String(checklistItem.validationType || 'implementation_review');
+  const category = String(checklistItem.category || 'general').toLowerCase();
+  const implementationReview = staticReview.taskReview?.implementationReview || {};
+  const competencyScore = Number(repositoryAssessment.competencyScores?.[category] || 0);
+  const relatedRequirements = relatedRequirementsForChecklist(repositoryAssessment, checklistItem);
+
+  if (validationType === 'eslint') {
+    const eslintResult = repositoryAssessment.eslintResult || {};
+    if (eslintResult.available === false) return { percent: 0, evidence: eslintResult.output || 'ESLint was not available.' };
+    const percent = eslintResult.success && Number(eslintResult.errors || 0) === 0
+      ? 100
+      : Math.max(0, 100 - Number(eslintResult.errors || 0) * 25 - Number(eslintResult.warnings || 0) * 5);
+    return { percent, evidence: `ESLint errors: ${eslintResult.errors || 0}, warnings: ${eslintResult.warnings || 0}.` };
+  }
+
+  if (validationType === 'security_scan') {
+    const security = repositoryAssessment.securityScanResult || {};
+    if (security.available === false) return { percent: 0, evidence: security.output || 'Security scan was not available.' };
+    const secretCount = (security.secretFindings || []).length;
+    const percent = security.success
+      ? 100
+      : Math.max(0, 100 - Number(security.critical || 0) * 50 - Number(security.high || 0) * 25 - secretCount * 40);
+    return { percent, evidence: `Security scan: ${security.critical || 0} critical, ${security.high || 0} high, ${secretCount} secret finding(s).` };
+  }
+
+  if (validationType === 'repository_scan') {
+    const percent = roundReviewScore((Number(staticReview.taskReview?.taskKeywordMatchRate || 0) + Number(staticReview.taskReview?.score || 0)) / 2);
+    return { percent, evidence: `Repository task keyword match: ${staticReview.taskReview?.taskKeywordMatchRate || 0}%. Static review score: ${staticReview.taskReview?.score || 0}%.` };
+  }
+
+  if (validationType === 'hidden_test' || validationType === 'automated_test') {
+    const testRequirements = relatedRequirements.filter((requirement) => /test|build|docker|execution|stage/i.test(`${requirement.id || ''} ${requirement.title || ''}`));
+    const percent = testRequirements.length > 0
+      ? requirementEvidenceScore(testRequirements)
+      : Number(repositoryAssessment.accuracyScore || 0);
+    return { percent, evidence: `${repositoryAssessment.passedTestCases || 0}/${repositoryAssessment.totalTestCases || 0} objective repository check(s) passed.` };
+  }
+
+  if (validationType === 'manual_review') {
+    const percent = Math.max(Number(implementationReview.implementationEvidenceScore || 0), competencyScore);
+    return { percent, evidence: 'Automatic evidence is shown for assessor confirmation because this checklist row needs human validation.' };
+  }
+
+  const evidenceValues = [
+    implementationReview.implementationEvidenceScore,
+    implementationReview.functionalCoverageRate,
+    implementationReview.actionCoverageRate,
+    competencyScore,
+  ].map(Number).filter((value) => Number.isFinite(value) && value > 0);
+  const implementationPercent = evidenceValues.length > 0
+    ? roundReviewScore(evidenceValues.reduce((sum, value) => sum + value, 0) / evidenceValues.length)
+    : Number(repositoryAssessment.accuracyScore || 0);
+
+  return {
+    percent: implementationPercent,
+    evidence: `Implementation evidence: ${implementationReview.implementationEvidenceScore || 0}%. Functional coverage: ${implementationReview.functionalCoverageRate || 0}%. Category score: ${competencyScore || 0}%.`,
+  };
+}
+
+function buildAdminWeightedChecklist({ practicalTask, staticReview, repositoryAssessment, fallbackChecklist }) {
+  const rubric = Array.isArray(practicalTask?.reviewChecklist)
+    ? practicalTask.reviewChecklist.filter((item) => item?.title)
+    : [];
+
+  if (rubric.length === 0) return fallbackChecklist.map(enrichChecklistScore);
+
+  return rubric.map((item, index) => {
+    const weight = clampReviewScore(item.weight || 10, 1, 100);
+    const maxScore = clampReviewScore(item.maxScore || 10, 1, 100);
+    const { percent, evidence } = scoreChecklistEvidence({ checklistItem: item, staticReview, repositoryAssessment });
+    const scoreAwarded = roundReviewScore((clampReviewScore(percent) / 100) * maxScore);
+    const threshold = clampReviewScore(item.successThreshold ?? 70, 0, 100);
+
+    return enrichChecklistScore({
+      key: item.key || `admin-checklist-${index + 1}`,
+      label: item.title,
+      passed: percent >= threshold,
+      weight,
+      maxScore,
+      scoreAwarded,
+      validationType: item.validationType || 'implementation_review',
+      category: item.category || 'general',
+      evidence: item.description ? `${item.description} ${evidence}` : evidence,
+      advice:
+        percent >= threshold
+          ? ''
+          : item.feedbackWhenFailed || 'Improve this checklist requirement and run repository review again.',
+    });
+  });
+}
 function buildStaticRepositoryReviewFallback({
   payload,
   competency,
@@ -601,7 +773,14 @@ export async function previewRepositoryTaskReview(payload, user) {
     assessorValidationRequired: false,
     errorMessage: error.message,
   }));
-  const checklist = convertRepositoryAssessmentToChecklist(repositoryAssessment);
+  const executableChecklist = convertRepositoryAssessmentToChecklist(repositoryAssessment);
+  const checklist = buildAdminWeightedChecklist({
+    practicalTask: selectedPracticalTask,
+    staticReview,
+    repositoryAssessment,
+    fallbackChecklist: executableChecklist,
+  });
+  const reviewTotals = calculateRepositoryReviewTotals(checklist);
   const passedCount = checklist.filter((item) => item.passed).length;
 
   return {
@@ -611,8 +790,9 @@ export async function previewRepositoryTaskReview(payload, user) {
     },
     taskReview: {
       ...staticReview.taskReview,
-      score: repositoryAssessment.accuracyScore,
-      pointsEarned: repositoryAssessment.accuracyScore,
+      score: reviewTotals.score,
+      pointsEarned: reviewTotals.pointsEarned,
+      pointsPossible: reviewTotals.pointsPossible,
       passedCount,
       failedCount: checklist.length - passedCount,
       checklist,
@@ -663,7 +843,7 @@ export async function previewRepositoryTaskReview(payload, user) {
       },
       competencyScores: repositoryAssessment.competencyScores,
       recommendations: repositoryAssessment.recommendations,
-      summary: `Real repository assessment scored ${repositoryAssessment.accuracyScore}% from ${repositoryAssessment.passedWeight || 0}/${repositoryAssessment.totalWeight || 0} weighted objective points across ${repositoryAssessment.passedTestCases}/${repositoryAssessment.totalTestCases} check(s).`,
+      summary: `Repository review scored ${reviewTotals.score}% from ${reviewTotals.pointsEarned}/${reviewTotals.pointsPossible} weighted checklist point(s). Objective engine evidence: ${repositoryAssessment.passedWeight || 0}/${repositoryAssessment.totalWeight || 0} points across ${repositoryAssessment.passedTestCases}/${repositoryAssessment.totalTestCases} check(s).`,
     },
   };
 }
@@ -957,6 +1137,7 @@ export async function previewRecommendationDraft(assessmentId, payload) {
       message: draft.message,
       actionItems: draft.actionItems,
       resources: draft.resources,
+      learningResources: draft.learningResources || [],
       priority: draft.priority,
       provider: draft.provider,
       model: draft.model,

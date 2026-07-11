@@ -68,6 +68,18 @@ export type Competency = {
   isActive?: boolean
 }
 
+export type PracticalTaskChecklistItem = {
+  key?: string
+  title: string
+  description?: string
+  category?: 'frontend' | 'backend' | 'database' | 'authentication' | 'testing' | 'documentation' | 'deployment' | 'security' | 'general'
+  validationType?: 'automated_test' | 'hidden_test' | 'eslint' | 'security_scan' | 'repository_scan' | 'implementation_review' | 'manual_review'
+  maxScore?: number
+  weight?: number
+  successThreshold?: number
+  feedbackWhenFailed?: string
+}
+
 export type PracticalTask = {
   _id: string
   title: string
@@ -80,6 +92,7 @@ export type PracticalTask = {
     path?: string
     content?: string
   }[]
+  reviewChecklist?: PracticalTaskChecklistItem[]
 }
 
 export type TheoryQuestion = {
@@ -176,6 +189,11 @@ export type RepositoryTaskReview = {
     label: string
     passed: boolean
     weight: number
+    maxScore?: number
+    scoreAwarded: number
+    weightedScore: number
+    validationType?: string
+    category?: string
     evidence?: string
     advice?: string
   }[]
@@ -327,6 +345,16 @@ export type RepositoryAssessmentResult = {
   createdAt?: string
 }
 
+export type LearningResource = {
+  type: 'video' | 'course' | 'documentation' | 'practice' | 'article' | 'tool' | 'other'
+  title: string
+  provider?: string
+  url?: string
+  searchQuery?: string
+  skillArea?: string
+  reason?: string
+}
+
 export type Recommendation = {
   _id: string
   graduate: User
@@ -336,6 +364,7 @@ export type Recommendation = {
   draftMessage?: string
   actionItems: string[]
   resources: string[]
+  learningResources?: LearningResource[]
   priority: 'low' | 'medium' | 'high'
   aiProvider?: string
   aiModel?: string

@@ -51,11 +51,13 @@ import type {
   Assessment,
   Benchmark,
   Competency,
+  PracticalTask,
   DashboardData,
   GraduateProfile,
   NotificationItem,
   Organization,
   Recommendation,
+  LearningResource,
   RepositoryTaskReview,
   Report,
   Role,
@@ -116,6 +118,130 @@ function getHiddenInstructorTaskCheck(review?: RepositoryTaskReview | null) {
   };
 }
 
+
+function resourceLink(resource: LearningResource) {
+  if (resource.url) return resource.url;
+  if (resource.searchQuery) {
+    return `https://www.google.com/search?q=${encodeURIComponent(resource.searchQuery)}`;
+  }
+  return "";
+}
+
+function fallbackResourceLink(resource: string) {
+  const directUrl = resource.match(/https?:\/\/[^\s)]+/i)?.[0];
+  if (directUrl) return directUrl;
+  return `https://www.google.com/search?q=${encodeURIComponent(resource)}`;
+}
+
+function LearningResourceCards({
+  resources = [],
+  fallback = [],
+}: {
+  resources?: LearningResource[];
+  fallback?: string[];
+}) {
+  const hasStructuredResources = resources.length > 0;
+
+  if (!hasStructuredResources && fallback.length === 0) return null;
+
+  return (
+    <div className="learning-resource-list">
+      {hasStructuredResources
+        ? resources.map((resource) => {
+            const href = resourceLink(resource);
+            return (
+              <article
+                className="learning-resource-card"
+                key={`${resource.type}-${resource.title}-${resource.url || resource.searchQuery}`}
+              >
+                <div className="learning-resource-card__header">
+                  <Badge tone="neutral">{resource.type || "resource"}</Badge>
+                  {resource.provider && <span>{resource.provider}</span>}
+                </div>
+                <strong>{resource.title}</strong>
+                {resource.skillArea && (
+                  <span className="compact-muted">{resource.skillArea}</span>
+                )}
+                {resource.reason && <ReadMoreText text={resource.reason} limit={130} />}
+                {href && (
+                  <a className="resource-link" href={href} target="_blank" rel="noreferrer">
+                    {resource.url ? "Open resource" : "Search resource"}
+                  </a>
+                )}
+              </article>
+            );
+          })
+        : fallback.map((resource) => {
+            const href = fallbackResourceLink(resource);
+            return (
+              <article className="learning-resource-card" key={resource}>
+                <div className="learning-resource-card__header">
+                  <Badge tone="neutral">resource</Badge>
+                  <span>Recommended</span>
+                </div>
+                <ReadMoreText text={resource} limit={160} />
+                <a className="resource-link" href={href} target="_blank" rel="noreferrer">
+                  Open resource
+                </a>
+              </article>
+            );
+          })}
+    </div>
+  );
+}
+
+
+function roundDisplay(value: number) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+type RepositoryChecklistRow = RepositoryTaskReview["checklist"][number];
+
+function RepositoryChecklistTable({ checklist }: { checklist: RepositoryChecklistRow[] }) {
+  if (!checklist.length) return null;
+
+  return (
+    <div className="weighted-checklist-table" aria-label="Weighted repository checklist result">
+      <table>
+        <thead>
+          <tr>
+            <th>Checklist title</th>
+            <th>User score</th>
+            <th>Weighted score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {checklist.map((item) => {
+            const maxScore = item.maxScore || item.weight || 1;
+            const scoreAwarded = item.scoreAwarded ?? (item.passed ? maxScore : 0);
+            const weightedScore = item.weightedScore ?? (item.passed ? item.weight : 0);
+
+            return (
+              <tr className={item.passed ? "passed" : "failed"} key={item.key}>
+                <td>
+                  <div className="weighted-checklist-title">
+                    <strong>{item.label}</strong>
+                    <span>{item.category || item.validationType || "repository review"}</span>
+                    {item.evidence && <ReadMoreText text={item.evidence} limit={130} />}
+                    {!item.passed && item.advice && <ReadMoreText text={item.advice} limit={120} />}
+                  </div>
+                </td>
+                <td>
+                  <strong>{roundDisplay(scoreAwarded)} / {roundDisplay(maxScore)}</strong>
+                  <span>{formatPercent((scoreAwarded / Math.max(maxScore, 1)) * 100)}</span>
+                </td>
+                <td>
+                  <strong>{roundDisplay(weightedScore)} / {roundDisplay(item.weight)}</strong>
+                  <span>{item.passed ? "Passed" : "Needs work"}</span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 function useAsyncData<T>(load: () => Promise<T>, initialData: T) {
   const loadRef = useRef(load);
   const initialDataRef = useRef(initialData);
@@ -1473,6 +1599,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                             ) : null}
                           </div>
                         )}
+                        <RepositoryChecklistTable checklist={activeRepositoryTaskReview.checklist} />
                         <div className="task-checklist">
                           {activeRepositoryTaskReview.checklist.map((item) => (
                             <div
@@ -2221,10 +2348,12 @@ function ReviewAssessmentPanel({
             .map((item) => item.trim())
             .filter(Boolean),
           resources: draftPreview.recommendation.resources,
+          learningResources: draftPreview.recommendation.learningResources || [],
           geminiDraft: {
             message: draftPreview.recommendation.message,
             actionItems: draftPreview.recommendation.actionItems,
             resources: draftPreview.recommendation.resources,
+            learningResources: draftPreview.recommendation.learningResources || [],
             priority: draftPreview.recommendation.priority,
             provider: draftPreview.recommendation.provider,
             model: draftPreview.recommendation.model,
@@ -2484,6 +2613,7 @@ function ReviewAssessmentPanel({
                         ) : null}
                       </div>
                     )}
+                    <RepositoryChecklistTable checklist={assessment.evidence.repositorySummary.taskReview.checklist} />
                     <div className="task-checklist">
                       {assessment.evidence.repositorySummary.taskReview.checklist.map(
                         (item) => (
@@ -2707,14 +2837,14 @@ function ReviewAssessmentPanel({
                     </ul>
                   </div>
                 )}
-                {draftPreview.recommendation.resources.length > 0 && (
+                {((draftPreview.recommendation.learningResources?.length || 0) > 0 ||
+                  draftPreview.recommendation.resources.length > 0) && (
                   <div className="gemini-list-block">
-                    <strong>Suggested resources</strong>
-                    <ul>
-                      {draftPreview.recommendation.resources.map((resource) => (
-                        <li key={resource}>{resource}</li>
-                      ))}
-                    </ul>
+                    <strong>Suggested learning resources</strong>
+                    <LearningResourceCards
+                      resources={draftPreview.recommendation.learningResources || []}
+                      fallback={draftPreview.recommendation.resources}
+                    />
                   </div>
                 )}
               </div>
@@ -3033,6 +3163,21 @@ export function GapResultsPage({ token }: { token: string }) {
                           ))}
                         </ul>
                       )}
+                    {recommendation &&
+                      ((recommendation.learningResources &&
+                        recommendation.learningResources.length > 0) ||
+                        (recommendation.resources &&
+                          recommendation.resources.length > 0)) && (
+                        <>
+                          <strong style={{ marginTop: '0.75rem', display: 'block' }}>
+                            Learning resources
+                          </strong>
+                          <LearningResourceCards
+                            resources={recommendation.learningResources || []}
+                            fallback={recommendation.resources}
+                          />
+                        </>
+                      )}
                   </section>
                 </div>
               </article>
@@ -3134,9 +3279,12 @@ export function RecommendationsPage({ token }: { token: string }) {
               <div className="recommendation-support-grid">
                 <section className="assessor-note">
                   <div className="section-heading">
-                    <strong>Action plan</strong>
-                    <span>{recommendation.actionItems.length} item(s)</span>
+                    <strong>Action plan to close the measured gap</strong>
+                    <span>{recommendation.actionItems.length} step(s)</span>
                   </div>
+                  <p className="recommendation-guidance">
+                    Follow these steps in order, starting with the weakest evidence area found in the task review and theory score.
+                  </p>
                 {recommendation.actionItems.length > 0 && (
                   <ul>
                     {recommendation.actionItems.map((item) => (
@@ -3149,6 +3297,22 @@ export function RecommendationsPage({ token }: { token: string }) {
                 {recommendation.actionItems.length === 0 && (
                   <p>No action items were added.</p>
                 )}
+                </section>
+
+                <section className="assessor-note">
+                  <div className="section-heading">
+                    <strong>Learning resources</strong>
+                    <span>
+                      {(recommendation.learningResources?.length || recommendation.resources.length)} item(s)
+                    </span>
+                  </div>
+                  <LearningResourceCards
+                    resources={recommendation.learningResources || []}
+                    fallback={recommendation.resources}
+                  />
+                  {(recommendation.learningResources?.length || recommendation.resources.length) === 0 && (
+                    <p>No learning resources were added.</p>
+                  )}
                 </section>
 
                 <section className="assessor-note">
@@ -4536,6 +4700,80 @@ export function OrganizationsPage({ token }: { token: string }) {
   );
 }
 
+const CHECKLIST_CATEGORIES = [
+  "frontend",
+  "backend",
+  "database",
+  "authentication",
+  "testing",
+  "documentation",
+  "deployment",
+  "security",
+  "general",
+];
+
+const CHECKLIST_VALIDATION_TYPES = [
+  "automated_test",
+  "hidden_test",
+  "eslint",
+  "security_scan",
+  "repository_scan",
+  "implementation_review",
+  "manual_review",
+];
+
+function formatChecklistRows(task?: PracticalTask) {
+  return (task?.reviewChecklist || [])
+    .map((item) =>
+      [
+        item.title,
+        item.category || "general",
+        item.validationType || "implementation_review",
+        item.maxScore || 10,
+        item.weight || 10,
+        item.feedbackWhenFailed || "",
+      ].join(" | "),
+    )
+    .join("\n");
+}
+
+function parseChecklistRows(value: string) {
+  return value
+    .split("\n")
+    .map((line, index) => {
+      const [
+        title,
+        category = "general",
+        validationType = "implementation_review",
+        maxScore = "10",
+        weight = "10",
+        feedbackWhenFailed = "",
+      ] = line.split("|").map((part) => part.trim());
+
+      if (!title) return null;
+
+      return {
+        key: `checklist-${index + 1}`,
+        title,
+        category: CHECKLIST_CATEGORIES.includes(category) ? category : "general",
+        validationType: CHECKLIST_VALIDATION_TYPES.includes(validationType)
+          ? validationType
+          : "implementation_review",
+        maxScore: Math.min(Math.max(Number(maxScore) || 10, 1), 100),
+        weight: Math.min(Math.max(Number(weight) || 10, 1), 100),
+        successThreshold: 70,
+        feedbackWhenFailed,
+      };
+    })
+    .filter(Boolean);
+}
+
+function checklistWeightTotal(value: string) {
+  return parseChecklistRows(value).reduce(
+    (sum, item) => sum + Number(item?.weight || 0),
+    0,
+  );
+}
 export function CompetenciesPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.competencies(token),
@@ -4550,6 +4788,7 @@ export function CompetenciesPage({ token }: { token: string }) {
     practicalTaskTitle: "",
     practicalTaskInstructions: "",
     practicalTaskDeliverables: "",
+    practicalTaskChecklist: "",
     practicalTaskTestCommand: "",
     practicalTaskTestFilePath: "",
     practicalTaskTestFileContent: "",
@@ -4572,6 +4811,7 @@ export function CompetenciesPage({ token }: { token: string }) {
     practicalTaskTitle: "",
     practicalTaskInstructions: "",
     practicalTaskDeliverables: "",
+    practicalTaskChecklist: "",
     practicalTaskTestCommand: "",
     practicalTaskTestFilePath: "",
     practicalTaskTestFileContent: "",
@@ -4591,6 +4831,7 @@ export function CompetenciesPage({ token }: { token: string }) {
       practicalTaskTitle: "",
       practicalTaskInstructions: "",
       practicalTaskDeliverables: "",
+      practicalTaskChecklist: "",
       practicalTaskTestCommand: "",
       practicalTaskTestFilePath: "",
       practicalTaskTestFileContent: "",
@@ -4610,6 +4851,7 @@ export function CompetenciesPage({ token }: { token: string }) {
       practicalTaskTitle: "",
       practicalTaskInstructions: "",
       practicalTaskDeliverables: "",
+      practicalTaskChecklist: "",
       practicalTaskTestCommand: "",
       practicalTaskTestFilePath: "",
       practicalTaskTestFileContent: "",
@@ -4633,6 +4875,7 @@ export function CompetenciesPage({ token }: { token: string }) {
       practicalTaskTitle: practicalTask?.title || "",
       practicalTaskInstructions: practicalTask?.instructions || "",
       practicalTaskDeliverables: practicalTask?.deliverables || "",
+      practicalTaskChecklist: formatChecklistRows(practicalTask),
       practicalTaskTestCommand: practicalTask?.automatedTestCommand || "",
       practicalTaskTestFilePath:
         practicalTask?.automatedTestFiles?.[0]?.path || "",
@@ -4679,6 +4922,7 @@ export function CompetenciesPage({ token }: { token: string }) {
                 deliverables: editForm.practicalTaskDeliverables.trim(),
                 estimatedMinutes: 60,
                 maxScore: 100,
+                reviewChecklist: parseChecklistRows(editForm.practicalTaskChecklist),
                 automatedTestCommand: editForm.practicalTaskTestCommand.trim(),
                 automatedTestFiles:
                   editForm.practicalTaskTestFilePath.trim() &&
@@ -4828,6 +5072,7 @@ export function CompetenciesPage({ token }: { token: string }) {
                 deliverables: form.practicalTaskDeliverables.trim(),
                 estimatedMinutes: 60,
                 maxScore: 100,
+                reviewChecklist: parseChecklistRows(form.practicalTaskChecklist),
                 // These hidden tests are injected into a graduate repository
                 // during review to verify the exact practical task behavior.
                 automatedTestCommand: form.practicalTaskTestCommand.trim(),
@@ -5026,6 +5271,42 @@ export function CompetenciesPage({ token }: { token: string }) {
                   }
                   disabled={editingCompetencyId ? isSaving : false}
                 />
+              </div>
+              <div className="full-span weighted-checklist-editor">
+                <TextArea
+                  label="Repository review checklist"
+                  rows={5}
+                  value={
+                    editingCompetencyId
+                      ? editForm.practicalTaskChecklist
+                      : form.practicalTaskChecklist
+                  }
+                  onChange={(event) =>
+                    editingCompetencyId
+                      ? setEditForm({
+                          ...editForm,
+                          practicalTaskChecklist: event.target.value,
+                        })
+                      : setForm({
+                          ...form,
+                          practicalTaskChecklist: event.target.value,
+                        })
+                  }
+                  placeholder={[
+                    "Project installs and runs | deployment | automated_test | 10 | 15 | Fix install/build errors.",
+                    "Hidden task tests passed | testing | hidden_test | 20 | 25 | Make the code produce the expected task output.",
+                    "Authentication is implemented | authentication | implementation_review | 20 | 20 | Complete login, JWT, and protected routes.",
+                  ].join("\n")}
+                  disabled={editingCompetencyId ? isSaving : false}
+                />
+                <div className="checklist-weight-meter">
+                  <span>
+                    Total checklist weight: {checklistWeightTotal(editingCompetencyId ? editForm.practicalTaskChecklist : form.practicalTaskChecklist)} / 100
+                  </span>
+                  <em>
+                    Format: title | category | validation type | max score | weighted score | feedback when failed
+                  </em>
+                </div>
               </div>
               <TextField
                 label="Instructor test command"
