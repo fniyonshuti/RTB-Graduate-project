@@ -212,6 +212,38 @@ function LearningResourceCards({
   );
 }
 
+function DetailModal({
+  title,
+  subtitle,
+  children,
+  onClose,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="detail-modal-backdrop" role="presentation" onClick={onClose}>
+      <section
+        aria-modal="true"
+        className="detail-modal"
+        role="dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="detail-modal__header">
+          <div>
+            <span className="eyebrow">Details</span>
+            <h3>{title}</h3>
+            {subtitle && <p>{subtitle}</p>}
+          </div>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+        </header>
+        <div className="detail-modal__body">{children}</div>
+      </section>
+    </div>
+  );
+}
 
 type RepositoryChecklistRow = RepositoryTaskReview["checklist"][number];
 
@@ -3028,7 +3060,7 @@ export function GapResultsPage({ token }: { token: string }) {
     <section className="page-stack">
       <PageHeader
         title="Gap Results"
-        description="Each result connects the graduate score, RTB benchmark, gap level, and assessor recommendation."
+        description="Each result connects the graduate score, RTB benchmark, and gap level."
         onRefresh={refresh}
       />
       {error && <Alert type="error">{error}</Alert>}
@@ -3061,7 +3093,7 @@ export function GapResultsPage({ token }: { token: string }) {
           <ListToolbar
             search={gapSearch}
             onSearchChange={setGapSearch}
-            searchPlaceholder="Search competency, graduate, recommendation..."
+            searchPlaceholder="Search competency, graduate, gap level..."
             totalCount={data.length}
             filteredCount={filteredGapResults.length}
           >
@@ -3081,164 +3113,52 @@ export function GapResultsPage({ token }: { token: string }) {
           {filteredGapResults.length === 0 ? (
             <EmptyState message="No gap results match your search or filter." />
           ) : (
-          <div className="result-page-list">
-          {filteredGapResults.map((assessment) => {
-            const recommendation = recommendations.find(
-              (item) => item.competency._id === assessment.competency._id,
-            );
+            <div className="table-wrap page-data-table-wrap">
+              <table className="page-data-table gap-results-table compact-results-table">
+                <thead>
+                  <tr>
+                    <th>Competency</th>
+                    <th>Scores</th>
+                    <th>Skill gap score</th>
+                    <th>Benchmark</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredGapResults.map((assessment) => (
+                    <tr key={assessment._id}>
+                      <td>
+                        <div className="table-primary-cell">
+                          <strong>{assessment.competency.title}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="score-stack">
+                          <strong>{formatPercent(assessment.scores.finalScore)}</strong>
+                          <ProgressBar value={assessment.scores.finalScore} />
 
-            return (
-              <article className="result-card result-page-card" key={assessment._id}>
-                <header className="result-page-card__header">
-                  <div>
-                    <span className="eyebrow">Competency result</span>
-                    <h3>{assessment.competency.title}</h3>
-                  </div>
-                  <div className="result-page-card__status">
-                    <GapBadge level={assessment.gapLevel} />
-                    <span>Reviewed {formatDate(assessment.reviewedAt)}</span>
-                  </div>
-                </header>
-
-                <div className="result-score-panel">
-                  <div>
-                    <span>Graduate score</span>
-                    <strong>{formatPercent(assessment.scores.finalScore)}</strong>
-                  </div>
-                  <div>
-                    <span>RTB benchmark</span>
-                    <strong>{formatPercent(assessment.benchmarkScore)}</strong>
-                  </div>
-                  <div>
-                    <span>Skill gap</span>
-                    <strong>{formatPercent(assessment.skillGap)}</strong>
-                  </div>
-                </div>
-
-                <ProgressBar value={assessment.scores.finalScore} />
-
-                <div className="result-detail-grid">
-                  <section className="assessor-note">
-                    <div className="section-heading">
-                      <strong>Score breakdown</strong>
-                      <span>70% practical, 30% theory</span>
-                    </div>
-                    <div className="result-metrics">
-                      <span>
-                        GitHub task:{" "}
-                        {formatPercent(assessment.scores.practicalTaskScore)}
-                      </span>
-                      <span>
-                        Theory: {formatPercent(assessment.scores.quizScore)}
-                      </span>
-                    </div>
-                  </section>
-
-                  <section className="assessor-note">
-                    <div className="section-heading">
-                      <strong>Evidence verification</strong>
-                      <span>{assessment.evidenceVerification ? "Recorded" : "Pending"}</span>
-                    </div>
-                    <p>
-                      {assessment.evidenceVerification
-                        ? [
-                            assessment.evidenceVerification.githubReviewed
-                              ? "GitHub reviewed"
-                              : "",
-                            assessment.evidenceVerification
-                              .practicalEvidenceReviewed
-                              ? "Practical reviewed"
-                              : "",
-                            assessment.evidenceVerification.theoryReviewed
-                              ? "Theory reviewed"
-                              : "",
-                          ]
-                            .filter(Boolean)
-                            .join(", ") || "Verification checks not recorded."
-                        : "Verification checks not recorded."}
-                    </p>
-                    {assessment.evidenceVerification?.authenticityNotes && (
-                      <ReadMoreText
-                        text={assessment.evidenceVerification.authenticityNotes}
-                        limit={160}
-                      />
-                    )}
-                  </section>
-
-                  <section className="assessor-note">
-                    <strong>Assessor comment</strong>
-                    <ReadMoreText
-                      text={assessment.assessorComment}
-                      emptyText="No assessor comment provided."
-                      limit={160}
-                    />
-                  </section>
-
-                  <section className="assessor-note">
-                    <strong>Repository summary</strong>
-                    <ReadMoreText
-                      text={assessment.evidence.repositorySummary?.summaryText}
-                      emptyText="No GitHub repository summary was stored for this assessment."
-                      limit={190}
-                    />
-                    {assessment.evidence.repositorySummary && (
-                      <div className="result-metrics">
-                        <span>
-                          Repository quality:{" "}
-                          {formatPercent(
-                            assessment.evidence.repositorySummary
-                              .codeQualityScore || 0,
-                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <strong className="table-number-cell">
+                          {formatPercent(assessment.skillGap)}
+                        </strong>
+                      </td>
+                      <td>
+                        <strong className="table-number-cell">
+                          {formatPercent(assessment.benchmarkScore)}
+                        </strong>
+                      </td>
+                      <td>
+                        <span className="table-date-text">
+                          {formatDate(assessment.reviewedAt || assessment.createdAt)}
                         </span>
-                        <span>
-                          Evidence completeness:{" "}
-                          {formatPercent(
-                            assessment.evidence.repositorySummary
-                              .evidenceCompletenessScore || 0,
-                          )}
-                        </span>
-                      </div>
-                    )}
-                  </section>
-
-                  <section className="assessor-note result-recommendation-panel">
-                    <strong>Recommendation</strong>
-                    <ReadMoreText
-                      text={recommendation?.message}
-                      emptyText="Recommendation will appear after the assessor adds improvement guidance."
-                      limit={180}
-                    />
-                    {recommendation &&
-                      recommendation.actionItems.length > 0 && (
-                        <ul>
-                          {recommendation.actionItems.map((item) => (
-                            <li key={item}>
-                              <ReadMoreText text={item} limit={150} />
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    {recommendation &&
-                      ((recommendation.learningResources &&
-                        recommendation.learningResources.length > 0) ||
-                        (recommendation.resources &&
-                          recommendation.resources.length > 0)) && (
-                        <>
-                          <strong style={{ marginTop: '0.75rem', display: 'block' }}>
-                            Learning resources
-                          </strong>
-                          <LearningResourceCards
-                            resources={recommendation.learningResources || []}
-                            fallback={recommendation.resources}
-                          />
-                        </>
-                      )}
-                  </section>
-                </div>
-              </article>
-            );
-          })}
-          </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}
@@ -3253,6 +3173,8 @@ export function RecommendationsPage({ token }: { token: string }) {
   );
   const [recommendationSearch, setRecommendationSearch] = useState("");
   const [recommendationPriorityFilter, setRecommendationPriorityFilter] = useState("all");
+  const [activeRecommendation, setActiveRecommendation] = useState<Recommendation | null>(null);
+  const [activeResources, setActiveResources] = useState<Recommendation | null>(null);
   const recommendationPriorityOptions = useMemo(
     () => uniqueFilterOptions(data.map((recommendation) => recommendation.priority)),
     [data],
@@ -3333,7 +3255,7 @@ export function RecommendationsPage({ token }: { token: string }) {
           <ListToolbar
             search={recommendationSearch}
             onSearchChange={setRecommendationSearch}
-            searchPlaceholder="Search competency, action plan, resources..."
+            searchPlaceholder="Search competency, recommendation, resources..."
             totalCount={data.length}
             filteredCount={filteredRecommendations.length}
           >
@@ -3353,98 +3275,108 @@ export function RecommendationsPage({ token }: { token: string }) {
           {filteredRecommendations.length === 0 ? (
             <EmptyState message="No recommendations match your search or filter." />
           ) : (
-          <div className="recommendation-page-grid">
-          {filteredRecommendations.map((recommendation) => (
-            <article className="recommendation recommendation-page-card" key={recommendation._id}>
-              <header className="recommendation-page-card__header">
-                <div>
-                  <span className="eyebrow">Improvement guidance</span>
-                  <h3>{recommendation.competency.title}</h3>
-                </div>
-                <div className="recommendation-page-card__badges">
-                  <GapBadge level={recommendation.gapLevel} />
-                  <Badge tone={recommendation.priority === "high" ? "danger" : recommendation.priority === "medium" ? "warning" : "success"}>
-                    {recommendation.priority} priority
-                  </Badge>
-                </div>
-              </header>
-
-              <section className="recommendation-message-panel">
-                <strong>Approved recommendation</strong>
-                <ReadMoreText text={recommendation.message} limit={240} />
-                {recommendation.draftMessage &&
-                  recommendation.draftMessage !== recommendation.message && (
-                    <div className="recommendation-draft-panel">
-                      <strong>Gemini draft reference</strong>
-                      <ReadMoreText
-                        text={recommendation.draftMessage}
-                        limit={220}
-                      />
-                    </div>
-                  )}
-              </section>
-
-              <div className="recommendation-support-grid">
-                <section className="assessor-note">
-                  <div className="section-heading">
-                    <strong>Action plan to close the measured gap</strong>
-                    <span>{recommendation.actionItems.length} step(s)</span>
-                  </div>
-                  <p className="recommendation-guidance">
-                    Follow these steps in order, starting with the weakest evidence area found in the task review and theory score.
-                  </p>
-                {recommendation.actionItems.length > 0 && (
-                  <ul>
-                    {recommendation.actionItems.map((item) => (
-                      <li key={item}>
-                        <ReadMoreText text={item} limit={150} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {recommendation.actionItems.length === 0 && (
-                  <p>No action items were added.</p>
-                )}
-                </section>
-
-                <section className="assessor-note">
-                  <div className="section-heading">
-                    <strong>Learning resources</strong>
-                    <span>
-                      {(recommendation.learningResources?.length || recommendation.resources.length)} item(s)
-                    </span>
-                  </div>
-                  <LearningResourceCards
-                    resources={recommendation.learningResources || []}
-                    fallback={recommendation.resources}
-                  />
-                  {(recommendation.learningResources?.length || recommendation.resources.length) === 0 && (
-                    <p>No learning resources were added.</p>
-                  )}
-                </section>
-
-                <section className="assessor-note">
-                  <div className="section-heading">
-                    <strong>Recommendation details</strong>
-                    <span>{recommendation.isApproved ? "Approved" : "Draft"}</span>
-                  </div>
-                  <div className="result-metrics">
-                    <span>Provider: {recommendation.aiProvider || "Gemini"}</span>
-                    <span>Model: {recommendation.aiModel || "N/A"}</span>
-                    <span>
-                      Approved:{" "}
-                      {recommendation.approvedAt
-                        ? formatDate(recommendation.approvedAt)
-                        : "Not recorded"}
-                    </span>
-                  </div>
-                </section>
-              </div>
-            </article>
-          ))}
-          </div>
+            <div className="table-wrap page-data-table-wrap">
+              <table className="page-data-table recommendations-table compact-recommendations-table">
+                <thead>
+                  <tr>
+                    <th>Competency</th>
+                    <th>Recommendation</th>
+                    <th>Date</th>
+                    <th>Resource</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRecommendations.map((recommendation) => (
+                    <tr key={recommendation._id}>
+                      <td>
+                        <div className="table-primary-cell">
+                          <strong>{recommendation.competency.title}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setActiveRecommendation(recommendation)}
+                        >
+                          View recommendation
+                        </Button>
+                      </td>
+                      <td>
+                        <span className="table-date-pill">
+                          {recommendation.approvedAt
+                            ? formatDate(recommendation.approvedAt)
+                            : "Not recorded"}
+                        </span>
+                      </td>
+                      <td>
+                        <Button
+                          onClick={() => setActiveResources(recommendation)}
+                        >
+                          View resources
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
+      )}
+
+      {activeRecommendation && (
+        <DetailModal
+          title={activeRecommendation.competency.title}
+          subtitle="Approved recommendation and action plan"
+          onClose={() => setActiveRecommendation(null)}
+        >
+          <section className="detail-modal-section">
+            <strong>Recommendation</strong>
+            <ReadMoreText text={activeRecommendation.message} limit={900} />
+          </section>
+          {activeRecommendation.draftMessage &&
+            activeRecommendation.draftMessage !== activeRecommendation.message && (
+              <section className="detail-modal-section">
+                <strong>Gemini draft reference</strong>
+                <ReadMoreText text={activeRecommendation.draftMessage} limit={900} />
+              </section>
+            )}
+          <section className="detail-modal-section">
+            <strong>Action plan</strong>
+            {activeRecommendation.actionItems.length > 0 ? (
+              <ul>
+                {activeRecommendation.actionItems.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>No action items were added.</p>
+            )}
+          </section>
+          <section className="detail-modal-section detail-meta-grid">
+            <span>Provider: {activeRecommendation.aiProvider || "Gemini"}</span>
+            <span>Model: {activeRecommendation.aiModel || "N/A"}</span>
+            <span>
+              Status: {activeRecommendation.isApproved ? "Approved" : "Draft"}
+            </span>
+          </section>
+        </DetailModal>
+      )}
+
+      {activeResources && (
+        <DetailModal
+          title={activeResources.competency.title}
+          subtitle="Learning resources to close the measured skill gap"
+          onClose={() => setActiveResources(null)}
+        >
+          <LearningResourceCards
+            resources={activeResources.learningResources || []}
+            fallback={activeResources.resources}
+          />
+          {(activeResources.learningResources?.length || activeResources.resources.length) === 0 && (
+            <p>No learning resources were added.</p>
+          )}
+        </DetailModal>
       )}
     </section>
   );
@@ -3459,6 +3391,7 @@ export function ReportsPage({ token, role }: PageProps) {
   const [message, setMessage] = useState("");
   const [reportSearch, setReportSearch] = useState("");
   const [reportGapFilter, setReportGapFilter] = useState("all");
+  const [activeReport, setActiveReport] = useState<Report | null>(null);
   const reportGapOptions = useMemo(
     () => uniqueFilterOptions(data.map((report) => report.overallGapLevel)),
     [data],
@@ -3598,91 +3531,118 @@ export function ReportsPage({ token, role }: PageProps) {
           {filteredReports.length === 0 ? (
             <EmptyState message="No reports match your search or filter." />
           ) : (
-          <div className="report-page-list">
-          {filteredReports.map((report) => (
-            <article className="report-page-card report-preview" key={report._id}>
-              <header className="report-page-card__header">
-                <div>
-                  <span className="eyebrow">Graduate report</span>
-                  <h3>{report.title}</h3>
-                </div>
-                <Button
-                  variant="secondary"
-                  onClick={() => downloadReport(report)}
-                >
-                  Download Report
-                </Button>
-              </header>
-
-              <div className="report-score-panel">
-                <div>
-                  <span>Overall score</span>
-                  <strong>{formatPercent(report.overallScore)}</strong>
-                </div>
-                <div>
-                  <span>Gap level</span>
-                  <strong>{report.overallGapLevel}</strong>
-                </div>
-                <div>
-                  <span>Generated</span>
-                  <strong>{formatDate(report.createdAt)}</strong>
-                </div>
-              </div>
-
-              <ReadMoreText text={report.summary} limit={240} />
-
-              <div className="report-detail-grid">
-                {report.assessments && report.assessments.length > 0 && (
-                <section className="assessor-note">
-                  <strong>Included competencies</strong>
-                  <ul>
-                    {report.assessments.map((assessment) => (
-                      <li key={assessment._id}>
-                        {assessment.competency.title} -{" "}
-                        {formatPercent(assessment.scores.finalScore)} -{" "}
-                        {assessment.gapLevel}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-                )}
-                {report.assessments && report.assessments.length > 0 && (
-                <section className="assessor-note">
-                  <strong>Repository summaries</strong>
-                  <ul>
-                    {report.assessments.map((assessment) => (
-                      <li key={`${report._id}-${assessment._id}-repo`}>
-                        <strong>{assessment.competency.title}</strong>
-                        <ReadMoreText
-                          text={assessment.evidence.repositorySummary?.summaryText}
-                          emptyText="No repository summary available."
-                          limit={150}
-                        />
-                        {assessment.evidence.repositorySummary && (
-                          <span>
-                            Quality{" "}
-                            {formatPercent(
-                              assessment.evidence.repositorySummary
-                                .codeQualityScore || 0,
-                            )}
-                            , completeness{" "}
-                            {formatPercent(
-                              assessment.evidence.repositorySummary
-                                .evidenceCompletenessScore || 0,
-                            )}
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-                )}
-              </div>
-            </article>
-          ))}
-          </div>
+            <div className="table-wrap page-data-table-wrap">
+              <table className="page-data-table reports-table compact-reports-table">
+                <thead>
+                  <tr>
+                    <th>Report</th>
+                    <th>Overall result</th>
+                    <th>Date</th>
+                    <th>Details</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredReports.map((report) => (
+                    <tr key={report._id}>
+                      <td>
+                        <div className="table-primary-cell">
+                          <strong>{report.title}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="score-stack">
+                          <strong>{formatPercent(report.overallScore)}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="table-date-pill">
+                          {formatDate(report.createdAt)}
+                        </span>
+                      </td>
+                      <td>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setActiveReport(report)}
+                        >
+                          View report details
+                        </Button>
+                      </td>
+                      <td>
+                        <div className="table-action-row">
+                          <Button
+                            variant="secondary"
+                            onClick={() => downloadReport(report)}
+                          >
+                            Download
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
+      )}
+
+      {activeReport && (
+        <DetailModal
+          title={activeReport.title}
+          subtitle={`Generated ${formatDate(activeReport.createdAt)}`}
+          onClose={() => setActiveReport(null)}
+        >
+          <section className="detail-modal-section">
+            <strong>Report summary</strong>
+            <ReadMoreText text={activeReport.summary} limit={1200} />
+          </section>
+          <section className="detail-modal-section">
+            <strong>Included competencies</strong>
+            {activeReport.assessments && activeReport.assessments.length > 0 ? (
+              <ul>
+                {activeReport.assessments.map((assessment) => (
+                  <li key={assessment._id}>
+                    <strong>{assessment.competency.title}</strong>
+                    <span>
+                      {formatPercent(assessment.scores.finalScore)} - {assessment.gapLevel}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No competencies included.</p>
+            )}
+          </section>
+          <section className="detail-modal-section">
+            <strong>Repository evidence</strong>
+            {activeReport.assessments && activeReport.assessments.length > 0 ? (
+              <ul>
+                {activeReport.assessments.map((assessment) => (
+                  <li key={`${activeReport._id}-${assessment._id}-repo`}>
+                    <strong>{assessment.competency.title}</strong>
+                    <ReadMoreText
+                      text={assessment.evidence.repositorySummary?.summaryText}
+                      emptyText="No repository summary available."
+                      limit={700}
+                    />
+                    {assessment.evidence.repositorySummary && (
+                      <span>
+                        Quality {formatPercent(
+                          assessment.evidence.repositorySummary.codeQualityScore || 0,
+                        )}, completeness {formatPercent(
+                          assessment.evidence.repositorySummary.evidenceCompletenessScore || 0,
+                        )}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No repository evidence included.</p>
+            )}
+          </section>
+        </DetailModal>
       )}
     </section>
   );
