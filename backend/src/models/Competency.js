@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { checklistItemSchema } from './Checklist.js';
 
 const automatedTestFileSchema = new mongoose.Schema(
   {
@@ -61,56 +62,6 @@ const practicalTestCaseSchema = new mongoose.Schema(
 );
 
 
-const practicalTaskChecklistItemSchema = new mongoose.Schema(
-  {
-    key: {
-      type: String,
-      trim: true,
-    },
-    title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    description: {
-      type: String,
-      trim: true,
-    },
-    category: {
-      type: String,
-      enum: ['frontend', 'backend', 'database', 'authentication', 'testing', 'documentation', 'deployment', 'security', 'general'],
-      default: 'general',
-    },
-    validationType: {
-      type: String,
-      enum: ['automated_test', 'hidden_test', 'eslint', 'security_scan', 'repository_scan', 'implementation_review', 'manual_review'],
-      default: 'implementation_review',
-    },
-    maxScore: {
-      type: Number,
-      min: 1,
-      max: 100,
-      default: 10,
-    },
-    weight: {
-      type: Number,
-      min: 1,
-      max: 100,
-      default: 10,
-    },
-    successThreshold: {
-      type: Number,
-      min: 0,
-      max: 100,
-      default: 70,
-    },
-    feedbackWhenFailed: {
-      type: String,
-      trim: true,
-    },
-  },
-  { _id: false },
-);
 const practicalTaskSchema = new mongoose.Schema(
   {
     title: {
@@ -240,7 +191,7 @@ const practicalTaskSchema = new mongoose.Schema(
       default: [],
     },
     reviewChecklist: {
-      type: [practicalTaskChecklistItemSchema],
+      type: [checklistItemSchema],
       default: [],
     },
   },

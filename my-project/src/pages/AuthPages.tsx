@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   BadgeCheck,
@@ -123,8 +123,86 @@ function GoogleIcon() {
     </svg>
   );
 }
+
+type GoogleCredentialResponse = {
+  credential?: string;
+};
+
+type GoogleIdentityApi = {
+  accounts: {
+    id: {
+      initialize: (options: {
+        client_id: string;
+        callback: (response: GoogleCredentialResponse) => void;
+      }) => void;
+      renderButton: (
+        parent: HTMLElement,
+        options: {
+          theme: 'outline' | 'filled_blue' | 'filled_black';
+          size: 'large' | 'medium' | 'small';
+          type: 'standard' | 'icon';
+          text: 'signin_with' | 'signup_with' | 'continue_with';
+          shape: 'rectangular' | 'pill' | 'circle' | 'square';
+          width?: number;
+        },
+      ) => void;
+      cancel: () => void;
+    };
+  };
+};
+
+declare global {
+  interface Window {
+    google?: GoogleIdentityApi;
+  }
+}
+
+const GOOGLE_SCRIPT_ELEMENT_ID = 'google-identity-services-script';
+const googleClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+const googleIdentityScriptUrl = String(
+  import.meta.env.VITE_GOOGLE_IDENTITY_SCRIPT_URL ||
+    'https://accounts.google.com/gsi/client',
+).trim();
+let googleIdentityScriptPromise: Promise<void> | null = null;
+let googleIdentityInitialized = false;
+let latestGoogleCredentialHandler: ((response: GoogleCredentialResponse) => void) | null = null;
+
+function loadGoogleIdentityScript(): Promise<void> {
+  if (window.google?.accounts?.id) return Promise.resolve();
+  if (googleIdentityScriptPromise) return googleIdentityScriptPromise;
+
+  googleIdentityScriptPromise = new Promise<void>((resolve, reject) => {
+    const existingScript = document.getElementById(
+      GOOGLE_SCRIPT_ELEMENT_ID,
+    ) as HTMLScriptElement | null;
+
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(), { once: true });
+      existingScript.addEventListener(
+        'error',
+        () => reject(new Error('Google sign-in script failed to load.')),
+        { once: true },
+      );
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = GOOGLE_SCRIPT_ELEMENT_ID;
+    script.src = googleIdentityScriptUrl;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      googleIdentityScriptPromise = null;
+      reject(new Error('Google sign-in script failed to load.'));
+    };
+    document.head.appendChild(script);
+  });
+
+  return googleIdentityScriptPromise;
+}
 export function AuthPages() {
-  const { login, register } = useAuth();
+  const { googleLogin, login, register } = useAuth();
   const [initialAuthState] = useState(getInitialAuthState);
   const [mode, setMode] = useState<AuthMode>(initialAuthState.mode);
   const [showAuthPanel, setShowAuthPanel] = useState(
@@ -141,6 +219,88 @@ export function AuthPages() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [isHomeMenuOpen, setIsHomeMenuOpen] = useState(false);
   const authContent = getAuthContent(mode);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const handleGoogleCredential = useCallback(
+    async (response: GoogleCredentialResponse) => {
+      setError('');
+      setMessage('');
+
+      if (mode === 'register' && !termsAccepted) {
+        setError('Please agree to the terms and privacy policy before using Google.');
+        return;
+      }
+
+      if (!response.credential) {
+        setError('Google did not return a sign-in credential. Try again.');
+        return;
+      }
+
+      setIsSubmitting(true);
+      try {
+        await googleLogin(response.credential);
+      } catch (caughtError) {
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : 'Google sign-in failed',
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [googleLogin, mode, termsAccepted],
+  );
+
+  useEffect(() => {
+    latestGoogleCredentialHandler = handleGoogleCredential;
+  }, [handleGoogleCredential]);
+
+  const [googleInitialized, setGoogleInitialized] = useState(googleIdentityInitialized);
+
+  useEffect(() => {
+    if (!googleClientId) return;
+
+    loadGoogleIdentityScript()
+      .then(() => {
+        if (!window.google?.accounts?.id) return;
+
+        if (!googleIdentityInitialized) {
+          window.google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: (response) => {
+              latestGoogleCredentialHandler?.(response);
+            },
+          });
+          googleIdentityInitialized = true;
+        }
+
+        setGoogleInitialized(true);
+      })
+      .catch((caughtError) => {
+        console.error('Failed to load Google Identity Services:', caughtError);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!showAuthPanel || (mode !== 'login' && mode !== 'register')) return undefined;
+    if (!googleClientId || !googleInitialized || !googleButtonRef.current) return undefined;
+
+    const buttonHost = googleButtonRef.current;
+    buttonHost.innerHTML = '';
+
+    window.google?.accounts?.id.renderButton(buttonHost, {
+      theme: 'outline',
+      size: 'large',
+      type: 'standard',
+      text: mode === 'register' ? 'signup_with' : 'signin_with',
+      shape: 'rectangular',
+      width: Math.max(buttonHost.clientWidth, 260),
+    });
+
+    return () => {
+      buttonHost.innerHTML = '';
+    };
+  }, [mode, showAuthPanel, googleInitialized, googleClientId]);
 
   useEffect(() => {
     const revealItems = Array.from(
@@ -521,18 +681,26 @@ export function AuthPages() {
                       </span>
                     </div>
                     <div className="auth-social-actions">
-                      <button
-                        className="auth-social-button"
-                        type="button"
-                        onClick={() =>
-                          setError(
-                            "Google sign-in is available after Google OAuth is configured.",
-                          )
-                        }
-                      >
-                        <GoogleIcon />
-                        Google
-                      </button>
+                      {googleClientId ? (
+                        <div
+                          ref={googleButtonRef}
+                          className="auth-google-button-host"
+                          aria-label="Continue with Google"
+                        />
+                      ) : (
+                        <button
+                          className="auth-social-button"
+                          type="button"
+                          onClick={() =>
+                            setError(
+                              "Google sign-in is not configured. Add VITE_GOOGLE_CLIENT_ID in the frontend and GOOGLE_CLIENT_ID in the backend.",
+                            )
+                          }
+                        >
+                          <GoogleIcon />
+                          Google
+                        </button>
+                      )}
                     </div>
                   </>
                 )}

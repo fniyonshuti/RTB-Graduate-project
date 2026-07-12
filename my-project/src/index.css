@@ -171,6 +171,23 @@
     @apply max-w-sm break-words;
   }
 
+
+  .list-toolbar {
+    @apply mb-4 grid min-w-0 grid-cols-[minmax(220px,1fr)_auto_auto] items-end gap-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm shadow-slate-200/60 max-[900px]:grid-cols-1;
+  }
+
+  .list-toolbar__filters {
+    @apply flex min-w-0 flex-wrap items-end gap-3;
+  }
+
+  .list-toolbar__filters > label {
+    @apply min-w-44 flex-1;
+  }
+
+  .list-toolbar__count {
+    @apply inline-flex min-h-12 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 shadow-sm max-[900px]:justify-start;
+  }
+
   .card-list,
   .compact-list,
   .assessor-queue,
@@ -524,11 +541,23 @@
   }
 
   .stepper {
-    @apply grid gap-4 max-[640px]:gap-3;
+    @apply grid grid-cols-1 gap-4 max-[640px]:gap-3;
   }
 
   .step-item {
     @apply flex min-w-0 items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 font-black text-slate-600 shadow-sm transition hover:border-[#0077B6]/25 hover:bg-[#0077B6]/10 max-[640px]:gap-3 max-[640px]:p-3;
+  }
+
+  .step-marker {
+    @apply grid h-9 w-9 flex-none place-items-center rounded-full bg-slate-100 text-sm font-black text-slate-600 ring-1 ring-slate-200;
+  }
+
+  .step-item strong {
+    @apply min-w-0 flex-1;
+  }
+
+  .step-item em {
+    @apply ml-auto flex-none text-xs font-black uppercase not-italic tracking-wide text-emerald-700;
   }
 
   .step-item.active {
@@ -537,6 +566,75 @@
 
   .step-item.done {
     @apply border-emerald-200 bg-emerald-50 text-emerald-700;
+  }
+
+  .step-item.done .step-marker {
+    @apply bg-emerald-600 text-white ring-emerald-600;
+  }
+
+
+  .assessment-side .stepper {
+    @apply grid grid-cols-3 gap-3 max-[900px]:grid-cols-1;
+  }
+
+  .assessment-side .step-item {
+    @apply grid min-h-28 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 p-4;
+  }
+
+  .assessment-side .step-item strong {
+    @apply pt-1 text-base leading-6;
+  }
+
+  .assessment-side .step-item em {
+    @apply col-span-2 ml-0 w-fit rounded-full bg-emerald-100 px-2.5 py-1 text-[0.68rem] leading-none;
+  }
+
+  .assessment-side .score-weight-list {
+    @apply grid grid-cols-2 gap-3 max-[900px]:grid-cols-1;
+  }
+
+  .assessment-side .score-weight-list span {
+    @apply flex min-h-20 items-center justify-between gap-5 rounded-lg border border-slate-200 bg-white p-4 text-right text-base font-bold text-slate-600 shadow-sm transition hover:border-[#0077B6]/25 hover:bg-[#0077B6]/10 max-[520px]:items-start max-[520px]:text-left;
+  }
+
+  .assessment-side .score-weight-list strong {
+    @apply flex-none text-2xl font-black leading-none text-[#0077B6];
+  }
+
+  .assessment-competency-table {
+    @apply rounded-xl;
+  }
+
+  .assessment-competency-table table {
+    @apply min-w-[840px];
+  }
+
+  .assessment-competency-table tr {
+    @apply transition duration-200;
+  }
+
+  .assessment-competency-table tbody tr:hover {
+    @apply bg-[#0077B6]/5;
+  }
+
+  .assessment-competency-table .selected-row {
+    @apply bg-[#0077B6]/10 ring-1 ring-inset ring-[#0077B6]/25;
+  }
+
+  .assessment-competency-table .button {
+    @apply h-9 w-24 px-3 py-1.5 text-xs;
+  }
+
+  .competency-title-cell {
+    @apply grid min-w-0 gap-1;
+  }
+
+  .competency-title-cell strong {
+    @apply text-slate-950;
+  }
+
+  .selected-competency-summary {
+    @apply rounded-xl border border-[#0077B6]/20 bg-[#0077B6]/10 p-4;
   }
 
 
@@ -676,6 +774,18 @@
     @apply sticky top-24 self-start max-[1100px]:static;
   }
 
+  .assessment-layout {
+    @apply grid-cols-1;
+  }
+
+  .assessment-layout .assessment-side {
+    @apply static grid gap-6;
+  }
+
+  .assessment-layout .list-toolbar {
+    @apply mb-0;
+  }
+
   .assessment-panel {
     @apply min-w-0 rounded-lg border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/60 max-[640px]:p-4;
   }
@@ -697,6 +807,32 @@
   .task-review-header,
   .gemini-recommendation-header {
     @apply min-w-0 gap-4 max-[640px]:gap-3;
+  }
+
+
+  .selected-competency-summary {
+    @apply grid grid-cols-[minmax(180px,0.9fr)_minmax(260px,1.5fr)_minmax(190px,0.8fr)_auto] items-center gap-5 rounded-xl border border-[#0077B6]/20 bg-[#0077B6]/10 p-5 max-[1180px]:grid-cols-2 max-[760px]:grid-cols-1 max-[640px]:gap-4 max-[640px]:p-4;
+  }
+
+  .selected-competency-summary > div {
+    @apply grid min-w-0 gap-2;
+  }
+
+  .selected-competency-summary span {
+    @apply text-xs font-black uppercase tracking-wide text-[#0077B6];
+  }
+
+  .selected-competency-summary strong {
+    @apply min-w-0 break-words text-lg font-black leading-6 text-slate-950;
+  }
+
+  .selected-competency-summary p,
+  .selected-competency-summary .read-more-text {
+    @apply min-w-0 text-sm font-bold leading-6 text-slate-700;
+  }
+
+  .selected-competency-summary .button {
+    @apply h-11 w-full min-w-40 self-center whitespace-nowrap max-[1180px]:w-fit max-[760px]:w-full;
   }
 
   .assessment-activity-row {
@@ -949,6 +1085,43 @@
 
   .weighted-checklist-title > span {
     @apply w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-slate-500;
+  }
+
+  .repository-checklist-result {
+    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70;
+  }
+
+  .repository-checklist-result table {
+    @apply min-w-[520px] w-full border-collapse;
+  }
+
+  .repository-checklist-result th {
+    @apply border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500;
+  }
+
+  .repository-checklist-result th:last-child,
+  .repository-checklist-result td:last-child {
+    @apply w-36 text-right;
+  }
+
+  .repository-checklist-result td {
+    @apply border-b border-slate-100 px-4 py-4 align-middle text-sm text-slate-700;
+  }
+
+  .repository-checklist-result tbody tr {
+    @apply transition duration-200 hover:bg-[#0077B6]/5;
+  }
+
+  .repository-checklist-result tr.passed td:first-child {
+    @apply border-l-4 border-l-emerald-500;
+  }
+
+  .repository-checklist-result tr.failed td:first-child {
+    @apply border-l-4 border-l-rose-500;
+  }
+
+  .repository-checklist-result td strong {
+    @apply block min-w-0 break-words text-sm font-bold leading-6 text-slate-800;
   }
   .task-check {
     @apply rounded-lg border border-slate-200 bg-white p-4 shadow-sm;
@@ -1455,14 +1628,105 @@
 
 
   .recommendation-guidance {
-    @apply rounded-lg border border-[#0077B6]/15 bg-[#0077B6]/10 px-3 py-2 text-sm font-semibold leading-6 text-slate-700;
+    @apply rounded-lg border border-[#0077B6]/15 bg-[#0077B6]/10 px-4 py-3 text-sm font-semibold leading-6 text-slate-700;
   }
+
+  .result-page-list,
+  .recommendation-page-grid,
+  .report-page-list {
+    @apply gap-7 max-[640px]:gap-5;
+  }
+
+  .result-page-card,
+  .recommendation-page-card,
+  .report-page-card {
+    @apply gap-6 rounded-xl border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70 hover:border-[#0077B6]/25 hover:shadow-lg hover:shadow-slate-200/80 max-[640px]:gap-5 max-[640px]:p-4;
+  }
+
+  .result-page-card__header,
+  .recommendation-page-card__header,
+  .report-page-card__header {
+    @apply gap-5 border-slate-200 pb-5;
+  }
+
+  .result-score-panel,
+  .report-score-panel {
+    @apply gap-4;
+  }
+
+  .result-score-panel div,
+  .report-score-panel div {
+    @apply rounded-xl border-[#0077B6]/10 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm max-[640px]:p-4;
+  }
+
+  .result-score-panel span,
+  .report-score-panel span {
+    @apply mb-1 text-[0.7rem] tracking-wider;
+  }
+
+  .result-score-panel strong,
+  .report-score-panel strong {
+    @apply text-2xl text-[#0B3142];
+  }
+
+  .result-detail-grid,
+  .recommendation-support-grid,
+  .report-detail-grid {
+    @apply gap-5;
+  }
+
+  .result-detail-grid .assessor-note,
+  .recommendation-support-grid .assessor-note,
+  .report-detail-grid .assessor-note {
+    @apply grid gap-4 rounded-xl border-slate-200 bg-slate-50/80 p-5 shadow-none hover:border-[#0077B6]/20 hover:shadow-sm max-[640px]:p-4;
+  }
+
+  .result-detail-grid .assessor-note > strong,
+  .recommendation-support-grid .assessor-note > strong,
+  .report-detail-grid .assessor-note > strong {
+    @apply text-base font-black text-[#0B3142];
+  }
+
+  .result-recommendation-panel,
+  .recommendation-message-panel {
+    @apply border-[#0077B6]/20 bg-[#0077B6]/10;
+  }
+
+  .recommendation-message-panel,
+  .recommendation-draft-panel {
+    @apply gap-4 rounded-xl border-slate-200 p-5 max-[640px]:p-4;
+  }
+
+  .recommendation-draft-panel {
+    @apply bg-white/80;
+  }
+
+  .report-command-panel {
+    @apply rounded-xl border-[#0077B6]/10 bg-gradient-to-br from-white to-slate-50 p-6 shadow-md shadow-slate-200/70 max-[640px]:p-4;
+  }
+
+  .report-command-panel__actions {
+    @apply gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm;
+  }
+
+  .report-detail-grid ul,
+  .recommendation-support-grid ul,
+  .result-recommendation-panel ul {
+    @apply grid gap-3 pl-5;
+  }
+
+  .report-detail-grid li,
+  .recommendation-support-grid li,
+  .result-recommendation-panel li {
+    @apply leading-7 text-slate-700;
+  }
+
   .learning-resource-list {
-    @apply grid gap-3;
+    @apply grid gap-4 sm:grid-cols-2;
   }
 
   .learning-resource-card {
-    @apply grid gap-2 rounded-xl border border-slate-200 bg-white/90 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--color-primary)] hover:shadow-md;
+    @apply grid min-h-full gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#0077B6]/35 hover:shadow-md hover:shadow-slate-200/80;
   }
 
   .learning-resource-card__header {
@@ -1470,7 +1734,7 @@
   }
 
   .learning-resource-card > strong {
-    @apply text-sm font-extrabold text-slate-950;
+    @apply text-base font-black leading-6 text-[#0B3142];
   }
 
   .compact-muted {
@@ -1478,7 +1742,6 @@
   }
 
   .resource-link {
-    @apply inline-flex w-fit items-center justify-center rounded-lg bg-[var(--color-primary)] px-3 py-2 text-xs font-extrabold text-white no-underline shadow-sm transition hover:bg-[var(--color-primary-dark)] focus:outline-none focus:ring-4 focus:ring-[var(--color-primary)]/20;
+    @apply mt-1 inline-flex w-fit items-center justify-center rounded-lg bg-[#0077B6] px-4 py-2.5 text-sm font-black text-white no-underline shadow-sm shadow-[#0077B6]/20 transition duration-200 hover:-translate-y-0.5 hover:bg-[#00679d] hover:shadow-md hover:shadow-[#0077B6]/25 focus:outline-none focus:ring-4 focus:ring-[#0077B6]/20;
   }
-
 }

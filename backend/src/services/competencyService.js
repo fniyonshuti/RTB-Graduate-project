@@ -1,4 +1,5 @@
 import Competency from "../models/Competency.js";
+import Checklist from "../models/Checklist.js";
 import { AppError } from "./errorService.js";
 import { isLearnerRole } from "../constants/roles.js";
 
@@ -23,6 +24,25 @@ function hideCorrectAnswers(competency) {
 
 function formatCompetencyForRole(competency, role) {
   return isLearnerRole(role) ? hideCorrectAnswers(competency) : competency;
+}
+
+async function syncChecklistDocuments(competency, createdBy) {
+  await Checklist.deleteMany({ competency: competency._id });
+
+  const checklistDocuments = (competency.practicalTasks || [])
+    .filter((task) => Array.isArray(task.reviewChecklist) && task.reviewChecklist.length > 0)
+    .map((task) => ({
+      competency: competency._id,
+      practicalTaskId: task._id,
+      title: `${competency.code} - ${task.title}`,
+      items: task.reviewChecklist,
+      createdBy: createdBy || competency.createdBy,
+      isActive: competency.isActive,
+    }));
+
+  if (checklistDocuments.length > 0) {
+    await Checklist.insertMany(checklistDocuments);
+  }
 }
 
 export async function listCompetenciesForRole(filters = {}, role) {
@@ -51,11 +71,14 @@ export async function getCompetencyForRole(competencyId, role) {
   return formatCompetencyForRole(competency, role);
 }
 
-export function createCompetency(payload, createdBy) {
-  return Competency.create({
+export async function createCompetency(payload, createdBy) {
+  const competency = await Competency.create({
     ...payload,
     createdBy,
   });
+
+  await syncChecklistDocuments(competency, createdBy);
+  return competency;
 }
 
 export async function updateCompetencyById(competencyId, payload) {
@@ -68,6 +91,7 @@ export async function updateCompetencyById(competencyId, payload) {
     throw new AppError("Competency was not found", 404);
   }
 
+  await syncChecklistDocuments(competency, competency.createdBy);
   return competency;
 }
 
@@ -82,6 +106,7 @@ export async function deactivateCompetencyById(competencyId) {
     throw new AppError("Competency was not found", 404);
   }
 
+  await Checklist.updateMany({ competency: competency._id }, { isActive: false });
   return competency;
 }
 

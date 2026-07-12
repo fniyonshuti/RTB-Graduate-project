@@ -140,6 +140,11 @@ export const api = {
       body: { email, password },
     }),
 
+  googleLogin: (credential: string) =>
+    request<AuthPayload>('/auth/google', {
+      method: 'POST',
+      body: { credential },
+    }),
   forgotPassword: (email: string) =>
     request<{
       message: string

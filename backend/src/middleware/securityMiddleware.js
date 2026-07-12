@@ -23,7 +23,7 @@ export function securityHeaders(req, res, next) {
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
   res.setHeader('X-DNS-Prefetch-Control', 'off');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader(

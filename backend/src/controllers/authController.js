@@ -12,6 +12,10 @@ class AuthController {
     const result = await authService.loginUser(req.body.email, req.body.password);
     sendSuccess(res, 'Logged in successfully', result);
   });
+  googleLogin = asyncHandler(async (req, res) => {
+    const result = await authService.loginWithGoogle(req.body.credential);
+    sendSuccess(res, 'Google sign-in completed successfully', result);
+  });
 
   getMe = asyncHandler(async (req, res) => {
     sendSuccess(res, 'Current user loaded', authService.sanitizeUser(req.user));
@@ -41,6 +45,7 @@ const authController = new AuthController();
 
 export const register = authController.register;
 export const login = authController.login;
+export const googleLogin = authController.googleLogin;
 export const getMe = authController.getMe;
 export const changeMyPassword = authController.changeMyPassword;
 export const forgotPassword = authController.forgotPassword;

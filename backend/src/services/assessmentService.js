@@ -1,6 +1,7 @@
 import Assessment from "../models/Assessment.js";
 import Benchmark from "../models/Benchmark.js";
 import Competency from "../models/Competency.js";
+import Checklist from "../models/Checklist.js";
 import Notification from "../models/Notification.js";
 import Recommendation from "../models/Recommendation.js";
 import User from "../models/User.js";
@@ -423,55 +424,6 @@ export async function submitAssessment(user, payload) {
   return populateAssessmentRelations(Assessment.findById(assessment._id));
 }
 
-// Repository review normalization
-function convertRepositoryAssessmentToChecklist(repositoryAssessment) {
-  // Convert the executable repository assessment into the same checklist shape
-  // used by the static GitHub review, so the frontend can render one result.
-  const passed = (repositoryAssessment.passedRequirements || []).map(
-    (item) => ({
-      key: item.id || item.title,
-      label: item.title,
-      passed: true,
-      weight: item.weight || 1,
-      evidence: item.evidence || "Requirement passed.",
-      advice: "",
-    }),
-  );
-  const failed = (repositoryAssessment.failedRequirements || []).map(
-    (item) => ({
-      key: item.id || item.title,
-      label: item.title,
-      passed: false,
-      weight: item.weight || 1,
-      evidence: item.error || "Requirement failed.",
-      advice:
-        item.error ||
-        "Fix this failed requirement and run the repository assessment again.",
-    }),
-  );
-
-  const checklist = [...passed, ...failed];
-
-  if (checklist.length === 0) {
-    return [
-      {
-        key: "repositoryAssessmentUnavailable",
-        label: "Repository assessment produced objective checks",
-        passed: false,
-        weight: 1,
-        evidence:
-          repositoryAssessment.errorMessage ||
-          "Repository assessment did not produce objective checks.",
-        advice:
-          "Check GitHub access, Docker Desktop status, backend logs, and practical task test configuration.",
-      },
-    ];
-  }
-
-  return checklist;
-}
-
-
 function roundReviewScore(value) {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? Math.round(numericValue * 100) / 100 : 0;
@@ -530,6 +482,54 @@ function checklistTerms(item = {}) {
   return [item.title, item.description, item.category, item.validationType]
     .join(' ')
     .toLowerCase();
+}
+const CHECKLIST_STOP_WORDS = new Set([
+  "and",
+  "the",
+  "for",
+  "with",
+  "from",
+  "this",
+  "that",
+  "task",
+  "project",
+  "code",
+  "using",
+  "implement",
+  "implemented",
+]);
+
+function checklistKeywords(item = {}) {
+  return checklistTerms(item)
+    .split(/[^a-z0-9_]+/i)
+    .map((term) => term.trim().toLowerCase())
+    .filter((term) => term.length > 3 && !CHECKLIST_STOP_WORDS.has(term));
+}
+
+function repositorySourceText(staticReview = {}) {
+  const repositorySummary = staticReview.repositorySummary || staticReview.repositoryEvidenceSummary || {};
+  return [
+    repositorySummary.description,
+    repositorySummary.readmeExcerpt,
+    repositorySummary.summaryText,
+    ...(repositorySummary.topLevelItems || []),
+    ...(repositorySummary.sampledSourceFiles || []).map(
+      (file) => `${file.path || ""} ${file.language || ""} ${file.excerpt || ""}`,
+    ),
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function scoreChecklistSourceMatch(checklistItem, staticReview) {
+  const keywords = checklistKeywords(checklistItem);
+  if (keywords.length === 0) return 0;
+
+  const sourceText = repositorySourceText(staticReview);
+  if (!sourceText) return 0;
+
+  const matchedKeywords = keywords.filter((keyword) => sourceText.includes(keyword));
+  return roundReviewScore((matchedKeywords.length / keywords.length) * 100);
 }
 
 function relatedRequirementsForChecklist(repositoryAssessment = {}, item = {}) {
@@ -593,11 +593,13 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
     return { percent, evidence: 'Automatic evidence is shown for assessor confirmation because this checklist row needs human validation.' };
   }
 
+  const sourceMatchScore = scoreChecklistSourceMatch(checklistItem, staticReview);
   const evidenceValues = [
     implementationReview.implementationEvidenceScore,
     implementationReview.functionalCoverageRate,
     implementationReview.actionCoverageRate,
     competencyScore,
+    sourceMatchScore,
   ].map(Number).filter((value) => Number.isFinite(value) && value > 0);
   const implementationPercent = evidenceValues.length > 0
     ? roundReviewScore(evidenceValues.reduce((sum, value) => sum + value, 0) / evidenceValues.length)
@@ -605,17 +607,35 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
 
   return {
     percent: implementationPercent,
-    evidence: `Implementation evidence: ${implementationReview.implementationEvidenceScore || 0}%. Functional coverage: ${implementationReview.functionalCoverageRate || 0}%. Category score: ${competencyScore || 0}%.`,
+    evidence: `Checklist-code match: ${sourceMatchScore}%. Implementation evidence: ${implementationReview.implementationEvidenceScore || 0}%. Functional coverage: ${implementationReview.functionalCoverageRate || 0}%. Category score: ${competencyScore || 0}%.`,
   };
 }
 
-function buildAdminWeightedChecklist({ practicalTask, staticReview, repositoryAssessment, fallbackChecklist }) {
-  const rubric = Array.isArray(practicalTask?.reviewChecklist)
-    ? practicalTask.reviewChecklist.filter((item) => item?.title)
+async function loadAdminChecklistRubric(competency, practicalTask) {
+  const checklistDocument = await Checklist.findOne({
+    competency: competency._id,
+    practicalTaskId: practicalTask._id,
+    isActive: true,
+  }).lean();
+
+  const checklistItems = checklistDocument?.items?.length
+    ? checklistDocument.items
+    : practicalTask.reviewChecklist;
+  const rubric = Array.isArray(checklistItems)
+    ? checklistItems.filter((item) => item?.title)
     : [];
 
-  if (rubric.length === 0) return fallbackChecklist.map(enrichChecklistScore);
+  if (rubric.length === 0) {
+    throw new AppError(
+      "Repository review checklist is not configured for this practical task. Ask an admin to add checklist items in the competency before reviewing a repository.",
+      400,
+    );
+  }
 
+  return rubric;
+}
+
+function buildAdminWeightedChecklist({ rubric, staticReview, repositoryAssessment }) {
   return rubric.map((item, index) => {
     const weight = clampReviewScore(item.weight || 10, 1, 100);
     const maxScore = clampReviewScore(item.maxScore || 10, 1, 100);
@@ -683,17 +703,7 @@ function buildStaticRepositoryReviewFallback({
       pointsPossible: 100,
       passedCount: 0,
       failedCount: 1,
-      checklist: [
-        {
-          key: "githubStaticReview",
-          label: "GitHub repository could be verified and inspected",
-          passed: false,
-          weight: 1,
-          evidence: message,
-          advice:
-            "Check the repository URL, GitHub token access, internet connection, and GitHub API availability.",
-        },
-      ],
+      checklist: [],
       taskKeywords: [],
       matchedTaskKeywords: [],
       taskKeywordMatchRate: 0,
@@ -728,6 +738,8 @@ export async function previewRepositoryTaskReview(payload, user) {
       400,
     );
   }
+
+  const adminChecklistRubric = await loadAdminChecklistRubric(competency, selectedPracticalTask);
 
   const staticReview = await reviewGitHubRepositoryForTask({
     repositoryUrl: payload.githubRepositoryUrl,
@@ -773,12 +785,10 @@ export async function previewRepositoryTaskReview(payload, user) {
     assessorValidationRequired: false,
     errorMessage: error.message,
   }));
-  const executableChecklist = convertRepositoryAssessmentToChecklist(repositoryAssessment);
   const checklist = buildAdminWeightedChecklist({
-    practicalTask: selectedPracticalTask,
+    rubric: adminChecklistRubric,
     staticReview,
     repositoryAssessment,
-    fallbackChecklist: executableChecklist,
   });
   const reviewTotals = calculateRepositoryReviewTotals(checklist);
   const passedCount = checklist.filter((item) => item.passed).length;

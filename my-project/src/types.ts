@@ -42,6 +42,7 @@ export type User = {
   institution?: string
   isActive?: boolean
   mustChangePassword?: boolean
+  authProvider?: 'local' | 'google'
 }
 
 export type ApiResponse<T> = {
