@@ -5,7 +5,19 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
+import {
+  BookOpenCheck,
+  CalendarDays,
+  CheckCircle2,
+  FileText,
+  IdCard,
+  MapPin,
+  Phone,
+  School,
+  UserRound,
+} from "lucide-react";
 import { api } from "../api/client";
 import type { ViewKey } from "../components/layout";
 import {
@@ -40,11 +52,13 @@ import type {
   Assessment,
   Benchmark,
   Competency,
+  PracticalTask,
   DashboardData,
   GraduateProfile,
   NotificationItem,
   Organization,
   Recommendation,
+  LearningResource,
   RepositoryTaskReview,
   Report,
   Role,
@@ -71,40 +85,198 @@ type AsyncState<T> = {
   error: string;
 };
 
-function getHiddenInstructorTaskCheck(review?: RepositoryTaskReview | null) {
-  const check = review?.checklist.find(
-    (item) => item.key === "instructor-task-tests",
-  );
 
-  if (!check) {
-    return {
-      label: "Not available",
-      detail:
-        "No hidden instructor test result was returned for this automatic review.",
-      passed: false,
-    };
+function normalizeSearchValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) return value.map(normalizeSearchValue).join(" ");
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>)
+      .map(normalizeSearchValue)
+      .join(" ");
   }
-
-  if (check.passed) {
-    return {
-      label: "Passed",
-      detail: check.evidence || "Hidden instructor tests passed.",
-      passed: true,
-    };
-  }
-
-  return {
-    label: /not configured/i.test(check.evidence || check.advice || "")
-      ? "Not configured"
-      : "Failed",
-    detail:
-      check.evidence ||
-      check.advice ||
-      "Hidden instructor tests did not pass.",
-    passed: false,
-  };
+  return String(value).toLowerCase();
 }
 
+function matchesSearchTerm(query: string, ...values: unknown[]) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+  return values.some((value) => normalizeSearchValue(value).includes(normalizedQuery));
+}
+
+function uniqueFilterOptions(values: Array<string | undefined | null>) {
+  return Array.from(
+    new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]),
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+function ListToolbar({
+  search,
+  onSearchChange,
+  searchPlaceholder,
+  totalCount,
+  filteredCount,
+  children,
+}: {
+  search: string;
+  onSearchChange: (value: string) => void;
+  searchPlaceholder: string;
+  totalCount: number;
+  filteredCount: number;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="list-toolbar" role="search" aria-label="List search and filters">
+      <TextField
+        label="Search"
+        placeholder={searchPlaceholder}
+        value={search}
+        onChange={(event) => onSearchChange(event.target.value)}
+      />
+      {children && <div className="list-toolbar__filters">{children}</div>}
+      <span className="list-toolbar__count">
+        Showing {filteredCount} of {totalCount}
+      </span>
+    </div>
+  );
+}
+
+
+function resourceLink(resource: LearningResource) {
+  if (resource.url) return resource.url;
+  if (resource.searchQuery) {
+    return `https://www.google.com/search?q=${encodeURIComponent(resource.searchQuery)}`;
+  }
+  return "";
+}
+
+function fallbackResourceLink(resource: string) {
+  const directUrl = resource.match(/https?:\/\/[^\s)]+/i)?.[0];
+  if (directUrl) return directUrl;
+  return `https://www.google.com/search?q=${encodeURIComponent(resource)}`;
+}
+
+function LearningResourceCards({
+  resources = [],
+  fallback = [],
+}: {
+  resources?: LearningResource[];
+  fallback?: string[];
+}) {
+  const hasStructuredResources = resources.length > 0;
+
+  if (!hasStructuredResources && fallback.length === 0) return null;
+
+  return (
+    <div className="learning-resource-list">
+      {hasStructuredResources
+        ? resources.map((resource) => {
+            const href = resourceLink(resource);
+            return (
+              <article
+                className="learning-resource-card"
+                key={`${resource.type}-${resource.title}-${resource.url || resource.searchQuery}`}
+              >
+                <div className="learning-resource-card__header">
+                  <Badge tone="neutral">{resource.type || "resource"}</Badge>
+                  {resource.provider && <span>{resource.provider}</span>}
+                </div>
+                <strong>{resource.title}</strong>
+                {resource.skillArea && (
+                  <span className="compact-muted">{resource.skillArea}</span>
+                )}
+                {resource.reason && <ReadMoreText text={resource.reason} limit={130} />}
+                {href && (
+                  <a className="resource-link" href={href} target="_blank" rel="noreferrer">
+                    {resource.url ? "Open resource" : "Search resource"}
+                  </a>
+                )}
+              </article>
+            );
+          })
+        : fallback.map((resource) => {
+            const href = fallbackResourceLink(resource);
+            return (
+              <article className="learning-resource-card" key={resource}>
+                <div className="learning-resource-card__header">
+                  <Badge tone="neutral">resource</Badge>
+                  <span>Recommended</span>
+                </div>
+                <ReadMoreText text={resource} limit={160} />
+                <a className="resource-link" href={href} target="_blank" rel="noreferrer">
+                  Open resource
+                </a>
+              </article>
+            );
+          })}
+    </div>
+  );
+}
+
+function DetailModal({
+  title,
+  subtitle,
+  children,
+  onClose,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="detail-modal-backdrop" role="presentation" onClick={onClose}>
+      <section
+        aria-modal="true"
+        className="detail-modal"
+        role="dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="detail-modal__header">
+          <div>
+            <span className="eyebrow">Details</span>
+            <h3>{title}</h3>
+            {subtitle && <p>{subtitle}</p>}
+          </div>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+        </header>
+        <div className="detail-modal__body">{children}</div>
+      </section>
+    </div>
+  );
+}
+
+type RepositoryChecklistRow = RepositoryTaskReview["checklist"][number];
+
+function RepositoryChecklistTable({ checklist }: { checklist: RepositoryChecklistRow[] }) {
+  if (!checklist.length) return null;
+
+  return (
+    <div className="repository-checklist-result" aria-label="Repository checklist result">
+      <table>
+        <thead>
+          <tr>
+            <th>Checklist</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {checklist.map((item) => (
+            <tr className={item.passed ? "passed" : "failed"} key={item.key}>
+              <td>
+                <strong>{item.label}</strong>
+              </td>
+              <td>
+                <Badge tone={item.passed ? "success" : "danger"}>
+                  {item.passed ? "Passed" : "Failed"}
+                </Badge>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 function useAsyncData<T>(load: () => Promise<T>, initialData: T) {
   const loadRef = useRef(load);
   const initialDataRef = useRef(initialData);
@@ -597,7 +769,7 @@ function GraduateDashboard({
         </Card>
 
         <Card title="Assessment workflow">
-          <div className="workflow-list">
+          <div className="workflow-list dashboard-workflow-list">
             <WorkflowStep
               label="1"
               text="Select an RTB-aligned ICT competency."
@@ -718,102 +890,272 @@ function GraduateProfileForm({
 }) {
   const [profile, setProfile] = useState<GraduateProfile>(initialProfile);
   const [message, setMessage] = useState("");
+  const {
+    data: organizations,
+    isLoading: isLoadingOrganizations,
+    error: organizationLoadError,
+  } = useAsyncData(() => api.publicOrganizations(), [] as Organization[]);
+  const [formError, setFormError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const profileCompletion = [
+    profile.registrationNumber,
+    profile.phone,
+    profile.gender,
+    profile.district,
+    profile.sector,
+    profile.institution,
+    profile.program,
+    profile.graduationYear,
+    profile.specialization,
+    profile.bio,
+  ].filter((value) => String(value || "").trim().length > 0).length;
+  const completionPercent = Math.round((profileCompletion / 10) * 100);
+  const displayProgram = profile.program || "ICT TVET graduate";
+  const displayInstitution = profile.institution || "Organisation not selected";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
-    const savedProfile = await api.saveProfile(token, profile);
-    setProfile(savedProfile);
-    setMessage("Profile saved successfully.");
+    setFormError("");
+    setIsSaving(true);
+
+    try {
+      const savedProfile = await api.saveProfile(token, profile);
+      setProfile(savedProfile);
+      setMessage("Profile saved successfully.");
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Profile could not be saved. Please try again.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
-    <section className="page-stack">
+    <section className="page-stack profile-page">
       <PageHeader
         title="User Profile"
-        description="Keep academic and contact details ready for assessment reports."
+        description="Manage the academic, contact, organisation, and program details used in competency assessments and reports."
       />
       {error && <Alert type="error">{error}</Alert>}
+      {formError && <Alert type="error">{formError}</Alert>}
+      {organizationLoadError && <Alert type="error">{organizationLoadError}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
-      <Card title="Profile details">
-        <form className="form-grid" onSubmit={handleSubmit}>
-          <TextField
-            label="Registration number"
-            value={profile.registrationNumber || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, registrationNumber: event.target.value })
-            }
-          />
-          <TextField
-            label="Phone"
-            value={profile.phone || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, phone: event.target.value })
-            }
-          />
-          <TextField
-            label="District"
-            value={profile.district || "Kicukiro"}
-            onChange={(event) =>
-              setProfile({ ...profile, district: event.target.value })
-            }
-          />
-          <TextField
-            label="Sector"
-            value={profile.sector || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, sector: event.target.value })
-            }
-          />
-          <TextField
-            label="Institution"
-            value={profile.institution || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, institution: event.target.value })
-            }
-          />
-          <TextField
-            label="Program"
-            value={profile.program || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, program: event.target.value })
-            }
-          />
-          <TextField
-            label="Graduation year"
-            type="number"
-            value={profile.graduationYear || ""}
-            onChange={(event) =>
-              setProfile({
-                ...profile,
-                graduationYear: Number(event.target.value),
-              })
-            }
-          />
-          <TextField
-            label="Specialization"
-            value={profile.specialization || ""}
-            onChange={(event) =>
-              setProfile({ ...profile, specialization: event.target.value })
-            }
-          />
-          <div className="full-span">
-            <TextArea
-              label="Bio"
-              rows={4}
-              value={profile.bio || ""}
+
+      <div className="profile-layout">
+        <aside className="profile-summary-card" aria-label="Profile summary">
+          <div className="profile-avatar-wrap">
+            <div className="profile-avatar" aria-hidden="true">
+              <UserRound size={64} />
+            </div>
+            <Badge tone="role">Graduate profile</Badge>
+          </div>
+
+          <div className="profile-summary-copy">
+            <h2>{displayProgram}</h2>
+            <p>{displayInstitution}</p>
+          </div>
+
+          <div className="profile-progress-panel">
+            <div className="profile-progress-heading">
+              <span>Profile completion</span>
+              <strong>{completionPercent}%</strong>
+            </div>
+            <ProgressBar value={completionPercent} />
+            <p>Complete your profile so assessment reports can identify your organisation, program, and ICT specialization clearly.</p>
+          </div>
+
+          <div className="profile-quick-list">
+            <ProfileFact icon={<IdCard size={17} />} label="Full name" value={profile.registrationNumber} />
+            <ProfileFact icon={<Phone size={17} />} label="Phone" value={profile.phone} />
+            <ProfileFact icon={<MapPin size={17} />} label="Location" value={[profile.sector, profile.district || "Kicukiro"].filter(Boolean).join(", ")} />
+            <ProfileFact icon={<CalendarDays size={17} />} label="Graduation year" value={profile.graduationYear ? String(profile.graduationYear) : ""} />
+          </div>
+        </aside>
+
+        <form className="profile-editor-card" onSubmit={handleSubmit}>
+          <div className="profile-editor-header">
+            <div>
+              <span>Edit profile details</span>
+              <h2>Academic and contact information</h2>
+              <p>These details appear in your assessment history, gap reports, and organisation review records.</p>
+            </div>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save Profile"}
+            </Button>
+          </div>
+
+          <div className="profile-detail-strip">
+            <ProfileDetail icon={<School size={18} />} label="Organisation" value={profile.institution} />
+            <ProfileDetail icon={<BookOpenCheck size={18} />} label="Program" value={profile.program} />
+            <ProfileDetail icon={<FileText size={18} />} label="Specialization" value={profile.specialization} />
+          </div>
+
+          <div className="profile-form-grid">
+            <TextField
+              label="Full name"
+              value={profile.registrationNumber || ""}
               onChange={(event) =>
-                setProfile({ ...profile, bio: event.target.value })
+                setProfile({ ...profile, registrationNumber: event.target.value })
               }
             />
+            <TextField
+              label="Phone"
+              value={profile.phone || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, phone: event.target.value })
+              }
+            />
+            <SelectField
+              label="Gender"
+              value={profile.gender || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, gender: event.target.value })
+              }
+            >
+              <option value="">Select gender</option>
+              <option value="Female">Female</option>
+              <option value="Male">Male</option>
+              <option value="Prefer not to say">Prefer not to say</option>
+            </SelectField>
+            <TextField
+              label="District"
+              value={profile.district || "Kicukiro"}
+              onChange={(event) =>
+                setProfile({ ...profile, district: event.target.value })
+              }
+            />
+            <TextField
+              label="Sector"
+              value={profile.sector || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, sector: event.target.value })
+              }
+            />
+            <SelectField
+              label="Organisation"
+              value={profile.institution || ""}
+              disabled={isLoadingOrganizations}
+              onChange={(event) =>
+                setProfile({ ...profile, institution: event.target.value })
+              }
+            >
+              <option value="">
+                {isLoadingOrganizations
+                  ? "Loading organisations..."
+                  : "Select organisation"}
+              </option>
+              {organizations
+                .filter((organization) => organization.status !== "inactive")
+                .map((organization) => (
+                  <option key={organization._id} value={organization.name}>
+                    {organization.name}
+                  </option>
+                ))}
+              {profile.institution &&
+                !organizations.some(
+                  (organization) => organization.name === profile.institution,
+                ) && (
+                  <option value={profile.institution}>{profile.institution}</option>
+                )}
+            </SelectField>
+            <TextField
+              label="Program"
+              value={profile.program || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, program: event.target.value })
+              }
+            />
+            <TextField
+              label="Graduation year"
+              type="number"
+              min="2000"
+              max="2100"
+              value={profile.graduationYear || ""}
+              onChange={(event) =>
+                setProfile({
+                  ...profile,
+                  graduationYear: event.target.value
+                    ? Number(event.target.value)
+                    : undefined,
+                })
+              }
+            />
+            <TextField
+              label="Specialization"
+              value={profile.specialization || ""}
+              onChange={(event) =>
+                setProfile({ ...profile, specialization: event.target.value })
+              }
+            />
+            <div className="full-span">
+              <TextArea
+                label="Bio"
+                rows={5}
+                value={profile.bio || ""}
+                placeholder="Briefly describe your ICT interests, practical experience, and career goal."
+                onChange={(event) =>
+                  setProfile({ ...profile, bio: event.target.value })
+                }
+              />
+            </div>
           </div>
-          <Button type="submit">Save Profile</Button>
+
+          <div className="profile-save-bar">
+            <p>Review your details before saving. Accurate profile information improves report clarity.</p>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
         </form>
-      </Card>
+      </div>
     </section>
   );
 }
 
+function ProfileFact({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value?: string;
+}) {
+  return (
+    <div className="profile-fact">
+      <span aria-hidden="true">{icon}</span>
+      <div>
+        <strong>{label}</strong>
+        <p>{value || "Not added yet"}</p>
+      </div>
+    </div>
+  );
+}
+
+function ProfileDetail({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value?: string;
+}) {
+  return (
+    <div className="profile-detail-card">
+      <span aria-hidden="true">{icon}</span>
+      <div>
+        <strong>{label}</strong>
+        <p>{value || "Not added yet"}</p>
+      </div>
+    </div>
+  );
+}
 export function SubmitAssessmentPage({ token }: { token: string }) {
   const { data: competencies, isLoading } = useAsyncData(
     () => api.competencies(token),
@@ -821,6 +1163,8 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   );
   const [currentStep, setCurrentStep] = useState(1);
   const [competency, setCompetency] = useState("");
+  const [assessmentCompetencySearch, setAssessmentCompetencySearch] = useState("");
+  const [assessmentCategoryFilter, setAssessmentCategoryFilter] = useState("all");
   const [practicalTaskId, setPracticalTaskId] = useState("");
   const [practicalTask, setPracticalTask] = useState("");
   const [githubRepositoryUrl, setGithubRepositoryUrl] = useState("");
@@ -839,9 +1183,42 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const [isReviewingRepository, setIsReviewingRepository] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const assessmentCategoryOptions = useMemo(
+    () => uniqueFilterOptions(competencies.map((item) => item.category)),
+    [competencies],
+  );
+  const filteredAssessmentCompetencies = useMemo(
+    () =>
+      competencies.filter((item) => {
+        const matchesCategory =
+          assessmentCategoryFilter === "all" ||
+          item.category === assessmentCategoryFilter;
+        return (
+          matchesCategory &&
+          matchesSearchTerm(
+            assessmentCompetencySearch,
+            item.code,
+            item.title,
+            item.category,
+            item.description,
+            item.expectedEvidence,
+            item.practicalTasks,
+            item.theoryQuestions,
+          )
+        );
+      }),
+    [competencies, assessmentCategoryFilter, assessmentCompetencySearch],
+  );
   const selectedCompetency = competencies.find(
     (item) => item._id === competency,
   );
+  const displayedAssessmentCompetencies =
+    selectedCompetency &&
+    !filteredAssessmentCompetencies.some((item) =>
+      item._id === selectedCompetency._id,
+    )
+      ? [selectedCompetency, ...filteredAssessmentCompetencies]
+      : filteredAssessmentCompetencies;
   const availableTasks = selectedCompetency?.practicalTasks || [];
   const selectedTask =
     availableTasks.find((task) => task._id === practicalTaskId) ||
@@ -854,9 +1231,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     repositoryTaskReview.practicalTaskId === (selectedTask?._id || "")
       ? repositoryTaskReview.taskReview
       : null;
-  const hiddenInstructorTaskCheck = getHiddenInstructorTaskCheck(
-    activeRepositoryTaskReview,
-  );
   const theoryQuestions = selectedCompetency?.theoryQuestions || [];
   const answeredTheoryCount = theoryQuestions.filter(
     (question) => (theoryAnswers[question._id] || "").trim().length > 0,
@@ -876,6 +1250,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const canReview = practicalEvidenceReady && requiredTheoryAnswered;
   const canSubmit =
     Boolean(competency) && practicalEvidenceReady && requiredTheoryAnswered;
+  const competencyStepDone = Boolean(selectedCompetency);
+  const evidenceStepDone = practicalEvidenceReady && requiredTheoryAnswered;
+  const reviewStepDone = canSubmit;
 
   async function handleEvidenceFiles(files: FileList | null) {
     if (!files) return;
@@ -956,6 +1333,31 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     }
   }
 
+  function resetAssessmentEvidence() {
+    setPracticalTask("");
+    setGithubRepositoryUrl("");
+    setEvidenceFiles([]);
+    setPracticalTaskId("");
+    setTheoryAnswers({});
+    setRepositoryTaskReview(null);
+  }
+
+  function handleSelectCompetency(nextCompetencyId: string) {
+    if (nextCompetencyId === competency) return;
+    resetAssessmentEvidence();
+    setCompetency(nextCompetencyId);
+    setError("");
+    setMessage("");
+  }
+
+  function handleCancelSelectedCompetency() {
+    resetAssessmentEvidence();
+    setCompetency("");
+    setCurrentStep(1);
+    setError("");
+    setMessage("");
+  }
+
   async function handleRepositoryTaskReview() {
     setError("");
     setMessage("");
@@ -1015,75 +1417,146 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
             <div className="stepper">
               <StepItem
                 active={currentStep === 1}
-                done={currentStep > 1}
+                done={competencyStepDone}
                 label="1"
                 text="Choose competency"
               />
               <StepItem
                 active={currentStep === 2}
-                done={currentStep > 2}
+                done={evidenceStepDone}
                 label="2"
                 text="Add evidence"
               />
               <StepItem
                 active={currentStep === 3}
-                done={currentStep > 3}
+                done={reviewStepDone}
                 label="3"
                 text="Review & submit"
               />
             </div>
           </Card>
 
-          <Card title="Scoring model">
-            <div className="score-weight-list">
-              <span>
-                <strong>70%</strong> Practical/GitHub project
-              </span>
-              <span>
-                <strong>30%</strong> Quiz / theory
-              </span>
-            </div>
-          </Card>
-        </aside>
-
-        <form className="assessment-panel" onSubmit={handleSubmit}>
           {currentStep === 1 && (
             <Card title="Choose the competency you want assessed">
               <div className="form-stack">
-                <SelectField
-                  label="Competency"
-                  value={competency}
-                  onChange={(event) => setCompetency(event.target.value)}
-                  required
+                <ListToolbar
+                  search={assessmentCompetencySearch}
+                  onSearchChange={setAssessmentCompetencySearch}
+                  searchPlaceholder="Search code, title, category, evidence..."
+                  totalCount={competencies.length}
+                  filteredCount={filteredAssessmentCompetencies.length}
                 >
-                  <option value="">Select competency</option>
-                  {competencies.map((item) => (
-                    <option key={item._id} value={item._id}>
-                      {item.code} - {item.title}
-                    </option>
-                  ))}
-                </SelectField>
+                  <SelectField
+                    label="Category filter"
+                    value={assessmentCategoryFilter}
+                    onChange={(event) =>
+                      setAssessmentCategoryFilter(event.target.value)
+                    }
+                  >
+                    <option value="all">All categories</option>
+                    {assessmentCategoryOptions.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </SelectField>
+                </ListToolbar>
 
-                {selectedCompetency ? (
-                  <div className="competency-summary">
-                    <div>
-                      <span>{selectedCompetency.code}</span>
+                {displayedAssessmentCompetencies.length === 0 ? (
+                  <EmptyState message="No competencies match your search or filter." />
+                ) : (
+                  <div className="table-wrap assessment-competency-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Date created</th>
+                          <th>Category</th>
+                          <th>Code</th>
+                          <th>Title</th>
+                          <th>Assessment content</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayedAssessmentCompetencies.map((item) => {
+                          const createdAt = (item as Competency & { createdAt?: string }).createdAt;
+                          const isSelected = competency === item._id;
+                          const practicalCount = item.practicalTasks?.length || 0;
+                          const theoryCount = item.theoryQuestions?.length || 0;
+
+                          return (
+                            <tr
+                              className={isSelected ? "selected-row" : ""}
+                              key={item._id}
+                            >
+                              <td>{formatDate(createdAt)}</td>
+                              <td>{item.category}</td>
+                              <td>
+                                <strong>{item.code}</strong>
+                              </td>
+                              <td>
+                                <div className="competency-title-cell">
+                                  <strong>{item.title}</strong>
+                                  <ReadMoreText
+                                    text={item.description}
+                                    emptyText="No description provided."
+                                    limit={90}
+                                  />
+                                </div>
+                              </td>
+                              <td>
+                                {practicalCount} GitHub task(s), {theoryCount} theory question(s)
+                              </td>
+                              <td>
+                                <Button
+                                  type="button"
+                                  variant={isSelected ? "danger" : "primary"}
+                                  onClick={() =>
+                                    isSelected
+                                      ? handleCancelSelectedCompetency()
+                                      : handleSelectCompetency(item._id)
+                                  }
+                                >
+                                  {isSelected ? "Cancel" : "Select"}
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {selectedCompetency && (
+                  <div className="competency-summary selected-competency-summary">
+                    <div className="selected-competency-title">
+                      <span>Title</span>
                       <strong>{selectedCompetency.title}</strong>
-                      <p>
-                        {selectedCompetency.description ||
-                          "No description provided."}
-                      </p>
                     </div>
-                    <div>
+                    <div className="selected-competency-evidence">
+                      <span>Expected evidence</span>
+                      <ReadMoreText
+                        text={selectedCompetency.expectedEvidence}
+                        emptyText="Expected evidence will be confirmed from the practical task instructions."
+                        limit={140}
+                      />
+                    </div>
+                    <div className="selected-competency-package">
                       <span>Assessment package</span>
                       <p>
                         {availableTasks.length} practical task(s) and{" "}
                         {theoryQuestions.length} theory question(s).
                       </p>
                     </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleCancelSelectedCompetency}
+                    >
+                      Change competency
+                    </Button>
                   </div>
-                ) : (
-                  <EmptyState message="Select a competency to see the expected evidence and start your assessment." />
                 )}
 
                 <div className="button-row">
@@ -1097,6 +1570,20 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
               </div>
             </Card>
           )}
+          <Card title="Scoring model">
+            <div className="score-weight-list">
+              <span>
+                <strong>70%</strong> Practical/GitHub project
+              </span>
+              <span>
+                <strong>30%</strong> Quiz / theory
+              </span>
+            </div>
+          </Card>
+        </aside>
+
+        {currentStep > 1 && (
+          <form className="assessment-panel" onSubmit={handleSubmit}>
 
           {currentStep === 2 && (
             <Card title="Complete the practical test and theory questions">
@@ -1211,158 +1698,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                             {activeRepositoryTaskReview.checklist.length} passed
                           </span>
                         </div>
-                        <div className="result-grid">
-                          <div
-                            className={`task-check ${
-                              hiddenInstructorTaskCheck.passed
-                                ? "passed"
-                                : "failed"
-                            }`}
-                          >
-                            <span>{hiddenInstructorTaskCheck.label}</span>
-                            <div>
-                              <strong>Hidden expected output test</strong>
-                              <ReadMoreText
-                                text={hiddenInstructorTaskCheck.detail}
-                                limit={150}
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <small>Correctness proof</small>
-                            <strong>
-                              {hiddenInstructorTaskCheck.passed
-                                ? "Expected output passed"
-                                : "Expected output failed"}
-                            </strong>
-                          </div>
-                        </div>
-                        {activeRepositoryTaskReview.implementationReview && (
-                          <div className="assessor-note">
-                            <strong>Implementation evidence</strong>
-                            {activeRepositoryTaskReview.proofLevel && (
-                              <p>
-                                Proof level:{" "}
-                                <strong>
-                                  {activeRepositoryTaskReview.proofLevel}
-                                </strong>
-                              </p>
-                            )}
-                            {activeRepositoryTaskReview.proofSummary && (
-                              <ReadMoreText
-                                text={activeRepositoryTaskReview.proofSummary}
-                                limit={180}
-                              />
-                            )}
-                            <p>
-                              Source files reviewed:{" "}
-                              {
-                                activeRepositoryTaskReview.implementationReview
-                                  .sourceFilesReviewed
-                              }
-                              . Implementation evidence score:{" "}
-                              {formatPercent(
-                                activeRepositoryTaskReview.implementationReview
-                                  .implementationEvidenceScore || 0,
-                              )}
-                              . Functional coverage:{" "}
-                              {formatPercent(
-                                activeRepositoryTaskReview.implementationReview
-                                  .functionalCoverageRate || 0,
-                              )}
-                              .
-                            </p>
-                            <p>
-                              Detected:{" "}
-                              {activeRepositoryTaskReview.implementationReview
-                                .detectedFunctionalAreas?.length
-                                ? activeRepositoryTaskReview.implementationReview.detectedFunctionalAreas.join(
-                                    ", ",
-                                  )
-                                : "No strong implementation signals detected."}
-                            </p>
-                            {activeRepositoryTaskReview.implementationReview
-                              .missingFunctionalAreas?.length ? (
-                              <p>
-                                Missing:{" "}
-                                {activeRepositoryTaskReview.implementationReview.missingFunctionalAreas.join(
-                                  ", ",
-                                )}
-                              </p>
-                            ) : null}
-                          </div>
-                        )}
-                        <div className="task-checklist">
-                          {activeRepositoryTaskReview.checklist.map((item) => (
-                            <div
-                              className={`task-check ${
-                                item.passed ? "passed" : "failed"
-                              }`}
-                              key={item.key}
-                            >
-                              <span>{item.passed ? "Passed" : "Failed"}</span>
-                              <div>
-                                <strong>{item.label}</strong>
-                                <ReadMoreText text={item.evidence} limit={140} />
-                                {!item.passed && item.advice && (
-                                  <ReadMoreText
-                                    className="text-sm"
-                                    text={item.advice}
-                                    limit={120}
-                                  />
-                                )}
-                              </div>
-                              <em>{item.weight} pts</em>
-                            </div>
-                          ))}
-                        </div>
-                        {activeRepositoryTaskReview.competencyScores && (
-                          <div className="assessor-note">
-                            <strong>Competency score breakdown</strong>
-                            <div className="result-grid">
-                              {Object.entries(
-                                activeRepositoryTaskReview.competencyScores,
-                              ).map(([key, value]) => (
-                                <div key={key}>
-                                  <small>{key}</small>
-                                  <strong>{formatPercent(value || 0)}</strong>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {activeRepositoryTaskReview.recommendations?.length ? (
-                          <div className="assessor-note warning-note">
-                            <strong>Repository recommendations</strong>
-                            <ul>
-                              {activeRepositoryTaskReview.recommendations.map(
-                                (item) => (
-                                  <li key={item}>
-                                    <ReadMoreText text={item} limit={150} />
-                                  </li>
-                                ),
-                              )}
-                            </ul>
-                          </div>
-                        ) : null}
-                        {activeRepositoryTaskReview.feedback?.length ? (
-                          <div className="assessor-note warning-note">
-                            <strong>Improve before submission</strong>
-                            <ul>
-                              {activeRepositoryTaskReview.feedback.map(
-                                (item) => (
-                                  <li key={item}>
-                                    <ReadMoreText text={item} limit={150} />
-                                  </li>
-                                ),
-                              )}
-                            </ul>
-                          </div>
-                        ) : (
-                          <Alert type="success">
-                            All repository checklist items passed for this task.
-                          </Alert>
-                        )}
+                        <RepositoryChecklistTable checklist={activeRepositoryTaskReview.checklist} />
                       </div>
                     )}
                   </div>
@@ -1559,7 +1895,8 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
               </div>
             </Card>
           )}
-        </form>
+          </form>
+        )}
       </div>
     </section>
   );
@@ -1580,8 +1917,14 @@ function StepItem({
     <div
       className={`step-item ${active ? "active" : ""} ${done ? "done" : ""}`}
     >
-      <span>{done ? "Done" : label}</span>
+      <span
+        className="step-marker"
+        aria-label={done ? `${text} completed` : `${text} step`}
+      >
+        {done ? <CheckCircle2 size={18} aria-hidden="true" /> : label}
+      </span>
       <strong>{text}</strong>
+      {done && <em>Done</em>}
     </div>
   );
 }
@@ -2040,10 +2383,12 @@ function ReviewAssessmentPanel({
             .map((item) => item.trim())
             .filter(Boolean),
           resources: draftPreview.recommendation.resources,
+          learningResources: draftPreview.recommendation.learningResources || [],
           geminiDraft: {
             message: draftPreview.recommendation.message,
             actionItems: draftPreview.recommendation.actionItems,
             resources: draftPreview.recommendation.resources,
+            learningResources: draftPreview.recommendation.learningResources || [],
             priority: draftPreview.recommendation.priority,
             provider: draftPreview.recommendation.provider,
             model: draftPreview.recommendation.model,
@@ -2303,6 +2648,7 @@ function ReviewAssessmentPanel({
                         ) : null}
                       </div>
                     )}
+                    <RepositoryChecklistTable checklist={assessment.evidence.repositorySummary.taskReview.checklist} />
                     <div className="task-checklist">
                       {assessment.evidence.repositorySummary.taskReview.checklist.map(
                         (item) => (
@@ -2526,14 +2872,14 @@ function ReviewAssessmentPanel({
                     </ul>
                   </div>
                 )}
-                {draftPreview.recommendation.resources.length > 0 && (
+                {((draftPreview.recommendation.learningResources?.length || 0) > 0 ||
+                  draftPreview.recommendation.resources.length > 0) && (
                   <div className="gemini-list-block">
-                    <strong>Suggested resources</strong>
-                    <ul>
-                      {draftPreview.recommendation.resources.map((resource) => (
-                        <li key={resource}>{resource}</li>
-                      ))}
-                    </ul>
+                    <strong>Suggested learning resources</strong>
+                    <LearningResourceCards
+                      resources={draftPreview.recommendation.learningResources || []}
+                      fallback={draftPreview.recommendation.resources}
+                    />
                   </div>
                 )}
               </div>
@@ -2663,6 +3009,35 @@ export function GapResultsPage({ token }: { token: string }) {
     () => api.recommendations(token),
     [] as Recommendation[],
   );
+  const [gapSearch, setGapSearch] = useState("");
+  const [gapLevelFilter, setGapLevelFilter] = useState("all");
+  const gapLevelOptions = useMemo(
+    () => uniqueFilterOptions(data.map((assessment) => assessment.gapLevel)),
+    [data],
+  );
+  const filteredGapResults = useMemo(
+    () =>
+      data.filter((assessment) => {
+        const recommendation = recommendations.find(
+          (item) => item.competency._id === assessment.competency._id,
+        );
+        const matchesGapLevel =
+          gapLevelFilter === "all" || assessment.gapLevel === gapLevelFilter;
+        return (
+          matchesGapLevel &&
+          matchesSearchTerm(
+            gapSearch,
+            assessment.competency,
+            assessment.graduate,
+            assessment.gapLevel,
+            assessment.assessorComment,
+            assessment.evidence.repositorySummary?.summaryText,
+            recommendation?.message,
+          )
+        );
+      }),
+    [data, gapLevelFilter, gapSearch, recommendations],
+  );
 
   if (isLoading) return <LoadingState message="Loading gap results..." />;
 
@@ -2685,7 +3060,7 @@ export function GapResultsPage({ token }: { token: string }) {
     <section className="page-stack">
       <PageHeader
         title="Gap Results"
-        description="Each result connects the graduate score, RTB benchmark, gap level, and assessor recommendation."
+        description="Each result connects the graduate score, RTB benchmark, and gap level."
         onRefresh={refresh}
       />
       {error && <Alert type="error">{error}</Alert>}
@@ -2715,149 +3090,76 @@ export function GapResultsPage({ token }: { token: string }) {
               value={highGapCount}
             />
           </div>
-          <div className="result-page-list">
-          {data.map((assessment) => {
-            const recommendation = recommendations.find(
-              (item) => item.competency._id === assessment.competency._id,
-            );
+          <ListToolbar
+            search={gapSearch}
+            onSearchChange={setGapSearch}
+            searchPlaceholder="Search competency, graduate, gap level..."
+            totalCount={data.length}
+            filteredCount={filteredGapResults.length}
+          >
+            <SelectField
+              label="Gap level"
+              value={gapLevelFilter}
+              onChange={(event) => setGapLevelFilter(event.target.value)}
+            >
+              <option value="all">All gap levels</option>
+              {gapLevelOptions.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </SelectField>
+          </ListToolbar>
+          {filteredGapResults.length === 0 ? (
+            <EmptyState message="No gap results match your search or filter." />
+          ) : (
+            <div className="table-wrap page-data-table-wrap">
+              <table className="page-data-table gap-results-table compact-results-table">
+                <thead>
+                  <tr>
+                    <th>Competency</th>
+                    <th>Scores</th>
+                    <th>Skill gap score</th>
+                    <th>Benchmark</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredGapResults.map((assessment) => (
+                    <tr key={assessment._id}>
+                      <td>
+                        <div className="table-primary-cell">
+                          <strong>{assessment.competency.title}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="score-stack">
+                          <strong>{formatPercent(assessment.scores.finalScore)}</strong>
+                          <ProgressBar value={assessment.scores.finalScore} />
 
-            return (
-              <article className="result-card result-page-card" key={assessment._id}>
-                <header className="result-page-card__header">
-                  <div>
-                    <span className="eyebrow">Competency result</span>
-                    <h3>{assessment.competency.title}</h3>
-                  </div>
-                  <div className="result-page-card__status">
-                    <GapBadge level={assessment.gapLevel} />
-                    <span>Reviewed {formatDate(assessment.reviewedAt)}</span>
-                  </div>
-                </header>
-
-                <div className="result-score-panel">
-                  <div>
-                    <span>Graduate score</span>
-                    <strong>{formatPercent(assessment.scores.finalScore)}</strong>
-                  </div>
-                  <div>
-                    <span>RTB benchmark</span>
-                    <strong>{formatPercent(assessment.benchmarkScore)}</strong>
-                  </div>
-                  <div>
-                    <span>Skill gap</span>
-                    <strong>{formatPercent(assessment.skillGap)}</strong>
-                  </div>
-                </div>
-
-                <ProgressBar value={assessment.scores.finalScore} />
-
-                <div className="result-detail-grid">
-                  <section className="assessor-note">
-                    <div className="section-heading">
-                      <strong>Score breakdown</strong>
-                      <span>70% practical, 30% theory</span>
-                    </div>
-                    <div className="result-metrics">
-                      <span>
-                        GitHub task:{" "}
-                        {formatPercent(assessment.scores.practicalTaskScore)}
-                      </span>
-                      <span>
-                        Theory: {formatPercent(assessment.scores.quizScore)}
-                      </span>
-                    </div>
-                  </section>
-
-                  <section className="assessor-note">
-                    <div className="section-heading">
-                      <strong>Evidence verification</strong>
-                      <span>{assessment.evidenceVerification ? "Recorded" : "Pending"}</span>
-                    </div>
-                    <p>
-                      {assessment.evidenceVerification
-                        ? [
-                            assessment.evidenceVerification.githubReviewed
-                              ? "GitHub reviewed"
-                              : "",
-                            assessment.evidenceVerification
-                              .practicalEvidenceReviewed
-                              ? "Practical reviewed"
-                              : "",
-                            assessment.evidenceVerification.theoryReviewed
-                              ? "Theory reviewed"
-                              : "",
-                          ]
-                            .filter(Boolean)
-                            .join(", ") || "Verification checks not recorded."
-                        : "Verification checks not recorded."}
-                    </p>
-                    {assessment.evidenceVerification?.authenticityNotes && (
-                      <ReadMoreText
-                        text={assessment.evidenceVerification.authenticityNotes}
-                        limit={160}
-                      />
-                    )}
-                  </section>
-
-                  <section className="assessor-note">
-                    <strong>Assessor comment</strong>
-                    <ReadMoreText
-                      text={assessment.assessorComment}
-                      emptyText="No assessor comment provided."
-                      limit={160}
-                    />
-                  </section>
-
-                  <section className="assessor-note">
-                    <strong>Repository summary</strong>
-                    <ReadMoreText
-                      text={assessment.evidence.repositorySummary?.summaryText}
-                      emptyText="No GitHub repository summary was stored for this assessment."
-                      limit={190}
-                    />
-                    {assessment.evidence.repositorySummary && (
-                      <div className="result-metrics">
-                        <span>
-                          Repository quality:{" "}
-                          {formatPercent(
-                            assessment.evidence.repositorySummary
-                              .codeQualityScore || 0,
-                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <strong className="table-number-cell">
+                          {formatPercent(assessment.skillGap)}
+                        </strong>
+                      </td>
+                      <td>
+                        <strong className="table-number-cell">
+                          {formatPercent(assessment.benchmarkScore)}
+                        </strong>
+                      </td>
+                      <td>
+                        <span className="table-date-text">
+                          {formatDate(assessment.reviewedAt || assessment.createdAt)}
                         </span>
-                        <span>
-                          Evidence completeness:{" "}
-                          {formatPercent(
-                            assessment.evidence.repositorySummary
-                              .evidenceCompletenessScore || 0,
-                          )}
-                        </span>
-                      </div>
-                    )}
-                  </section>
-
-                  <section className="assessor-note result-recommendation-panel">
-                    <strong>Recommendation</strong>
-                    <ReadMoreText
-                      text={recommendation?.message}
-                      emptyText="Recommendation will appear after the assessor adds improvement guidance."
-                      limit={180}
-                    />
-                    {recommendation &&
-                      recommendation.actionItems.length > 0 && (
-                        <ul>
-                          {recommendation.actionItems.map((item) => (
-                            <li key={item}>
-                              <ReadMoreText text={item} limit={150} />
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                  </section>
-                </div>
-              </article>
-            );
-          })}
-          </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </section>
@@ -2868,6 +3170,37 @@ export function RecommendationsPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.recommendations(token),
     [] as Recommendation[],
+  );
+  const [recommendationSearch, setRecommendationSearch] = useState("");
+  const [recommendationPriorityFilter, setRecommendationPriorityFilter] = useState("all");
+  const [activeRecommendation, setActiveRecommendation] = useState<Recommendation | null>(null);
+  const [activeResources, setActiveResources] = useState<Recommendation | null>(null);
+  const recommendationPriorityOptions = useMemo(
+    () => uniqueFilterOptions(data.map((recommendation) => recommendation.priority)),
+    [data],
+  );
+  const filteredRecommendations = useMemo(
+    () =>
+      data.filter((recommendation) => {
+        const matchesPriority =
+          recommendationPriorityFilter === "all" ||
+          recommendation.priority === recommendationPriorityFilter;
+        return (
+          matchesPriority &&
+          matchesSearchTerm(
+            recommendationSearch,
+            recommendation.competency,
+            recommendation.message,
+            recommendation.draftMessage,
+            recommendation.actionItems,
+            recommendation.resources,
+            recommendation.learningResources,
+            recommendation.gapLevel,
+            recommendation.priority,
+          )
+        );
+      }),
+    [data, recommendationPriorityFilter, recommendationSearch],
   );
 
   if (isLoading) return <LoadingState message="Loading recommendations..." />;
@@ -2919,78 +3252,131 @@ export function RecommendationsPage({ token }: { token: string }) {
             />
           </div>
 
-          <div className="recommendation-page-grid">
-          {data.map((recommendation) => (
-            <article className="recommendation recommendation-page-card" key={recommendation._id}>
-              <header className="recommendation-page-card__header">
-                <div>
-                  <span className="eyebrow">Improvement guidance</span>
-                  <h3>{recommendation.competency.title}</h3>
-                </div>
-                <div className="recommendation-page-card__badges">
-                  <GapBadge level={recommendation.gapLevel} />
-                  <Badge tone={recommendation.priority === "high" ? "danger" : recommendation.priority === "medium" ? "warning" : "success"}>
-                    {recommendation.priority} priority
-                  </Badge>
-                </div>
-              </header>
-
-              <section className="recommendation-message-panel">
-                <strong>Approved recommendation</strong>
-                <ReadMoreText text={recommendation.message} limit={240} />
-                {recommendation.draftMessage &&
-                  recommendation.draftMessage !== recommendation.message && (
-                    <div className="recommendation-draft-panel">
-                      <strong>Gemini draft reference</strong>
-                      <ReadMoreText
-                        text={recommendation.draftMessage}
-                        limit={220}
-                      />
-                    </div>
-                  )}
-              </section>
-
-              <div className="recommendation-support-grid">
-                <section className="assessor-note">
-                  <div className="section-heading">
-                    <strong>Action plan</strong>
-                    <span>{recommendation.actionItems.length} item(s)</span>
-                  </div>
-                {recommendation.actionItems.length > 0 && (
-                  <ul>
-                    {recommendation.actionItems.map((item) => (
-                      <li key={item}>
-                        <ReadMoreText text={item} limit={150} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {recommendation.actionItems.length === 0 && (
-                  <p>No action items were added.</p>
-                )}
-                </section>
-
-                <section className="assessor-note">
-                  <div className="section-heading">
-                    <strong>Recommendation details</strong>
-                    <span>{recommendation.isApproved ? "Approved" : "Draft"}</span>
-                  </div>
-                  <div className="result-metrics">
-                    <span>Provider: {recommendation.aiProvider || "Gemini"}</span>
-                    <span>Model: {recommendation.aiModel || "N/A"}</span>
-                    <span>
-                      Approved:{" "}
-                      {recommendation.approvedAt
-                        ? formatDate(recommendation.approvedAt)
-                        : "Not recorded"}
-                    </span>
-                  </div>
-                </section>
-              </div>
-            </article>
-          ))}
-          </div>
+          <ListToolbar
+            search={recommendationSearch}
+            onSearchChange={setRecommendationSearch}
+            searchPlaceholder="Search competency, recommendation, resources..."
+            totalCount={data.length}
+            filteredCount={filteredRecommendations.length}
+          >
+            <SelectField
+              label="Priority"
+              value={recommendationPriorityFilter}
+              onChange={(event) => setRecommendationPriorityFilter(event.target.value)}
+            >
+              <option value="all">All priorities</option>
+              {recommendationPriorityOptions.map((priority) => (
+                <option key={priority} value={priority}>
+                  {priority}
+                </option>
+              ))}
+            </SelectField>
+          </ListToolbar>
+          {filteredRecommendations.length === 0 ? (
+            <EmptyState message="No recommendations match your search or filter." />
+          ) : (
+            <div className="table-wrap page-data-table-wrap">
+              <table className="page-data-table recommendations-table compact-recommendations-table">
+                <thead>
+                  <tr>
+                    <th>Competency</th>
+                    <th>Recommendation</th>
+                    <th>Date</th>
+                    <th>Resource</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRecommendations.map((recommendation) => (
+                    <tr key={recommendation._id}>
+                      <td>
+                        <div className="table-primary-cell">
+                          <strong>{recommendation.competency.title}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setActiveRecommendation(recommendation)}
+                        >
+                          View recommendation
+                        </Button>
+                      </td>
+                      <td>
+                        <span className="table-date-pill">
+                          {recommendation.approvedAt
+                            ? formatDate(recommendation.approvedAt)
+                            : "Not recorded"}
+                        </span>
+                      </td>
+                      <td>
+                        <Button
+                          onClick={() => setActiveResources(recommendation)}
+                        >
+                          View resources
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
+      )}
+
+      {activeRecommendation && (
+        <DetailModal
+          title={activeRecommendation.competency.title}
+          subtitle="Approved recommendation and action plan"
+          onClose={() => setActiveRecommendation(null)}
+        >
+          <section className="detail-modal-section">
+            <strong>Recommendation</strong>
+            <ReadMoreText text={activeRecommendation.message} limit={900} />
+          </section>
+          {activeRecommendation.draftMessage &&
+            activeRecommendation.draftMessage !== activeRecommendation.message && (
+              <section className="detail-modal-section">
+                <strong>Gemini draft reference</strong>
+                <ReadMoreText text={activeRecommendation.draftMessage} limit={900} />
+              </section>
+            )}
+          <section className="detail-modal-section">
+            <strong>Action plan</strong>
+            {activeRecommendation.actionItems.length > 0 ? (
+              <ul>
+                {activeRecommendation.actionItems.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>No action items were added.</p>
+            )}
+          </section>
+          <section className="detail-modal-section detail-meta-grid">
+            <span>Provider: {activeRecommendation.aiProvider || "Gemini"}</span>
+            <span>Model: {activeRecommendation.aiModel || "N/A"}</span>
+            <span>
+              Status: {activeRecommendation.isApproved ? "Approved" : "Draft"}
+            </span>
+          </section>
+        </DetailModal>
+      )}
+
+      {activeResources && (
+        <DetailModal
+          title={activeResources.competency.title}
+          subtitle="Learning resources to close the measured skill gap"
+          onClose={() => setActiveResources(null)}
+        >
+          <LearningResourceCards
+            resources={activeResources.learningResources || []}
+            fallback={activeResources.resources}
+          />
+          {(activeResources.learningResources?.length || activeResources.resources.length) === 0 && (
+            <p>No learning resources were added.</p>
+          )}
+        </DetailModal>
       )}
     </section>
   );
@@ -3003,6 +3389,34 @@ export function ReportsPage({ token, role }: PageProps) {
   );
   const [graduateId, setGraduateId] = useState("");
   const [message, setMessage] = useState("");
+  const [reportSearch, setReportSearch] = useState("");
+  const [reportGapFilter, setReportGapFilter] = useState("all");
+  const [activeReport, setActiveReport] = useState<Report | null>(null);
+  const reportGapOptions = useMemo(
+    () => uniqueFilterOptions(data.map((report) => report.overallGapLevel)),
+    [data],
+  );
+  const filteredReports = useMemo(
+    () =>
+      data.filter((report) => {
+        const matchesGap =
+          reportGapFilter === "all" || report.overallGapLevel === reportGapFilter;
+        return (
+          matchesGap &&
+          matchesSearchTerm(
+            reportSearch,
+            report.title,
+            report.summary,
+            report.overallGapLevel,
+            report.graduate,
+            report.assessments,
+            report.strengths,
+            report.weaknesses,
+          )
+        );
+      }),
+    [data, reportGapFilter, reportSearch],
+  );
 
   async function handleGenerate() {
     setMessage("");
@@ -3094,90 +3508,141 @@ export function ReportsPage({ token, role }: PageProps) {
             />
           </div>
 
-          <div className="report-page-list">
-          {data.map((report) => (
-            <article className="report-page-card report-preview" key={report._id}>
-              <header className="report-page-card__header">
-                <div>
-                  <span className="eyebrow">Graduate report</span>
-                  <h3>{report.title}</h3>
-                </div>
-                <Button
-                  variant="secondary"
-                  onClick={() => downloadReport(report)}
-                >
-                  Download Report
-                </Button>
-              </header>
-
-              <div className="report-score-panel">
-                <div>
-                  <span>Overall score</span>
-                  <strong>{formatPercent(report.overallScore)}</strong>
-                </div>
-                <div>
-                  <span>Gap level</span>
-                  <strong>{report.overallGapLevel}</strong>
-                </div>
-                <div>
-                  <span>Generated</span>
-                  <strong>{formatDate(report.createdAt)}</strong>
-                </div>
-              </div>
-
-              <ReadMoreText text={report.summary} limit={240} />
-
-              <div className="report-detail-grid">
-                {report.assessments && report.assessments.length > 0 && (
-                <section className="assessor-note">
-                  <strong>Included competencies</strong>
-                  <ul>
-                    {report.assessments.map((assessment) => (
-                      <li key={assessment._id}>
-                        {assessment.competency.title} -{" "}
-                        {formatPercent(assessment.scores.finalScore)} -{" "}
-                        {assessment.gapLevel}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-                )}
-                {report.assessments && report.assessments.length > 0 && (
-                <section className="assessor-note">
-                  <strong>Repository summaries</strong>
-                  <ul>
-                    {report.assessments.map((assessment) => (
-                      <li key={`${report._id}-${assessment._id}-repo`}>
-                        <strong>{assessment.competency.title}</strong>
-                        <ReadMoreText
-                          text={assessment.evidence.repositorySummary?.summaryText}
-                          emptyText="No repository summary available."
-                          limit={150}
-                        />
-                        {assessment.evidence.repositorySummary && (
-                          <span>
-                            Quality{" "}
-                            {formatPercent(
-                              assessment.evidence.repositorySummary
-                                .codeQualityScore || 0,
-                            )}
-                            , completeness{" "}
-                            {formatPercent(
-                              assessment.evidence.repositorySummary
-                                .evidenceCompletenessScore || 0,
-                            )}
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-                )}
-              </div>
-            </article>
-          ))}
-          </div>
+          <ListToolbar
+            search={reportSearch}
+            onSearchChange={setReportSearch}
+            searchPlaceholder="Search title, graduate, competency, summary..."
+            totalCount={data.length}
+            filteredCount={filteredReports.length}
+          >
+            <SelectField
+              label="Gap level"
+              value={reportGapFilter}
+              onChange={(event) => setReportGapFilter(event.target.value)}
+            >
+              <option value="all">All gap levels</option>
+              {reportGapOptions.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </SelectField>
+          </ListToolbar>
+          {filteredReports.length === 0 ? (
+            <EmptyState message="No reports match your search or filter." />
+          ) : (
+            <div className="table-wrap page-data-table-wrap">
+              <table className="page-data-table reports-table compact-reports-table">
+                <thead>
+                  <tr>
+                    <th>Report</th>
+                    <th>Overall result</th>
+                    <th>Date</th>
+                    <th>Details</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredReports.map((report) => (
+                    <tr key={report._id}>
+                      <td>
+                        <div className="table-primary-cell">
+                          <strong>{report.title}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="score-stack">
+                          <strong>{formatPercent(report.overallScore)}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="table-date-pill">
+                          {formatDate(report.createdAt)}
+                        </span>
+                      </td>
+                      <td>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setActiveReport(report)}
+                        >
+                          View report details
+                        </Button>
+                      </td>
+                      <td>
+                        <div className="table-action-row">
+                          <Button
+                            variant="secondary"
+                            onClick={() => downloadReport(report)}
+                          >
+                            Download
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
+      )}
+
+      {activeReport && (
+        <DetailModal
+          title={activeReport.title}
+          subtitle={`Generated ${formatDate(activeReport.createdAt)}`}
+          onClose={() => setActiveReport(null)}
+        >
+          <section className="detail-modal-section">
+            <strong>Report summary</strong>
+            <ReadMoreText text={activeReport.summary} limit={1200} />
+          </section>
+          <section className="detail-modal-section">
+            <strong>Included competencies</strong>
+            {activeReport.assessments && activeReport.assessments.length > 0 ? (
+              <ul>
+                {activeReport.assessments.map((assessment) => (
+                  <li key={assessment._id}>
+                    <strong>{assessment.competency.title}</strong>
+                    <span>
+                      {formatPercent(assessment.scores.finalScore)} - {assessment.gapLevel}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No competencies included.</p>
+            )}
+          </section>
+          <section className="detail-modal-section">
+            <strong>Repository evidence</strong>
+            {activeReport.assessments && activeReport.assessments.length > 0 ? (
+              <ul>
+                {activeReport.assessments.map((assessment) => (
+                  <li key={`${activeReport._id}-${assessment._id}-repo`}>
+                    <strong>{assessment.competency.title}</strong>
+                    <ReadMoreText
+                      text={assessment.evidence.repositorySummary?.summaryText}
+                      emptyText="No repository summary available."
+                      limit={700}
+                    />
+                    {assessment.evidence.repositorySummary && (
+                      <span>
+                        Quality {formatPercent(
+                          assessment.evidence.repositorySummary.codeQualityScore || 0,
+                        )}, completeness {formatPercent(
+                          assessment.evidence.repositorySummary.evidenceCompletenessScore || 0,
+                        )}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No repository evidence included.</p>
+            )}
+          </section>
+        </DetailModal>
       )}
     </section>
   );
@@ -3351,6 +3816,36 @@ function GraduateNotificationsPage({ token }: { token: string }) {
     () => api.notifications(token),
     [] as NotificationItem[],
   );
+  const [notificationSearch, setNotificationSearch] = useState("");
+  const [notificationStatusFilter, setNotificationStatusFilter] = useState("all");
+  const [notificationTypeFilter, setNotificationTypeFilter] = useState("all");
+  const notificationTypeOptions = useMemo(
+    () => uniqueFilterOptions(data.map((notification) => notification.type)),
+    [data],
+  );
+  const filteredNotifications = useMemo(
+    () =>
+      data.filter((notification) => {
+        const matchesStatus =
+          notificationStatusFilter === "all" ||
+          (notificationStatusFilter === "unread" && !notification.isRead) ||
+          (notificationStatusFilter === "read" && notification.isRead);
+        const matchesType =
+          notificationTypeFilter === "all" || notification.type === notificationTypeFilter;
+        return (
+          matchesStatus &&
+          matchesType &&
+          matchesSearchTerm(
+            notificationSearch,
+            notification.title,
+            notification.message,
+            notification.type,
+            notification.createdAt,
+          )
+        );
+      }),
+    [data, notificationSearch, notificationStatusFilter, notificationTypeFilter],
+  );
   const unreadCount = data.filter(
     (notification) => !notification.isRead,
   ).length;
@@ -3394,8 +3889,41 @@ function GraduateNotificationsPage({ token }: { token: string }) {
       {data.length === 0 ? (
         <EmptyState message="No notifications yet." />
       ) : (
+        <>
+          <ListToolbar
+            search={notificationSearch}
+            onSearchChange={setNotificationSearch}
+            searchPlaceholder="Search notification title, message, type..."
+            totalCount={data.length}
+            filteredCount={filteredNotifications.length}
+          >
+            <SelectField
+              label="Status"
+              value={notificationStatusFilter}
+              onChange={(event) => setNotificationStatusFilter(event.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="unread">Unread</option>
+              <option value="read">Read</option>
+            </SelectField>
+            <SelectField
+              label="Type"
+              value={notificationTypeFilter}
+              onChange={(event) => setNotificationTypeFilter(event.target.value)}
+            >
+              <option value="all">All types</option>
+              {notificationTypeOptions.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </SelectField>
+          </ListToolbar>
+          {filteredNotifications.length === 0 ? (
+            <EmptyState message="No notifications match your search or filter." />
+          ) : (
         <div className="card-list">
-          {data.map((notification) => (
+          {filteredNotifications.map((notification) => (
             <Card
               actions={
                 !notification.isRead && (
@@ -3423,6 +3951,8 @@ function GraduateNotificationsPage({ token }: { token: string }) {
             </Card>
           ))}
         </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -4355,6 +4885,80 @@ export function OrganizationsPage({ token }: { token: string }) {
   );
 }
 
+const CHECKLIST_CATEGORIES = [
+  "frontend",
+  "backend",
+  "database",
+  "authentication",
+  "testing",
+  "documentation",
+  "deployment",
+  "security",
+  "general",
+];
+
+const CHECKLIST_VALIDATION_TYPES = [
+  "automated_test",
+  "hidden_test",
+  "eslint",
+  "security_scan",
+  "repository_scan",
+  "implementation_review",
+  "manual_review",
+];
+
+function formatChecklistRows(task?: PracticalTask) {
+  return (task?.reviewChecklist || [])
+    .map((item) =>
+      [
+        item.title,
+        item.category || "general",
+        item.validationType || "implementation_review",
+        item.maxScore || 10,
+        item.weight || 10,
+        item.feedbackWhenFailed || "",
+      ].join(" | "),
+    )
+    .join("\n");
+}
+
+function parseChecklistRows(value: string) {
+  return value
+    .split("\n")
+    .map((line, index) => {
+      const [
+        title,
+        category = "general",
+        validationType = "implementation_review",
+        maxScore = "10",
+        weight = "10",
+        feedbackWhenFailed = "",
+      ] = line.split("|").map((part) => part.trim());
+
+      if (!title) return null;
+
+      return {
+        key: `checklist-${index + 1}`,
+        title,
+        category: CHECKLIST_CATEGORIES.includes(category) ? category : "general",
+        validationType: CHECKLIST_VALIDATION_TYPES.includes(validationType)
+          ? validationType
+          : "implementation_review",
+        maxScore: Math.min(Math.max(Number(maxScore) || 10, 1), 100),
+        weight: Math.min(Math.max(Number(weight) || 10, 1), 100),
+        successThreshold: 70,
+        feedbackWhenFailed,
+      };
+    })
+    .filter(Boolean);
+}
+
+function checklistWeightTotal(value: string) {
+  return parseChecklistRows(value).reduce(
+    (sum, item) => sum + Number(item?.weight || 0),
+    0,
+  );
+}
 export function CompetenciesPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.competencies(token),
@@ -4369,6 +4973,7 @@ export function CompetenciesPage({ token }: { token: string }) {
     practicalTaskTitle: "",
     practicalTaskInstructions: "",
     practicalTaskDeliverables: "",
+    practicalTaskChecklist: "",
     practicalTaskTestCommand: "",
     practicalTaskTestFilePath: "",
     practicalTaskTestFileContent: "",
@@ -4391,6 +4996,7 @@ export function CompetenciesPage({ token }: { token: string }) {
     practicalTaskTitle: "",
     practicalTaskInstructions: "",
     practicalTaskDeliverables: "",
+    practicalTaskChecklist: "",
     practicalTaskTestCommand: "",
     practicalTaskTestFilePath: "",
     practicalTaskTestFileContent: "",
@@ -4399,6 +5005,34 @@ export function CompetenciesPage({ token }: { token: string }) {
     theoryCorrectAnswer: "",
   });
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [competencySearch, setCompetencySearch] = useState("");
+  const [competencyCategoryFilter, setCompetencyCategoryFilter] = useState("all");
+  const competencyCategoryOptions = useMemo(
+    () => uniqueFilterOptions(data.map((item) => item.category)),
+    [data],
+  );
+  const filteredCompetencies = useMemo(
+    () =>
+      data.filter((item) => {
+        const matchesCategory =
+          competencyCategoryFilter === "all" ||
+          item.category === competencyCategoryFilter;
+        return (
+          matchesCategory &&
+          matchesSearchTerm(
+            competencySearch,
+            item.code,
+            item.title,
+            item.category,
+            item.description,
+            item.expectedEvidence,
+            item.practicalTasks,
+            item.theoryQuestions,
+          )
+        );
+      }),
+    [data, competencyCategoryFilter, competencySearch],
+  );
 
   function resetCompetencyForm() {
     setForm({
@@ -4410,6 +5044,7 @@ export function CompetenciesPage({ token }: { token: string }) {
       practicalTaskTitle: "",
       practicalTaskInstructions: "",
       practicalTaskDeliverables: "",
+      practicalTaskChecklist: "",
       practicalTaskTestCommand: "",
       practicalTaskTestFilePath: "",
       practicalTaskTestFileContent: "",
@@ -4429,6 +5064,7 @@ export function CompetenciesPage({ token }: { token: string }) {
       practicalTaskTitle: "",
       practicalTaskInstructions: "",
       practicalTaskDeliverables: "",
+      practicalTaskChecklist: "",
       practicalTaskTestCommand: "",
       practicalTaskTestFilePath: "",
       practicalTaskTestFileContent: "",
@@ -4452,6 +5088,7 @@ export function CompetenciesPage({ token }: { token: string }) {
       practicalTaskTitle: practicalTask?.title || "",
       practicalTaskInstructions: practicalTask?.instructions || "",
       practicalTaskDeliverables: practicalTask?.deliverables || "",
+      practicalTaskChecklist: formatChecklistRows(practicalTask),
       practicalTaskTestCommand: practicalTask?.automatedTestCommand || "",
       practicalTaskTestFilePath:
         practicalTask?.automatedTestFiles?.[0]?.path || "",
@@ -4498,6 +5135,7 @@ export function CompetenciesPage({ token }: { token: string }) {
                 deliverables: editForm.practicalTaskDeliverables.trim(),
                 estimatedMinutes: 60,
                 maxScore: 100,
+                reviewChecklist: parseChecklistRows(editForm.practicalTaskChecklist),
                 automatedTestCommand: editForm.practicalTaskTestCommand.trim(),
                 automatedTestFiles:
                   editForm.practicalTaskTestFilePath.trim() &&
@@ -4647,6 +5285,7 @@ export function CompetenciesPage({ token }: { token: string }) {
                 deliverables: form.practicalTaskDeliverables.trim(),
                 estimatedMinutes: 60,
                 maxScore: 100,
+                reviewChecklist: parseChecklistRows(form.practicalTaskChecklist),
                 // These hidden tests are injected into a graduate repository
                 // during review to verify the exact practical task behavior.
                 automatedTestCommand: form.practicalTaskTestCommand.trim(),
@@ -4846,6 +5485,42 @@ export function CompetenciesPage({ token }: { token: string }) {
                   disabled={editingCompetencyId ? isSaving : false}
                 />
               </div>
+              <div className="full-span weighted-checklist-editor">
+                <TextArea
+                  label="Repository review checklist"
+                  rows={5}
+                  value={
+                    editingCompetencyId
+                      ? editForm.practicalTaskChecklist
+                      : form.practicalTaskChecklist
+                  }
+                  onChange={(event) =>
+                    editingCompetencyId
+                      ? setEditForm({
+                          ...editForm,
+                          practicalTaskChecklist: event.target.value,
+                        })
+                      : setForm({
+                          ...form,
+                          practicalTaskChecklist: event.target.value,
+                        })
+                  }
+                  placeholder={[
+                    "Project installs and runs | deployment | automated_test | 10 | 15 | Fix install/build errors.",
+                    "Hidden task tests passed | testing | hidden_test | 20 | 25 | Make the code produce the expected task output.",
+                    "Authentication is implemented | authentication | implementation_review | 20 | 20 | Complete login, JWT, and protected routes.",
+                  ].join("\n")}
+                  disabled={editingCompetencyId ? isSaving : false}
+                />
+                <div className="checklist-weight-meter">
+                  <span>
+                    Total checklist weight: {checklistWeightTotal(editingCompetencyId ? editForm.practicalTaskChecklist : form.practicalTaskChecklist)} / 100
+                  </span>
+                  <em>
+                    Format: title | category | validation type | max score | weighted score | feedback when failed
+                  </em>
+                </div>
+              </div>
               <TextField
                 label="Instructor test command"
                 value={
@@ -5014,20 +5689,44 @@ export function CompetenciesPage({ token }: { token: string }) {
         {data.length === 0 ? (
           <EmptyState message="No competencies have been added yet." />
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Code</th>
-                  <th>Title</th>
-                  <th>Category</th>
-                  <th>Expected Evidence</th>
-                  <th>Assessment Content</th>
-                  <th className="w-56">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((item) => {
+          <>
+            <ListToolbar
+              search={competencySearch}
+              onSearchChange={setCompetencySearch}
+              searchPlaceholder="Search code, title, category, evidence..."
+              totalCount={data.length}
+              filteredCount={filteredCompetencies.length}
+            >
+              <SelectField
+                label="Category"
+                value={competencyCategoryFilter}
+                onChange={(event) => setCompetencyCategoryFilter(event.target.value)}
+              >
+                <option value="all">All categories</option>
+                {competencyCategoryOptions.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </SelectField>
+            </ListToolbar>
+            {filteredCompetencies.length === 0 ? (
+              <EmptyState message="No competencies match your search or filter." />
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Title</th>
+                      <th>Category</th>
+                      <th>Expected Evidence</th>
+                      <th>Assessment Content</th>
+                      <th className="w-56">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCompetencies.map((item) => {
                   const taskCount = item.practicalTasks?.length || 0;
                   const hiddenTestCount =
                     item.practicalTasks?.filter(
@@ -5071,10 +5770,12 @@ export function CompetenciesPage({ token }: { token: string }) {
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </Card>
     </section>
@@ -5109,6 +5810,31 @@ export function BenchmarksPage({ token }: { token: string }) {
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [benchmarkSearch, setBenchmarkSearch] = useState("");
+  const [benchmarkLevelFilter, setBenchmarkLevelFilter] = useState("all");
+  const benchmarkLevelOptions = useMemo(
+    () => uniqueFilterOptions(benchmarks.map((item) => item.level)),
+    [benchmarks],
+  );
+  const filteredBenchmarks = useMemo(
+    () =>
+      benchmarks.filter((item) => {
+        const matchesLevel =
+          benchmarkLevelFilter === "all" || item.level === benchmarkLevelFilter;
+        return (
+          matchesLevel &&
+          matchesSearchTerm(
+            benchmarkSearch,
+            item.competency?.code,
+            item.competency?.title,
+            item.level,
+            item.description,
+            item.requiredScore,
+          )
+        );
+      }),
+    [benchmarks, benchmarkLevelFilter, benchmarkSearch],
+  );
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -5341,19 +6067,46 @@ export function BenchmarksPage({ token }: { token: string }) {
       )}
 
       <Card title="Active benchmarks">
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Competency</th>
-                <th>Required Score</th>
-                <th>Level</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {benchmarks.map((item) => (
-                <tr key={item._id}>
+        {benchmarks.length === 0 ? (
+          <EmptyState message="No benchmarks found." />
+        ) : (
+          <>
+            <ListToolbar
+              search={benchmarkSearch}
+              onSearchChange={setBenchmarkSearch}
+              searchPlaceholder="Search competency, level, score..."
+              totalCount={benchmarks.length}
+              filteredCount={filteredBenchmarks.length}
+            >
+              <SelectField
+                label="Level"
+                value={benchmarkLevelFilter}
+                onChange={(event) => setBenchmarkLevelFilter(event.target.value)}
+              >
+                <option value="all">All levels</option>
+                {benchmarkLevelOptions.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </SelectField>
+            </ListToolbar>
+            {filteredBenchmarks.length === 0 ? (
+              <EmptyState message="No benchmarks match your search or filter." />
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Competency</th>
+                      <th>Required Score</th>
+                      <th>Level</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBenchmarks.map((item) => (
+                      <tr key={item._id}>
                   <td>{item.competency.title}</td>
                   <td>{formatPercent(item.requiredScore)}</td>
                   <td>{item.level}</td>
@@ -5376,10 +6129,13 @@ export function BenchmarksPage({ token }: { token: string }) {
                     </div>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
       </Card>
     </section>
   );

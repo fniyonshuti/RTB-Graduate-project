@@ -76,6 +76,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [persistAuth],
   )
 
+  const googleLogin = useCallback(
+    async (credential: string) => {
+      const payload = await api.googleLogin(credential)
+      persistAuth(payload)
+    },
+    [persistAuth],
+  )
   const register = useCallback(
     async (payload: {
       name: string
@@ -112,11 +119,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: Boolean(user && token),
       isLoading,
       login,
+      googleLogin,
       changePassword,
       register,
       logout,
     }),
-    [changePassword, isLoading, login, logout, register, token, user],
+    [changePassword, googleLogin, isLoading, login, logout, register, token, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

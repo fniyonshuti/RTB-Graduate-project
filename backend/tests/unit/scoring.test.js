@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import {
   calculateWeightedScore,
   validateScoreInputs,
-} from '../../src/utils/scoring.js';
+} from '../../src/services/assessmentService.js';
 
 describe('scoring utilities', () => {
   it('calculates the weighted practical and quiz score', () => {

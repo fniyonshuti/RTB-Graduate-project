@@ -1,8 +1,8 @@
 import User from "../models/User.js";
 import Organization from "../models/Organization.js";
 import { sanitizeUser } from "./authService.js";
-import { AppError } from "../utils/errors.js";
-import { hashPassword } from "../utils/password.js";
+import { AppError } from "./errorService.js";
+import { hashPassword } from "./authService.js";
 import dotenv from "dotenv";
 import {
   ROLES,
@@ -234,3 +234,16 @@ export async function deactivateManagedUser(userId, actor) {
 export async function deleteManagedUser(userId, actor) {
   return deactivateManagedUser(userId, actor);
 }
+
+class UserService {
+  listManagedUsers = listManagedUsers;
+  getManagedUser = getManagedUser;
+  createManagedUser = createManagedUser;
+  updateManagedUser = updateManagedUser;
+  deactivateManagedUser = deactivateManagedUser;
+  deleteManagedUser = deleteManagedUser;
+}
+
+const userService = new UserService();
+
+export default userService;

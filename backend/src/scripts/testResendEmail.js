@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import { sendPasswordResetEmail } from '../services/emailService.js';
+import { sendPasswordResetEmail } from '../services/authService.js';
 
 dotenv.config({ quiet: true });
 

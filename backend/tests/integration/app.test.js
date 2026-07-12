@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
-import app from "../../src/app.js";
+
+const testFrontendOrigin = "https://rtb-graduate-project.vercel.app";
+process.env.CORS_ORIGINS = testFrontendOrigin;
+process.env.FRONTEND_URL = testFrontendOrigin;
+
+const { default: app } = await import("../../src/app.js");
 
 let server;
 let baseUrl;
@@ -29,7 +34,7 @@ describe("Express app integration", () => {
   it("responds to the health endpoint", async () => {
     const { response, body } = await request("/api/health", {
       headers: {
-        Origin: "https://rtb-graduate-project.vercel.app",
+        Origin: testFrontendOrigin,
       },
     });
 
@@ -42,7 +47,7 @@ describe("Express app integration", () => {
     const { response } = await request("/api/health", {
       headers: {
         "X-Request-Id": "test-request-id",
-        Origin: "https://rtb-graduate-project.vercel.app",
+        Origin: testFrontendOrigin,
       },
     });
 
@@ -54,7 +59,7 @@ describe("Express app integration", () => {
   it("returns a structured 404 response for unknown routes", async () => {
     const { response, body } = await request("/api/does-not-exist", {
       headers: {
-        Origin: "https://rtb-graduate-project.vercel.app",
+        Origin: testFrontendOrigin,
       },
     });
 

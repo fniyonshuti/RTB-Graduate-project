@@ -1,4 +1,4 @@
-import { AppError } from '../utils/errors.js';
+import { AppError } from '../services/errorService.js';
 import { LEARNER_ROLES, ROLES, SYSTEM_ADMIN_ROLES } from '../constants/roles.js';
 
 function expandAllowedRoles(allowedRoles) {

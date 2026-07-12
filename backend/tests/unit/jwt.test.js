@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { signJwt, verifyJwt } from '../../src/utils/jwt.js';
+import { signJwt, verifyJwt } from '../../src/services/authService.js';
 
 describe('JWT utilities', () => {
   it('verifies a token signed by the application', () => {

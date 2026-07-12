@@ -1,40 +1,45 @@
-import {
-  createOrganization,
-  deleteOrganization,
-  getOrganizationById,
-  listOrganizations,
-  listPublicOrganizations,
-  updateOrganization,
-} from '../services/organizationService.js';
-import { asyncHandler } from '../utils/errors.js';
-import { sendSuccess } from '../utils/response.js';
+import organizationService from '../services/organizationService.js';
+import { asyncHandler } from '../services/errorService.js';
+import { sendSuccess } from '../services/responseService.js';
 
-export const list = asyncHandler(async (req, res) => {
-  const organizations = await listOrganizations(req.query, req.user);
-  sendSuccess(res, 'Organizations loaded', organizations);
-});
+class OrganizationController {
+  list = asyncHandler(async (req, res) => {
+    const organizations = await organizationService.listOrganizations(req.query, req.user);
+    sendSuccess(res, 'Organizations loaded', organizations);
+  });
 
-export const listPublic = asyncHandler(async (req, res) => {
-  const organizations = await listPublicOrganizations();
-  sendSuccess(res, 'Public organizations loaded', organizations);
-});
+  listPublic = asyncHandler(async (req, res) => {
+    const organizations = await organizationService.listPublicOrganizations();
+    sendSuccess(res, 'Public organizations loaded', organizations);
+  });
 
-export const getOne = asyncHandler(async (req, res) => {
-  const organization = await getOrganizationById(req.params.id, req.user);
-  sendSuccess(res, 'Organization loaded', organization);
-});
+  getOne = asyncHandler(async (req, res) => {
+    const organization = await organizationService.getOrganizationById(req.params.id, req.user);
+    sendSuccess(res, 'Organization loaded', organization);
+  });
 
-export const create = asyncHandler(async (req, res) => {
-  const organization = await createOrganization(req.body);
-  sendSuccess(res, 'Organization created', organization, 201);
-});
+  create = asyncHandler(async (req, res) => {
+    const organization = await organizationService.createOrganization(req.body);
+    sendSuccess(res, 'Organization created', organization, 201);
+  });
 
-export const update = asyncHandler(async (req, res) => {
-  const organization = await updateOrganization(req.params.id, req.body);
-  sendSuccess(res, 'Organization updated', organization);
-});
+  update = asyncHandler(async (req, res) => {
+    const organization = await organizationService.updateOrganization(req.params.id, req.body);
+    sendSuccess(res, 'Organization updated', organization);
+  });
 
-export const remove = asyncHandler(async (req, res) => {
-  const organization = await deleteOrganization(req.params.id);
-  sendSuccess(res, 'Organization disabled', organization);
-});
+  remove = asyncHandler(async (req, res) => {
+    const organization = await organizationService.deleteOrganization(req.params.id);
+    sendSuccess(res, 'Organization disabled', organization);
+  });
+}
+
+const organizationController = new OrganizationController();
+
+export const list = organizationController.list;
+export const listPublic = organizationController.listPublic;
+export const getOne = organizationController.getOne;
+export const create = organizationController.create;
+export const update = organizationController.update;
+export const remove = organizationController.remove;
+export default organizationController;

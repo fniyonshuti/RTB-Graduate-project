@@ -1,6 +1,6 @@
 import { getActiveUserById } from '../services/authService.js';
-import { verifyJwt } from '../utils/jwt.js';
-import { AppError, asyncHandler } from '../utils/errors.js';
+import { verifyJwt } from '../services/authService.js';
+import { AppError, asyncHandler } from '../services/errorService.js';
 
 export const protect = asyncHandler(async (req, res, next) => {
   const authHeader = req.headers.authorization || '';

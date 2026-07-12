@@ -5,7 +5,7 @@ import {
   getRepositoryAssessment,
   getRepositoryAssessments,
   updateRepositoryAssessment,
-} from '../controllers/repositoryAssessmentController.js';
+} from '../controllers/githubController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/roleMiddleware.js';
 

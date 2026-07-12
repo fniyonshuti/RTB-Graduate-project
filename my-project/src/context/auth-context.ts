@@ -7,6 +7,7 @@ export type AuthContextValue = {
   isAuthenticated: boolean
   isLoading: boolean
   login: (email: string, password: string) => Promise<void>
+  googleLogin: (credential: string) => Promise<void>
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   register: (payload: {
     name: string

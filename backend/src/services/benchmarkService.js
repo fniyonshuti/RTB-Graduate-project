@@ -1,6 +1,6 @@
 import Benchmark from "../models/Benchmark.js";
 import Competency from "../models/Competency.js";
-import { AppError } from "../utils/errors.js";
+import { AppError } from "./errorService.js";
 
 export function listBenchmarks(filters = {}) {
   const query = {};
@@ -72,3 +72,15 @@ export async function deactivateBenchmarkById(benchmarkId) {
 
   return benchmark;
 }
+
+class BenchmarkService {
+  listBenchmarks = listBenchmarks;
+  getBenchmarkById = getBenchmarkById;
+  createBenchmark = createBenchmark;
+  updateBenchmarkById = updateBenchmarkById;
+  deactivateBenchmarkById = deactivateBenchmarkById;
+}
+
+const benchmarkService = new BenchmarkService();
+
+export default benchmarkService;

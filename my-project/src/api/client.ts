@@ -9,6 +9,7 @@ import type {
   NotificationItem,
   Organization,
   Recommendation,
+  LearningResource,
   RepositoryAssessmentResult,
   Report,
   RepositorySummary,
@@ -139,6 +140,11 @@ export const api = {
       body: { email, password },
     }),
 
+  googleLogin: (credential: string) =>
+    request<AuthPayload>('/auth/google', {
+      method: 'POST',
+      body: { credential },
+    }),
   forgotPassword: (email: string) =>
     request<{
       message: string
@@ -328,10 +334,12 @@ export const api = {
         message?: string
         actionItems?: string[]
         resources?: string[]
+        learningResources?: LearningResource[]
         geminiDraft?: {
           message: string
           actionItems: string[]
           resources: string[]
+          learningResources?: LearningResource[]
           priority: 'low' | 'medium' | 'high'
           provider: string
           model: string
@@ -370,6 +378,7 @@ export const api = {
       message: string
       actionItems: string[]
       resources: string[]
+      learningResources?: LearningResource[]
       priority: 'low' | 'medium' | 'high'
       provider: string
       model: string

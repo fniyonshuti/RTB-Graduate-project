@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { AppError } from './utils/errors.js';
+import { AppError } from './services/errorService.js';
 
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';

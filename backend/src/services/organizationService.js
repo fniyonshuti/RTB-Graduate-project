@@ -1,6 +1,6 @@
 import Organization from '../models/Organization.js';
 import User from '../models/User.js';
-import { AppError } from '../utils/errors.js';
+import { AppError } from './errorService.js';
 import { ROLES } from '../constants/roles.js';
 
 function organizationIdOf(user) {
@@ -128,3 +128,16 @@ export async function deleteOrganization(organizationId) {
 
   return organization;
 }
+
+class OrganizationService {
+  listOrganizations = listOrganizations;
+  listPublicOrganizations = listPublicOrganizations;
+  getOrganizationById = getOrganizationById;
+  createOrganization = createOrganization;
+  updateOrganization = updateOrganization;
+  deleteOrganization = deleteOrganization;
+}
+
+const organizationService = new OrganizationService();
+
+export default organizationService;

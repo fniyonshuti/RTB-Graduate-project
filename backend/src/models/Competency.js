@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { checklistItemSchema } from './Checklist.js';
 
 const automatedTestFileSchema = new mongoose.Schema(
   {
@@ -13,6 +14,53 @@ const automatedTestFileSchema = new mongoose.Schema(
   },
   { _id: false },
 );
+
+
+const practicalTestCaseSchema = new mongoose.Schema(
+  {
+    id: {
+      type: String,
+      trim: true,
+    },
+    requirementId: {
+      type: String,
+      trim: true,
+    },
+    title: {
+      type: String,
+      trim: true,
+    },
+    input: {
+      type: String,
+      default: '',
+    },
+    expectedOutput: {
+      type: String,
+      default: '',
+    },
+    validator: {
+      type: String,
+      enum: ['exact_text', 'normalized_text', 'json', 'numeric'],
+      default: 'normalized_text',
+    },
+    tolerance: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    weight: {
+      type: Number,
+      min: 1,
+      default: 10,
+    },
+    isHidden: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { _id: false },
+);
+
 
 const practicalTaskSchema = new mongoose.Schema(
   {
@@ -47,6 +95,103 @@ const practicalTaskSchema = new mongoose.Schema(
     },
     automatedTestFiles: {
       type: [automatedTestFileSchema],
+      default: [],
+    },
+    taskVersion: {
+      type: String,
+      trim: true,
+      default: '1.0.0',
+    },
+    acceptedSubmissionTypes: {
+      type: [String],
+      default: ['github_repository'],
+    },
+    allowedLanguages: {
+      type: [String],
+      default: ['javascript', 'typescript', 'python'],
+    },
+    executionInterface: {
+      type: String,
+      enum: ['stdin_stdout', 'rest_api', 'cli', 'frontend', 'instructor_tests'],
+      default: 'instructor_tests',
+    },
+    inputSchema: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    outputSchema: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    validationRules: {
+      type: [String],
+      default: [],
+    },
+    publicTestCases: {
+      type: [practicalTestCaseSchema],
+      default: [],
+    },
+    hiddenTestCases: {
+      type: [practicalTestCaseSchema],
+      default: [],
+    },
+    edgeCases: {
+      type: [String],
+      default: [],
+    },
+    timeLimitMs: {
+      type: Number,
+      min: 1000,
+      default: 10000,
+    },
+    memoryLimitMb: {
+      type: Number,
+      min: 64,
+      default: 512,
+    },
+    networkPolicy: {
+      type: String,
+      enum: ['disabled', 'install_only', 'enabled'],
+      default: 'install_only',
+    },
+    requiredApiRoutes: {
+      type: [String],
+      default: [],
+    },
+    correctnessWeight: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 75,
+    },
+    codeQualityWeight: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 10,
+    },
+    performanceWeight: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 5,
+    },
+    securityWeight: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 10,
+    },
+    securityRules: {
+      type: [String],
+      default: [],
+    },
+    partialCreditRules: {
+      type: [String],
+      default: [],
+    },
+    reviewChecklist: {
+      type: [checklistItemSchema],
       default: [],
     },
   },

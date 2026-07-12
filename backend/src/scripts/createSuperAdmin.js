@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import connectDB from '../config/db.js';
 import User from '../models/User.js';
-import { hashPassword } from '../utils/password.js';
+import { hashPassword } from '../services/authService.js';
 import { ROLES } from '../constants/roles.js';
 
 dotenv.config({ quiet: true });

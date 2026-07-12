@@ -1,9 +1,303 @@
 import Recommendation from "../models/Recommendation.js";
 import User from "../models/User.js";
-import { getPriorityFromGap } from "../utils/gapClassifier.js";
-import { AppError } from "../utils/errors.js";
-import { generateAiRecommendationDraft } from "./aiRecommendationService.js";
+import { AppError } from "./errorService.js";
 import { isLearnerRole, ROLES } from "../constants/roles.js";
+
+function getPriorityFromGap(gapLevel) {
+  if (gapLevel === "High Gap") return "high";
+  if (gapLevel === "Moderate Gap") return "medium";
+  return "low";
+}
+
+// Gemini prompt creation and API calls are kept with recommendation logic.
+
+const DEFAULT_GEMINI_MODEL =
+  process.env.GEMINI_RECOMMENDATION_MODEL ||
+  "gemini-2.5-flash";
+
+function safeString(value, defaultValue = "") {
+  return String(value ?? defaultValue).trim();
+}
+
+function normalizeList(values = []) {
+  return Array.isArray(values)
+    ? values.map((value) => safeString(value)).filter(Boolean)
+    : [];
+}
+
+function buildSearchUrl(query) {
+  const normalizedQuery = safeString(query);
+  if (!normalizedQuery) return "";
+  return `https://www.google.com/search?q=${encodeURIComponent(normalizedQuery)}`;
+}
+
+const RESOURCE_TYPES = new Set([
+  "video",
+  "course",
+  "documentation",
+  "practice",
+  "article",
+  "tool",
+  "other",
+]);
+
+function normalizeLearningResource(resource) {
+  if (!resource) return null;
+
+  if (typeof resource === "string") {
+    const title = safeString(resource);
+    if (!title) return null;
+    return {
+      type: "other",
+      title,
+      provider: "Search",
+      url: buildSearchUrl(title),
+      searchQuery: title,
+      skillArea: "General improvement",
+      reason: "Suggested by Gemini as a helpful learning resource.",
+    };
+  }
+
+  const type = safeString(resource.type || "other").toLowerCase();
+  const title = safeString(resource.title || resource.name || resource.resource);
+  const url = safeString(resource.url || resource.link);
+  const searchQuery = safeString(resource.searchQuery || resource.query);
+
+  if (!title && !url && !searchQuery) return null;
+
+  const finalSearchQuery = searchQuery || title || url;
+  return {
+    type: RESOURCE_TYPES.has(type) ? type : "other",
+    title: title || searchQuery || url,
+    provider: safeString(resource.provider || resource.source || (url ? "" : "Search")),
+    url: url || buildSearchUrl(finalSearchQuery),
+    searchQuery: finalSearchQuery,
+    skillArea: safeString(resource.skillArea || resource.area || "General improvement"),
+    reason: safeString(resource.reason || resource.description || "Use this resource to address the measured skill gap."),
+  };
+}
+
+function normalizeLearningResources(values = []) {
+  return Array.isArray(values)
+    ? values.map(normalizeLearningResource).filter(Boolean).slice(0, 6)
+    : [];
+}
+
+function learningResourceToSummary(resource) {
+  return [
+    resource.type ? `${resource.type}:` : "Resource:",
+    resource.title,
+    resource.provider ? `(${resource.provider})` : "",
+    resource.url || resource.searchQuery ? `- ${resource.url || resource.searchQuery}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+
+function normalizeResourceSummaries(values = []) {
+  if (!Array.isArray(values)) return [];
+
+  return values
+    .map((value) => {
+      return learningResourceToSummary(normalizeLearningResource(value) || {});
+    })
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function buildGeminiUrl(apiKey) {
+  const configuredUrl = safeString(process.env.GEMINI_RECOMMENDATION_API_URL);
+  const geminiApiBaseUrl = safeString(process.env.GEMINI_API_BASE_URL).replace(
+    /\/+$/,
+    "",
+  );
+
+  if (!configuredUrl && !geminiApiBaseUrl) {
+    throw new AppError(
+      "GEMINI_API_BASE_URL or GEMINI_RECOMMENDATION_API_URL is required for Gemini recommendation generation",
+      500,
+    );
+  }
+
+  const url =
+    configuredUrl ||
+    `${geminiApiBaseUrl}/${DEFAULT_GEMINI_MODEL}:generateContent`;
+  const separator = url.includes("?") ? "&" : "?";
+
+  return `${url}${separator}key=${encodeURIComponent(apiKey)}`;
+}
+
+async function fetchGeminiJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    const normalizedError = errorBody.toLowerCase();
+
+    if (
+      response.status === 429 ||
+      normalizedError.includes("resource_exhausted") ||
+      normalizedError.includes("quota")
+    ) {
+      throw new AppError(
+        "Gemini recommendation quota is temporarily exhausted. Wait a few seconds, then click Generate Gemini recommendation again.",
+        429,
+      );
+    }
+
+    throw new AppError(
+      `Gemini recommendation API returned ${response.status}. Check your Gemini API key, model, and request configuration.`,
+      response.status,
+    );
+  }
+
+  return response.json();
+}
+
+function extractResponseText(payload) {
+  if (!payload) return "";
+
+  if (typeof payload === "string") {
+    return payload;
+  }
+
+  return (
+    payload.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text)
+      .filter(Boolean)
+      .join("\n") ||
+    ""
+  );
+}
+
+function buildPrompt(context) {
+  return [
+    "You are an evidence-based recommendation engine for an ICT TVET skills gap analysis system.",
+    "Return only valid JSON. Do not wrap the JSON in markdown fences.",
+    "Return a single JSON object with exactly these keys: message, actionItems, resources, learningResources, priority.",
+    "The message must be a concise learner-ready recommendation in plain language and must mention the gap level, final score, benchmark, and strongest improvement priority.",
+    "actionItems must be an array of 3 to 6 short, measurable improvement actions that tell the learner exactly what to fix, practice, retest, or submit next.",
+    "Each action item must be directly connected to the weakest score area, failed repository checks, hidden expected-output test result, theory score, assessor comment, or benchmark gap.",
+    "resources must be an array of 2 to 5 short resource summary strings that include a direct URL, except for No Gap where 1 to 3 enrichment resources are enough.",
+    "learningResources must be an array of 2 to 5 objects. Each object must include: type, title, provider, url, searchQuery, skillArea, reason. The url field is required and must be a valid https link.",
+    "Resource type must be one of: video, course, documentation, practice, article, tool, other.",
+    "Every learning resource must address a specific weak area, failed repository check, failed hidden test, theory weakness, security issue, or benchmark gap. Prefer beginner-friendly free resources with stable URLs; when unsure, use a Google search URL generated from a precise searchQuery.",
+    "priority must be one of low, medium, or high.",
+    "Use the supplied RTB benchmark, final score, skill gap, gap meaning, weak areas, improvement priorities, repository evidence, repository summary, and automatic review note.",
+    "Keep the recommendation aligned to the selected competency and the evidence reviewed.",
+    "If the hidden expected-output test failed or was not configured, include a practical action that improves objective proof before resubmission.",
+    "If GitHub/practical score is lower than theory score, focus first on implementation, tests, and repository evidence.",
+    "If theory score is lower than practical score, focus first on concepts and applying those concepts in the code.",
+    "If there is No Gap, recommend advanced practice, portfolio strengthening, and maintaining evidence quality instead of remediation.",
+    "Do not invent facts, tools, scores, failures, or technologies that are not present in the context.",
+    "Do not provide generic advice; every action must be observable, assessable, and written as a concrete action plan for closing the measured gap.",
+    JSON.stringify(context, null, 2),
+  ].join("\n");
+}
+
+function cleanJsonText(rawText) {
+  return safeString(rawText)
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+}
+
+function parseDraftResponse(rawText, prompt, context = {}) {
+  const trimmed = safeString(rawText);
+
+  if (!trimmed) {
+    throw new AppError("Gemini returned an empty recommendation response", 502);
+  }
+
+  try {
+    const parsed = JSON.parse(cleanJsonText(trimmed));
+    const actionItems = normalizeList(parsed.actionItems);
+    const fallbackLearningResources = normalizeLearningResources(
+      context.suggestedLearningResources,
+    );
+    const learningResources = normalizeLearningResources(
+      parsed.learningResources || parsed.resources,
+    );
+    const finalLearningResources =
+      learningResources.length > 0
+        ? learningResources
+        : fallbackLearningResources;
+    const resourceSummaries = normalizeResourceSummaries(parsed.resources);
+    const resources = resourceSummaries.length > 0
+      ? resourceSummaries
+      : finalLearningResources.map(learningResourceToSummary);
+    const priority = ["low", "medium", "high"].includes(parsed.priority)
+      ? parsed.priority
+      : "low";
+    const message = safeString(parsed.message);
+
+    if (!message) {
+      throw new Error("Gemini JSON is missing message");
+    }
+
+    if (actionItems.length < 2) {
+      throw new Error("Gemini JSON must include evidence-based action items");
+    }
+
+    if (context.gapLevel !== "No Gap" && finalLearningResources.length < 2) {
+      throw new Error("Gemini JSON must include practical learning resources for the measured gap");
+    }
+
+    return {
+      message,
+      actionItems,
+      resources,
+      learningResources: finalLearningResources,
+      priority,
+      provider: "gemini",
+      model: DEFAULT_GEMINI_MODEL,
+      prompt,
+      rawResponse: trimmed,
+    };
+  } catch {
+    throw new AppError(
+      "Gemini recommendation response was not valid JSON",
+      502,
+    );
+  }
+}
+
+export async function generateAiRecommendationDraft(context) {
+  const apiKey = safeString(process.env.GEMINI_API_KEY);
+
+  if (!apiKey) {
+    throw new AppError(
+      "Gemini API key is required for recommendation generation",
+      500,
+    );
+  }
+
+  const prompt = buildPrompt(context);
+  const payload = await fetchGeminiJson(buildGeminiUrl(apiKey), {
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: prompt }],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: "application/json",
+    },
+  });
+  const rawResponse = extractResponseText(payload);
+
+  return parseDraftResponse(rawResponse, prompt, context);
+}
 
 const SCORE_AREA_LABELS = {
   practicalTaskScore: "Practical/GitHub project",
@@ -17,6 +311,180 @@ const SCORE_AREA_IMPROVEMENT_GUIDE = {
     "Improve theory understanding by revising the concepts missed in the quiz, especially the concepts connected to the selected competency and failed practical evidence.",
 };
 
+
+const LEARNING_RESOURCE_CATALOG = {
+  practicalTaskScore: [
+    {
+      type: "course",
+      title: "freeCodeCamp JavaScript Algorithms and Data Structures",
+      provider: "freeCodeCamp",
+      url: "https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures-v8/",
+      searchQuery: "freeCodeCamp JavaScript Algorithms and Data Structures",
+      skillArea: "Programming fundamentals",
+      reason: "Useful when practical code fails expected behavior or edge-case tests.",
+    },
+    {
+      type: "documentation",
+      title: "MDN JavaScript Guide",
+      provider: "MDN Web Docs",
+      url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide",
+      searchQuery: "MDN JavaScript Guide",
+      skillArea: "JavaScript implementation",
+      reason: "Helps strengthen syntax, data handling, functions, and control flow used in practical tasks.",
+    },
+    {
+      type: "practice",
+      title: "Build and test one small feature with input, output, validation, and error handling",
+      provider: "Competra practice plan",
+      url: "https://developer.mozilla.org/en-US/docs/Learn/Forms/Form_validation",
+      searchQuery: "practice building tested web app feature input validation error handling",
+      skillArea: "Verified implementation",
+      reason: "Directly improves objective proof before resubmission.",
+    },
+  ],
+  frontend: [
+    {
+      type: "documentation",
+      title: "React Learn",
+      provider: "React",
+      url: "https://react.dev/learn",
+      searchQuery: "React official learn components forms state",
+      skillArea: "Frontend UI",
+      reason: "Useful when UI components, forms, state, or interaction evidence is weak.",
+    },
+    {
+      type: "video",
+      title: "React forms and state management tutorial",
+      provider: "YouTube search",
+      url: "https://react.dev/reference/react-dom/components/input",
+      searchQuery: "React forms state management validation tutorial",
+      skillArea: "Frontend forms",
+      reason: "Helps learners practice form handling and visible user feedback.",
+    },
+  ],
+  backend: [
+    {
+      type: "documentation",
+      title: "Express Routing Guide",
+      provider: "Express.js",
+      url: "https://expressjs.com/en/guide/routing.html",
+      searchQuery: "Express routing guide controllers services validation",
+      skillArea: "Backend APIs",
+      reason: "Useful when API route or controller evidence is missing or incorrect.",
+    },
+    {
+      type: "course",
+      title: "Node.js and Express API course",
+      provider: "freeCodeCamp / YouTube search",
+      url: "https://www.freecodecamp.org/news/build-a-restful-api-using-node-express-and-mongodb/",
+      searchQuery: "Node.js Express REST API MongoDB JWT freeCodeCamp course",
+      skillArea: "Backend API development",
+      reason: "Supports practical API implementation and integration practice.",
+    },
+  ],
+  database: [
+    {
+      type: "course",
+      title: "MongoDB University Mongoose or Node.js learning path",
+      provider: "MongoDB University",
+      url: "https://learn.mongodb.com/",
+      searchQuery: "MongoDB University Node.js Mongoose CRUD",
+      skillArea: "Database persistence",
+      reason: "Useful when CRUD, schema, or persistence checks fail.",
+    },
+  ],
+  authentication: [
+    {
+      type: "article",
+      title: "OWASP Authentication Cheat Sheet",
+      provider: "OWASP",
+      url: "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+      searchQuery: "OWASP Authentication Cheat Sheet JWT password hashing",
+      skillArea: "Secure authentication",
+      reason: "Helps correct weak login, password, JWT, and protected-route implementations.",
+    },
+  ],
+  testing: [
+    {
+      type: "documentation",
+      title: "Jest Getting Started",
+      provider: "Jest",
+      url: "https://jestjs.io/docs/getting-started",
+      searchQuery: "Jest getting started tests JavaScript",
+      skillArea: "Automated tests",
+      reason: "Useful when submitted tests or hidden tests fail.",
+    },
+    {
+      type: "documentation",
+      title: "Supertest API testing",
+      provider: "npm / GitHub",
+      url: "https://github.com/ladjs/supertest",
+      searchQuery: "Supertest Express API testing examples",
+      skillArea: "API integration testing",
+      reason: "Helps learners prove API behavior with repeatable tests.",
+    },
+  ],
+  security: [
+    {
+      type: "article",
+      title: "OWASP Top 10 Web Application Security Risks",
+      provider: "OWASP",
+      url: "https://owasp.org/www-project-top-ten/",
+      searchQuery: "OWASP Top 10 web application security risks",
+      skillArea: "Security",
+      reason: "Useful when security scan, hardcoded secret, or authentication checks fail.",
+    },
+  ],
+  quizScore: [
+    {
+      type: "course",
+      title: "CS50 Web Programming with Python and JavaScript",
+      provider: "Harvard / edX",
+      url: "https://cs50.harvard.edu/web/",
+      searchQuery: "CS50 Web Programming Python JavaScript web development concepts",
+      skillArea: "Web development theory",
+      reason: "Helps connect theory concepts with practical implementation.",
+    },
+    {
+      type: "documentation",
+      title: "MDN Learn Web Development",
+      provider: "MDN Web Docs",
+      url: "https://developer.mozilla.org/en-US/docs/Learn",
+      searchQuery: "MDN Learn Web Development HTML CSS JavaScript HTTP",
+      skillArea: "Web fundamentals",
+      reason: "Good for revising core concepts missed in theory questions.",
+    },
+  ],
+};
+
+function buildSuggestedLearningResources(scoreImprovementPriorities = [], repositoryEvidenceSummary = {}) {
+  const resources = [];
+  const addResources = (key) => {
+    (LEARNING_RESOURCE_CATALOG[key] || []).forEach((resource) => resources.push(resource));
+  };
+
+  scoreImprovementPriorities.forEach((priority) => {
+    if (priority.area === SCORE_AREA_LABELS.practicalTaskScore) addResources("practicalTaskScore");
+    if (priority.area === SCORE_AREA_LABELS.quizScore) addResources("quizScore");
+  });
+
+  const failedRequirements = repositoryEvidenceSummary.executableAssessment?.failedRequirements || [];
+  failedRequirements.forEach((requirement) => {
+    const competency = safeString(requirement.competency).toLowerCase();
+    if (competency) addResources(competency);
+    if (/security|secret|auth/i.test(requirement.title || requirement.error || "")) addResources("security");
+  });
+
+  if (repositoryEvidenceSummary.hiddenExpectedOutputTest?.passed === false) {
+    addResources("testing");
+    addResources("practicalTaskScore");
+  }
+
+  return Array.from(
+    new Map(resources.map((resource) => [`${resource.type}:${resource.title}`, resource])).values(),
+  ).slice(0, 8);
+}
+
 export function getWeakAssessmentAreas(scores = {}) {
   return Object.entries({
     practicalTaskScore: scores.practicalTaskScore,
@@ -27,7 +495,7 @@ export function getWeakAssessmentAreas(scores = {}) {
     .map(([field]) => SCORE_AREA_LABELS[field]);
 }
 
-function getGapMeaning(gapLevel, skillGap) {
+function explainGapLevelMeaning(gapLevel, skillGap) {
   if (gapLevel === "No Gap") {
     return "The learner meets or exceeds the benchmark. Recommendations should focus on maintaining competency and progressing to advanced practice.";
   }
@@ -47,7 +515,7 @@ function getGapMeaning(gapLevel, skillGap) {
   return "The learner has a serious gap. Recommendations should prioritize foundational rebuilding, guided practice, and verified resubmission evidence.";
 }
 
-function getScoreBand(score) {
+function classifyScoreBand(score) {
   const numericScore = Number(score);
   if (!Number.isFinite(numericScore)) return "not measured";
   if (numericScore >= 90) return "excellent";
@@ -57,7 +525,7 @@ function getScoreBand(score) {
   return "critical";
 }
 
-function buildImprovementPriorities(scores = {}) {
+function buildScoreImprovementPriorities(scores = {}) {
   return Object.entries({
     practicalTaskScore: scores.practicalTaskScore,
     quizScore: scores.quizScore,
@@ -65,13 +533,13 @@ function buildImprovementPriorities(scores = {}) {
     .map(([field, score]) => ({
       area: SCORE_AREA_LABELS[field],
       score: Number(score || 0),
-      scoreBand: getScoreBand(score),
+      scoreBand: classifyScoreBand(score),
       improvementGuide: SCORE_AREA_IMPROVEMENT_GUIDE[field],
     }))
     .sort((first, second) => first.score - second.score);
 }
 
-function extractRepositoryEvidence(repositorySummary = {}) {
+function extractRepositoryEvidenceSummary(repositorySummary = {}) {
   const taskReview = repositorySummary.taskReview || {};
   const repositoryAssessmentEvidence =
     taskReview.repositoryAssessmentEvidence || {};
@@ -216,6 +684,7 @@ function buildRepositorySummaryText(repositorySummary = {}) {
   return parts.join(" ");
 }
 
+// Recommendation context preparation
 export function buildRecommendationContext({
   assessment,
   competency,
@@ -223,10 +692,14 @@ export function buildRecommendationContext({
 }) {
   // Gemini receives assessment facts and repository evidence, but scoring and
   // pass/fail decisions are already made by deterministic services.
-  const repositoryEvidence = extractRepositoryEvidence(
+  const repositoryEvidenceSummary = extractRepositoryEvidenceSummary(
     assessment.evidence?.repositorySummary,
   );
-  const improvementPriorities = buildImprovementPriorities(assessment.scores);
+  const scoreImprovementPriorities = buildScoreImprovementPriorities(assessment.scores);
+  const suggestedLearningResources = buildSuggestedLearningResources(
+    scoreImprovementPriorities,
+    repositoryEvidenceSummary,
+  );
 
   return {
     competencyTitle: competency.title,
@@ -237,20 +710,21 @@ export function buildRecommendationContext({
     finalScore: assessment.scores.finalScore,
     skillGap: assessment.skillGap,
     gapLevel: assessment.gapLevel,
-    gapMeaning: getGapMeaning(assessment.gapLevel, assessment.skillGap),
+    gapMeaning: explainGapLevelMeaning(assessment.gapLevel, assessment.skillGap),
     weakAreas: getWeakAssessmentAreas(assessment.scores),
-    improvementPriorities,
+    scoreImprovementPriorities,
+    suggestedLearningResources,
     assessorComment: assessorComment || assessment.assessorComment || "",
     assessmentScores: {
       githubPracticalTaskScore: assessment.scores?.practicalTaskScore,
-      githubPracticalTaskBand: getScoreBand(
+      githubPracticalTaskBand: classifyScoreBand(
         assessment.scores?.practicalTaskScore,
       ),
       theoryQuizScore: assessment.scores?.quizScore,
-      theoryQuizBand: getScoreBand(assessment.scores?.quizScore),
+      theoryQuizBand: classifyScoreBand(assessment.scores?.quizScore),
     },
     evidenceVerification: assessment.evidenceVerification || {},
-    repositoryEvidence,
+    repositoryEvidenceSummary,
     repositorySummary: buildRepositorySummaryText(
       assessment.evidence?.repositorySummary,
     ),
@@ -372,6 +846,7 @@ export async function deleteRecommendationById(recommendationId) {
   return recommendation;
 }
 
+// Recommendation persistence and approval
 export async function upsertAssessmentRecommendation({
   assessment,
   assessorId,
@@ -398,6 +873,12 @@ export async function upsertAssessmentRecommendation({
     recommendation.resources?.length > 0
       ? recommendation.resources
       : draft.resources;
+  const approvedLearningResources =
+    recommendation.learningResources?.length > 0
+      ? normalizeLearningResources(recommendation.learningResources)
+      : draft.learningResources?.length > 0
+        ? normalizeLearningResources(draft.learningResources)
+        : normalizeLearningResources(approvedResources);
 
   return Recommendation.findOneAndUpdate(
     { assessment: assessment._id },
@@ -411,6 +892,7 @@ export async function upsertAssessmentRecommendation({
       message: approvedMessage,
       actionItems: approvedActionItems,
       resources: approvedResources || [],
+      learningResources: approvedLearningResources || [],
       priority,
       aiProvider: draft.provider,
       aiModel: draft.model,
@@ -482,3 +964,20 @@ export function buildRepositoryAssessmentRecommendations(result = {}) {
 
   return [...new Set(recommendations)];
 }
+
+class RecommendationService {
+  getWeakAssessmentAreas = getWeakAssessmentAreas;
+  buildRecommendationContext = buildRecommendationContext;
+  generateDraftRecommendation = generateDraftRecommendation;
+  generateAutomaticRecommendationDraft = generateAutomaticRecommendationDraft;
+  listRecommendationsForUser = listRecommendationsForUser;
+  getRecommendationForUser = getRecommendationForUser;
+  updateRecommendationById = updateRecommendationById;
+  deleteRecommendationById = deleteRecommendationById;
+  upsertAssessmentRecommendation = upsertAssessmentRecommendation;
+  buildRepositoryAssessmentRecommendations = buildRepositoryAssessmentRecommendations;
+}
+
+const recommendationService = new RecommendationService();
+
+export default recommendationService;

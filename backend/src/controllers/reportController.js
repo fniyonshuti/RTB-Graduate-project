@@ -1,37 +1,42 @@
-import {
-  deleteReportForUser,
-  generateGraduateReport,
-  getReportForUser,
-  listReportsForUser,
-  updateReportById,
-} from '../services/reportService.js';
-import { asyncHandler } from '../utils/errors.js';
-import { sendSuccess } from '../utils/response.js';
+import reportService from '../services/reportService.js';
+import { asyncHandler } from '../services/errorService.js';
+import { sendSuccess } from '../services/responseService.js';
 import { isLearnerRole } from '../constants/roles.js';
 
-export const createReport = asyncHandler(async (req, res) => {
-  const graduateId =
-    isLearnerRole(req.user.role) ? req.user._id : req.body.graduateId;
-  const report = await generateGraduateReport(graduateId, req.user);
-  sendSuccess(res, 'Report generated successfully', report, 201);
-});
+class ReportController {
+  createReport = asyncHandler(async (req, res) => {
+    const graduateId =
+      isLearnerRole(req.user.role) ? req.user._id : req.body.graduateId;
+    const report = await reportService.generateGraduateReport(graduateId, req.user);
+    sendSuccess(res, 'Report generated successfully', report, 201);
+  });
 
-export const listReports = asyncHandler(async (req, res) => {
-  const reports = await listReportsForUser(req.user);
-  sendSuccess(res, 'Reports loaded', reports);
-});
+  listReports = asyncHandler(async (req, res) => {
+    const reports = await reportService.listReportsForUser(req.user);
+    sendSuccess(res, 'Reports loaded', reports);
+  });
 
-export const getReport = asyncHandler(async (req, res) => {
-  const report = await getReportForUser(req.params.id, req.user);
-  sendSuccess(res, 'Report loaded', report);
-});
+  getReport = asyncHandler(async (req, res) => {
+    const report = await reportService.getReportForUser(req.params.id, req.user);
+    sendSuccess(res, 'Report loaded', report);
+  });
 
-export const updateReport = asyncHandler(async (req, res) => {
-  const report = await updateReportById(req.params.id, req.body, req.user);
-  sendSuccess(res, 'Report updated', report);
-});
+  updateReport = asyncHandler(async (req, res) => {
+    const report = await reportService.updateReportById(req.params.id, req.body, req.user);
+    sendSuccess(res, 'Report updated', report);
+  });
 
-export const deleteReport = asyncHandler(async (req, res) => {
-  const report = await deleteReportForUser(req.params.id, req.user);
-  sendSuccess(res, 'Report deleted', report);
-});
+  deleteReport = asyncHandler(async (req, res) => {
+    const report = await reportService.deleteReportForUser(req.params.id, req.user);
+    sendSuccess(res, 'Report deleted', report);
+  });
+}
+
+const reportController = new ReportController();
+
+export const createReport = reportController.createReport;
+export const listReports = reportController.listReports;
+export const getReport = reportController.getReport;
+export const updateReport = reportController.updateReport;
+export const deleteReport = reportController.deleteReport;
+export default reportController;

@@ -1,40 +1,45 @@
-import {
-  getGraduateProfileByUserId,
-  getProfileByGraduateId,
-  listGraduateProfiles as listGraduateProfilesService,
-  deleteGraduateProfileByUserId,
-  deleteProfileByGraduateId,
-  upsertProfileByGraduateId,
-} from '../services/graduateService.js';
-import { asyncHandler } from '../utils/errors.js';
-import { sendSuccess } from '../utils/response.js';
+import graduateService from '../services/graduateService.js';
+import { asyncHandler } from '../services/errorService.js';
+import { sendSuccess } from '../services/responseService.js';
 
-export const getMyProfile = asyncHandler(async (req, res) => {
-  const profile = await getProfileByGraduateId(req.user._id);
-  sendSuccess(res, 'Graduate profile loaded', profile);
-});
+class GraduateController {
+  getMyProfile = asyncHandler(async (req, res) => {
+    const profile = await graduateService.getProfileByGraduateId(req.user._id);
+    sendSuccess(res, 'Graduate profile loaded', profile);
+  });
 
-export const upsertMyProfile = asyncHandler(async (req, res) => {
-  const profile = await upsertProfileByGraduateId(req.user._id, req.body);
-  sendSuccess(res, 'Graduate profile saved', profile);
-});
+  upsertMyProfile = asyncHandler(async (req, res) => {
+    const profile = await graduateService.upsertProfileByGraduateId(req.user._id, req.body);
+    sendSuccess(res, 'Graduate profile saved', profile);
+  });
 
-export const listGraduateProfiles = asyncHandler(async (req, res) => {
-  const profiles = await listGraduateProfilesService(req.user);
-  sendSuccess(res, 'Graduate profiles loaded', profiles);
-});
+  listGraduateProfiles = asyncHandler(async (req, res) => {
+    const profiles = await graduateService.listGraduateProfiles(req.user);
+    sendSuccess(res, 'Graduate profiles loaded', profiles);
+  });
 
-export const getGraduateProfile = asyncHandler(async (req, res) => {
-  const profile = await getGraduateProfileByUserId(req.params.userId, req.user);
-  sendSuccess(res, 'Graduate profile loaded', profile);
-});
+  getGraduateProfile = asyncHandler(async (req, res) => {
+    const profile = await graduateService.getGraduateProfileByUserId(req.params.userId, req.user);
+    sendSuccess(res, 'Graduate profile loaded', profile);
+  });
 
-export const deleteMyProfile = asyncHandler(async (req, res) => {
-  const profile = await deleteProfileByGraduateId(req.user._id);
-  sendSuccess(res, 'Graduate profile deleted', profile);
-});
+  deleteMyProfile = asyncHandler(async (req, res) => {
+    const profile = await graduateService.deleteProfileByGraduateId(req.user._id);
+    sendSuccess(res, 'Graduate profile deleted', profile);
+  });
 
-export const deleteGraduateProfile = asyncHandler(async (req, res) => {
-  const profile = await deleteGraduateProfileByUserId(req.params.userId);
-  sendSuccess(res, 'Graduate profile deleted', profile);
-});
+  deleteGraduateProfile = asyncHandler(async (req, res) => {
+    const profile = await graduateService.deleteGraduateProfileByUserId(req.params.userId);
+    sendSuccess(res, 'Graduate profile deleted', profile);
+  });
+}
+
+const graduateController = new GraduateController();
+
+export const getMyProfile = graduateController.getMyProfile;
+export const upsertMyProfile = graduateController.upsertMyProfile;
+export const listGraduateProfiles = graduateController.listGraduateProfiles;
+export const getGraduateProfile = graduateController.getGraduateProfile;
+export const deleteMyProfile = graduateController.deleteMyProfile;
+export const deleteGraduateProfile = graduateController.deleteGraduateProfile;
+export default graduateController;

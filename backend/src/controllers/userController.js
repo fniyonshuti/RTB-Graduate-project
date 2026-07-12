@@ -1,40 +1,45 @@
-import {
-  createManagedUser,
-  deactivateManagedUser,
-  deleteManagedUser,
-  getManagedUser,
-  listManagedUsers,
-  updateManagedUser,
-} from '../services/userService.js';
-import { asyncHandler } from '../utils/errors.js';
-import { sendSuccess } from '../utils/response.js';
+import userService from '../services/userService.js';
+import { asyncHandler } from '../services/errorService.js';
+import { sendSuccess } from '../services/responseService.js';
 
-export const listUsers = asyncHandler(async (req, res) => {
-  const users = await listManagedUsers(req.query, req.user);
-  sendSuccess(res, 'Users loaded', users);
-});
+class UserController {
+  listUsers = asyncHandler(async (req, res) => {
+    const users = await userService.listManagedUsers(req.query, req.user);
+    sendSuccess(res, 'Users loaded', users);
+  });
 
-export const getUser = asyncHandler(async (req, res) => {
-  const user = await getManagedUser(req.params.id, req.user);
-  sendSuccess(res, 'User loaded', user);
-});
+  getUser = asyncHandler(async (req, res) => {
+    const user = await userService.getManagedUser(req.params.id, req.user);
+    sendSuccess(res, 'User loaded', user);
+  });
 
-export const createUser = asyncHandler(async (req, res) => {
-  const user = await createManagedUser(req.body, req.user);
-  sendSuccess(res, 'User created', user, 201);
-});
+  createUser = asyncHandler(async (req, res) => {
+    const user = await userService.createManagedUser(req.body, req.user);
+    sendSuccess(res, 'User created', user, 201);
+  });
 
-export const updateUser = asyncHandler(async (req, res) => {
-  const user = await updateManagedUser(req.params.id, req.body, req.user);
-  sendSuccess(res, 'User updated', user);
-});
+  updateUser = asyncHandler(async (req, res) => {
+    const user = await userService.updateManagedUser(req.params.id, req.body, req.user);
+    sendSuccess(res, 'User updated', user);
+  });
 
-export const deactivateUser = asyncHandler(async (req, res) => {
-  const user = await deactivateManagedUser(req.params.id, req.user);
-  sendSuccess(res, 'User deactivated', user);
-});
+  deactivateUser = asyncHandler(async (req, res) => {
+    const user = await userService.deactivateManagedUser(req.params.id, req.user);
+    sendSuccess(res, 'User deactivated', user);
+  });
 
-export const deleteUser = asyncHandler(async (req, res) => {
-  const user = await deleteManagedUser(req.params.id, req.user);
-  sendSuccess(res, 'User deleted', user);
-});
+  deleteUser = asyncHandler(async (req, res) => {
+    const user = await userService.deleteManagedUser(req.params.id, req.user);
+    sendSuccess(res, 'User deleted', user);
+  });
+}
+
+const userController = new UserController();
+
+export const listUsers = userController.listUsers;
+export const getUser = userController.getUser;
+export const createUser = userController.createUser;
+export const updateUser = userController.updateUser;
+export const deactivateUser = userController.deactivateUser;
+export const deleteUser = userController.deleteUser;
+export default userController;
