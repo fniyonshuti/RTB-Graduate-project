@@ -52,7 +52,7 @@ import type {
   Assessment,
   Benchmark,
   Competency,
-  PracticalTask,
+  PracticalTaskChecklistItem,
   DashboardData,
   GraduateProfile,
   NotificationItem,
@@ -61,6 +61,7 @@ import type {
   LearningResource,
   RepositoryTaskReview,
   Report,
+  RepositoryChecklist,
   Role,
   User,
 } from "../types";
@@ -109,6 +110,13 @@ function uniqueFilterOptions(values: Array<string | undefined | null>) {
   ).sort((a, b) => a.localeCompare(b));
 }
 
+function optionLabel(value: string) {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function ListToolbar({
   search,
   onSearchChange,
@@ -137,6 +145,69 @@ function ListToolbar({
         Showing {filteredCount} of {totalCount}
       </span>
     </div>
+  );
+}
+
+const TABLE_PAGE_SIZE = 6;
+
+function paginateItems<T>(items: T[], currentPage: number, pageSize = TABLE_PAGE_SIZE) {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(Math.max(currentPage, 1), totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+
+  return {
+    currentPage: safePage,
+    totalPages,
+    startIndex,
+    endIndex: Math.min(startIndex + pageSize, items.length),
+    items: items.slice(startIndex, startIndex + pageSize),
+  };
+}
+
+function PaginationControls({
+  currentPage,
+  totalPages,
+  totalItems,
+  pageSize = TABLE_PAGE_SIZE,
+  startIndex,
+  endIndex,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize?: number;
+  startIndex: number;
+  endIndex: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalItems <= pageSize) return null;
+
+  return (
+    <nav className="pagination-bar" aria-label="Table pagination">
+      <span>
+        Showing {startIndex + 1}-{endIndex} of {totalItems}
+      </span>
+      <div className="pagination-actions">
+        <Button
+          variant="secondary"
+          disabled={currentPage === 1}
+          onClick={() => onPageChange(currentPage - 1)}
+        >
+          Previous
+        </Button>
+        <span className="pagination-page-count">
+          Page {currentPage} of {totalPages}
+        </span>
+        <Button
+          variant="secondary"
+          disabled={currentPage === totalPages}
+          onClick={() => onPageChange(currentPage + 1)}
+        >
+          Next
+        </Button>
+      </div>
+    </nav>
   );
 }
 
@@ -250,13 +321,23 @@ type RepositoryChecklistRow = RepositoryTaskReview["checklist"][number];
 function RepositoryChecklistTable({ checklist }: { checklist: RepositoryChecklistRow[] }) {
   if (!checklist.length) return null;
 
+  const totalEarned = checklist.reduce(
+    (sum, item) => sum + Number(item.weightedScore || 0),
+    0,
+  );
+  const totalWeight = checklist.reduce(
+    (sum, item) => sum + Number(item.weight || 0),
+    0,
+  );
+
   return (
     <div className="repository-checklist-result" aria-label="Repository checklist result">
       <table>
         <thead>
           <tr>
-            <th>Checklist</th>
-            <th>Status</th>
+            <th>Competency requirement</th>
+            <th>Score</th>
+            <th>Result</th>
           </tr>
         </thead>
         <tbody>
@@ -264,6 +345,13 @@ function RepositoryChecklistTable({ checklist }: { checklist: RepositoryChecklis
             <tr className={item.passed ? "passed" : "failed"} key={item.key}>
               <td>
                 <strong>{item.label}</strong>
+                {item.advice && <span>{item.advice}</span>}
+              </td>
+              <td>
+                <strong>
+                  {Number(item.weightedScore || 0).toFixed(2)} / {Number(item.weight || 0).toFixed(2)}
+                </strong>
+                <span>weighted points</span>
               </td>
               <td>
                 <Badge tone={item.passed ? "success" : "danger"}>
@@ -273,10 +361,53 @@ function RepositoryChecklistTable({ checklist }: { checklist: RepositoryChecklis
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr>
+            <td>Total repository score</td>
+            <td>{totalEarned.toFixed(2)} / {totalWeight.toFixed(2)}</td>
+            <td>{formatPercent(totalWeight > 0 ? (totalEarned / totalWeight) * 100 : 0)}</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   );
 }
+
+function AdminChecklistPreviewTable({ value }: { value: string }) {
+  const rows = parseChecklistRows(value) as PracticalTaskChecklistItem[];
+
+  if (rows.length === 0) {
+    return (
+      <div className="checklist-empty-preview">
+        Add measurable repository checklist requirements. These rows are saved in MongoDB and used by the automatic review engine.
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-checklist-preview" aria-label="Admin repository checklist preview">
+      <table>
+        <thead>
+          <tr>
+            <th>Requirement</th>
+            <th>Weight</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((item) => (
+            <tr key={item.key}>
+              <td>
+                <strong>{item.title}</strong>
+              </td>
+              <td>{item.weight}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function useAsyncData<T>(load: () => Promise<T>, initialData: T) {
   const loadRef = useRef(load);
   const initialDataRef = useRef(initialData);
@@ -799,7 +930,7 @@ function GraduateDashboard({
               {recentAssessments.slice(0, 4).map((assessment) => (
                 <div className="compact-row assessment-activity-row" key={assessment._id}>
                   <div className="assessment-activity-main">
-                    <strong>{assessment.competency.title}</strong>
+                    <strong>{assessment.competency.code || "N/A"} - {assessment.competency.title}</strong>
                     <span>{readableStatus(assessment.status)}</span>
                   </div>
                   <div className="compact-meta assessment-activity-meta">
@@ -823,7 +954,7 @@ function GraduateDashboard({
                   key={recommendation._id}
                 >
                   <div className="compact-meta">
-                    <strong>{recommendation.competency.title}</strong>
+                    <strong>{recommendation.competency.code || "N/A"} - {recommendation.competency.title}</strong>
                     <GapBadge level={recommendation.gapLevel} />
                   </div>
                   <ReadMoreText text={recommendation.message} limit={150} />
@@ -1181,6 +1312,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     taskReview: RepositoryTaskReview;
   } | null>(null);
   const [isReviewingRepository, setIsReviewingRepository] = useState(false);
+  const [isRepositoryResultOpen, setIsRepositoryResultOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const assessmentCategoryOptions = useMemo(
@@ -1322,6 +1454,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
       setPracticalTaskId("");
       setTheoryAnswers({});
       setRepositoryTaskReview(null);
+      setIsRepositoryResultOpen(false);
       setCompetency("");
       setCurrentStep(1);
     } catch (caughtError) {
@@ -1340,6 +1473,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     setPracticalTaskId("");
     setTheoryAnswers({});
     setRepositoryTaskReview(null);
+    setIsRepositoryResultOpen(false);
   }
 
   function handleSelectCompetency(nextCompetencyId: string) {
@@ -1387,8 +1521,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
         practicalTaskId: selectedTask._id,
         taskReview: result.taskReview,
       });
+      setIsRepositoryResultOpen(true);
       setMessage(
-        "Repository task review completed. Check the task score and checklist.",
+        "Repository task review completed. Select View results anytime to inspect the checklist.",
       );
     } catch (caughtError) {
       setError(
@@ -1587,255 +1722,258 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
 
           {currentStep === 2 && (
             <Card title="Complete the practical test and theory questions">
-              <div className="form-stack">
-                <Alert type="info">
-                  Practical evidence is based on a GitHub repository. The system
-                  scans the repository against the selected task and shows a
-                  checklist score before you submit for automatic scoring.
-                </Alert>
+              <div className="assessment-workspace-panel">
+                <p className="assessment-simple-helper">
+                  Add your GitHub repository, run the automatic review, then answer the theory questions.
+                </p>
 
-                {availableTasks.length > 0 ? (
-                  <SelectField
-                    label="Practical task"
-                    value={selectedTask?._id || ""}
-                    onChange={(event) => setPracticalTaskId(event.target.value)}
-                  >
-                    {availableTasks.map((task) => (
-                      <option key={task._id} value={task._id}>
-                        {task.title}
-                      </option>
-                    ))}
-                  </SelectField>
-                ) : (
-                  <Alert type="error">
-                    This competency does not yet have a practical test
-                    configured by the administrator.
-                  </Alert>
-                )}
-
-                {selectedTask && (
-                  <div className="task-review-card">
-                    <div className="task-review-header">
+                <div className="assessment-evidence-layout">
+                  <section className="assessment-evidence-main" aria-label="Practical evidence">
+                    <div className="assessment-section-title">
+                      <span>01</span>
                       <div>
-                        <span className="task-number">Practical task</span>
-                        <h3>{selectedTask.title}</h3>
+                        <strong>Practical GitHub evidence</strong>
+                        <p>Choose the task and let the system review the submitted repository.</p>
                       </div>
-                      <span className="mandatory-pill">mandatory</span>
                     </div>
-                    {activeRepositoryTaskReview && (
-                      <div className="task-score-strip">
-                        <span>
-                          Score:{" "}
-                          {formatPercent(activeRepositoryTaskReview.score)}
-                        </span>
-                        <em>
-                          Checks completed:{" "}
-                          {formatPercent(
-                            (activeRepositoryTaskReview.passedCount /
-                              Math.max(
-                                activeRepositoryTaskReview.checklist.length,
-                                1,
-                              )) *
-                              100,
-                          )}
-                        </em>
-                        <strong>
-                          {activeRepositoryTaskReview.pointsEarned}/
-                          {activeRepositoryTaskReview.pointsPossible} pts
-                        </strong>
-                      </div>
-                    )}
-                    <ReadMoreText text={selectedTask.instructions} limit={220} />
-                    {selectedTask.deliverables && (
-                      <div>
-                        <strong>Required deliverables</strong>
-                        <ReadMoreText text={selectedTask.deliverables} limit={180} />
-                      </div>
-                    )}
-                    <TextField
-                      label="GitHub repository evidence URL"
-                      type="url"
-                      value={githubRepositoryUrl}
-                      onChange={(event) =>
-                        setGithubRepositoryUrl(event.target.value)
-                      }
-                      placeholder={GITHUB_PLACEHOLDER.INDIVIDUAL_PROJECT}
-                      required
-                    />
-                    <div className="button-row">
-                      <Button
-                        disabled={
-                          isReviewingRepository || !githubRepositoryUrl.trim()
-                        }
-                        variant="secondary"
-                        onClick={() => void handleRepositoryTaskReview()}
-                      >
-                        {isReviewingRepository
-                          ? "Reviewing repository..."
-                          : "Review repository"}
-                      </Button>
-                      <Button
-                        disabled={!activeRepositoryTaskReview}
-                        variant="ghost"
-                        onClick={() =>
-                          document
-                            .getElementById("repository-review-result")
-                            ?.scrollIntoView({ behavior: "smooth" })
-                        }
-                      >
-                        View results
-                      </Button>
-                    </div>
-                    {activeRepositoryTaskReview && (
-                      <div
-                        className="repository-review-result"
-                        id="repository-review-result"
-                      >
-                        <div className="compact-meta">
-                          <strong>Automatic review result</strong>
-                          <span>
-                            {activeRepositoryTaskReview.passedCount}/
-                            {activeRepositoryTaskReview.checklist.length} passed
-                          </span>
-                        </div>
-                        <RepositoryChecklistTable checklist={activeRepositoryTaskReview.checklist} />
-                      </div>
-                    )}
-                  </div>
-                )}
 
-                <TextArea
-                  label="Supporting explanation"
-                  rows={5}
-                  value={practicalTask}
-                  onChange={(event) => setPracticalTask(event.target.value)}
-                  placeholder="Optional: explain what you completed, commands used, files created, test results, or deployment link."
-                />
+                    {availableTasks.length > 0 ? (
+                      <SelectField
+                        label="Practical task"
+                        value={selectedTask?._id || ""}
+                        onChange={(event) => setPracticalTaskId(event.target.value)}
+                      >
+                        {availableTasks.map((task) => (
+                          <option key={task._id} value={task._id}>
+                            {task.title}
+                          </option>
+                        ))}
+                      </SelectField>
+                    ) : (
+                      <Alert type="error">
+                        This competency does not yet have a practical test
+                        configured by the administrator.
+                      </Alert>
+                    )}
 
-                <div className="upload-panel">
-                  <label className="file-drop">
-                    <span>Upload project files or folders</span>
-                    <input
-                      multiple
-                      {...({ webkitdirectory: "" } as Record<string, string>)}
-                      onChange={(event) =>
-                        void handleEvidenceFiles(event.target.files)
-                      }
-                      type="file"
-                    />
-                  </label>
-                  <small>
-                    Optional supporting evidence: project folder, screenshots,
-                    PDFs, exported work, source files, or images. Maximum 2MB
-                    per file.
-                  </small>
-                  {evidenceFiles.length > 0 && (
-                    <div className="uploaded-file-list">
-                      {evidenceFiles.map((file) => (
-                        <div
-                          className="uploaded-file"
-                          key={`${file.name}-${file.size}`}
-                        >
+                    {selectedTask && (
+                      <div className="task-review-card practical-task-card">
+                        <div className="task-review-header">
                           <div>
-                            <strong>{file.name}</strong>
+                            <span className="task-number">Practical task</span>
+                            <h3>{selectedTask.title}</h3>
+                          </div>
+                          <span className="mandatory-pill">mandatory</span>
+                        </div>
+                        {activeRepositoryTaskReview && (
+                          <div className="task-score-strip">
                             <span>
-                              {Math.round((file.size || 0) / 1024)} KB
+                              Score: {formatPercent(activeRepositoryTaskReview.score)}
                             </span>
+                            <em>
+                              Checks completed: {formatPercent(
+                                (activeRepositoryTaskReview.passedCount /
+                                  Math.max(
+                                    activeRepositoryTaskReview.checklist.length,
+                                    1,
+                                  )) *
+                                  100,
+                              )}
+                            </em>
+                            <strong>
+                              {activeRepositoryTaskReview.pointsEarned}/
+                              {activeRepositoryTaskReview.pointsPossible} pts
+                            </strong>
                           </div>
-                          <Button
-                            variant="ghost"
-                            onClick={() =>
-                              setEvidenceFiles((current) =>
-                                current.filter(
-                                  (item) => item.dataUrl !== file.dataUrl,
-                                ),
-                              )
-                            }
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="question-list">
-                  <div className="section-heading">
-                    <strong>Theory questions</strong>
-                    <span>
-                      {answeredTheoryCount}/{theoryQuestions.length} answered
-                    </span>
-                  </div>
-                  {theoryQuestions.length === 0 ? (
-                    <EmptyState message="No theory questions configured for this competency yet." />
-                  ) : (
-                    theoryQuestions.map((question, index) => (
-                      <div className="question-card" key={question._id}>
-                        <div className="compact-meta">
-                          <strong>
-                            Question {index + 1} ({question.points} point
-                            {question.points === 1 ? "" : "s"})
-                          </strong>
-                          <span>{question.type.replace("_", " ")}</span>
-                        </div>
-                        <ReadMoreText text={question.question} limit={180} />
-                        {question.type === "multiple_choice" &&
-                        question.options?.length ? (
-                          <div className="option-list">
-                            {question.options.map((option) => (
-                              <label key={option}>
-                                <input
-                                  checked={
-                                    theoryAnswers[question._id] === option
-                                  }
-                                  name={question._id}
-                                  onChange={() =>
-                                    setTheoryAnswers({
-                                      ...theoryAnswers,
-                                      [question._id]: option,
-                                    })
-                                  }
-                                  type="radio"
-                                />
-                                <span>{option}</span>
-                              </label>
-                            ))}
+                        )}
+                        <ReadMoreText text={selectedTask.instructions} limit={220} />
+                        {selectedTask.deliverables && (
+                          <div className="deliverable-note">
+                            <strong>Required deliverables</strong>
+                            <ReadMoreText text={selectedTask.deliverables} limit={180} />
                           </div>
-                        ) : (
-                          <TextArea
-                            label="Your answer"
-                            rows={3}
-                            value={theoryAnswers[question._id] || ""}
-                            onChange={(event) =>
-                              setTheoryAnswers({
-                                ...theoryAnswers,
-                                [question._id]: event.target.value,
-                              })
-                            }
-                          />
                         )}
                       </div>
-                    ))
-                  )}
+                    )}
+
+                    <div className="repository-evidence-card">
+                      <div className="assessment-section-title compact">
+                        <span>02</span>
+                        <div>
+                          <strong>Repository review</strong>
+                          <p>Paste the GitHub repository URL and review it before submission.</p>
+                        </div>
+                      </div>
+                      <TextField
+                        label="GitHub repository evidence URL"
+                        type="url"
+                        value={githubRepositoryUrl}
+                        onChange={(event) =>
+                          setGithubRepositoryUrl(event.target.value)
+                        }
+                        placeholder={GITHUB_PLACEHOLDER.INDIVIDUAL_PROJECT}
+                        required
+                      />
+                      <div className="button-row assessment-action-row">
+                        <Button
+                          disabled={
+                            isReviewingRepository ||
+                            !githubRepositoryUrl.trim() ||
+                            Boolean(activeRepositoryTaskReview)
+                          }
+                          onClick={() => void handleRepositoryTaskReview()}
+                          variant={activeRepositoryTaskReview ? "secondary" : "primary"}
+                        >
+                          {isReviewingRepository
+                            ? "Reviewing repository..."
+                            : activeRepositoryTaskReview
+                              ? "Reviewed"
+                              : "Review repository"}
+                        </Button>
+                        <Button
+                          disabled={!activeRepositoryTaskReview}
+                          variant="secondary"
+                          onClick={() => setIsRepositoryResultOpen(true)}
+                        >
+                          View results
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="supporting-evidence-grid">
+                      <div className="upload-panel">
+                        <label className="file-drop">
+                          <span>Upload project files or folders</span>
+                          <input
+                            multiple
+                            {...({ webkitdirectory: "" } as Record<string, string>)}
+                            onChange={(event) =>
+                              void handleEvidenceFiles(event.target.files)
+                            }
+                            type="file"
+                          />
+                        </label>
+                        <small>
+                          Optional supporting evidence: project folder, screenshots,
+                          PDFs, exported work, source files, or images. Maximum 2MB
+                          per file.
+                        </small>
+                        {evidenceFiles.length > 0 && (
+                          <div className="uploaded-file-list">
+                            {evidenceFiles.map((file) => (
+                              <div
+                                className="uploaded-file"
+                                key={`${file.name}-${file.size}`}
+                              >
+                                <div>
+                                  <strong>{file.name}</strong>
+                                  <span>
+                                    {Math.round((file.size || 0) / 1024)} KB
+                                  </span>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setEvidenceFiles((current) =>
+                                      current.filter(
+                                        (item) => item.dataUrl !== file.dataUrl,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+
+                  <aside className="assessment-theory-panel" aria-label="Theory questions">
+                    <div className="assessment-section-title">
+                      <span>03</span>
+                      <div>
+                        <strong>Theory questions</strong>
+                        <p>{answeredTheoryCount}/{theoryQuestions.length} answered</p>
+                      </div>
+                    </div>
+
+                    <div className="question-list theory-question-list">
+                      {theoryQuestions.length === 0 ? (
+                        <EmptyState message="No theory questions configured for this competency yet." />
+                      ) : (
+                        theoryQuestions.map((question, index) => (
+                          <div className="question-card" key={question._id}>
+                            <div className="compact-meta">
+                              <strong>
+                                Question {index + 1} ({question.points} point
+                                {question.points === 1 ? "" : "s"})
+                              </strong>
+                              <span>{question.type.replace("_", " ")}</span>
+                            </div>
+                            <ReadMoreText text={question.question} limit={180} />
+                            {question.type === "multiple_choice" &&
+                            question.options?.length ? (
+                              <div className="option-list">
+                                {question.options.map((option) => (
+                                  <label key={option}>
+                                    <input
+                                      checked={
+                                        theoryAnswers[question._id] === option
+                                      }
+                                      name={question._id}
+                                      onChange={() =>
+                                        setTheoryAnswers({
+                                          ...theoryAnswers,
+                                          [question._id]: option,
+                                        })
+                                      }
+                                      type="radio"
+                                    />
+                                    <span>{option}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            ) : (
+                              <TextArea
+                                label="Your answer"
+                                rows={3}
+                                value={theoryAnswers[question._id] || ""}
+                                onChange={(event) =>
+                                  setTheoryAnswers({
+                                    ...theoryAnswers,
+                                    [question._id]: event.target.value,
+                                  })
+                                }
+                              />
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </aside>
                 </div>
 
-                <div className="evidence-readiness">
-                  <strong>
-                    {Math.min(evidenceCount, 4)}/4 evidence sections completed
-                  </strong>
-                  <ProgressBar value={Math.min(evidenceCount, 4) * 25} />
-                </div>
-                <div className="button-row">
-                  <Button variant="secondary" onClick={() => setCurrentStep(1)}>
-                    Back
-                  </Button>
-                  <Button
-                    disabled={!canReview}
-                    onClick={() => setCurrentStep(3)}
-                  >
-                    Review Submission
-                  </Button>
+                <div className="assessment-footer-panel">
+                  <div className="evidence-readiness">
+                    <strong>
+                      {Math.min(evidenceCount, 4)}/4 evidence sections completed
+                    </strong>
+                    <ProgressBar value={Math.min(evidenceCount, 4) * 25} />
+                  </div>
+                  <div className="button-row assessment-navigation-row">
+                    <Button variant="secondary" onClick={() => setCurrentStep(1)}>
+                      Back
+                    </Button>
+                    <Button
+                      disabled={!canReview}
+                      onClick={() => setCurrentStep(3)}
+                    >
+                      Review Submission
+                    </Button>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -1855,10 +1993,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 <ReviewLine
                   label="Submission mode"
                   value="GitHub review + upload evidence"
-                />
-                <ReviewLine
-                  label="Practical answer"
-                  value={practicalTask || "Not provided"}
                 />
                 <ReviewLine
                   label="GitHub repository"
@@ -1898,6 +2032,23 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
           </form>
         )}
       </div>
+
+      {isRepositoryResultOpen && activeRepositoryTaskReview && (
+        <DetailModal
+          title="Repository review result"
+          subtitle={`${activeRepositoryTaskReview.passedCount}/${activeRepositoryTaskReview.checklist.length} checklist items passed`}
+          onClose={() => setIsRepositoryResultOpen(false)}
+        >
+          <div className="compact-meta repository-result-summary">
+            <span>Score: {formatPercent(activeRepositoryTaskReview.score)}</span>
+            <span>
+              Points: {activeRepositoryTaskReview.pointsEarned}/
+              {activeRepositoryTaskReview.pointsPossible}
+            </span>
+          </div>
+          <RepositoryChecklistTable checklist={activeRepositoryTaskReview.checklist} />
+        </DetailModal>
+      )}
     </section>
   );
 }
@@ -2080,7 +2231,7 @@ export function AssessmentsPage({ token, role }: PageProps) {
                               <Badge tone="neutral">
                                 {readableStatus(assessment.status)}
                               </Badge>
-                              <h3>{assessment.competency.title}</h3>
+                              <h3>{assessment.competency.code || "N/A"} - {assessment.competency.title}</h3>
                               <p>{assessment.graduate.name}</p>
                             </div>
                             <span>{formatDate(assessment.createdAt)}</span>
@@ -2121,7 +2272,7 @@ export function AssessmentsPage({ token, role }: PageProps) {
                   {selected ? (
                     <>
                       <span className="eyebrow">Selected review</span>
-                      <h3>{selected.competency.title}</h3>
+                      <h3>{selected.competency.code || "N/A"} - {selected.competency.title}</h3>
                       <p>
                         {selected.graduate.name} submitted this assessment on{" "}
                         {formatDate(selected.createdAt)}.
@@ -2177,34 +2328,64 @@ export function AssessmentsPage({ token, role }: PageProps) {
           {data.length === 0 ? (
             <EmptyState message="No assessments found." />
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Competency</th>
-                    <th>Graduate</th>
-                    <th>Status</th>
-                    <th>Final Score</th>
-                    <th>Gap</th>
-                    <th>Submitted</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.map((assessment) => (
-                    <tr key={assessment._id}>
-                      <td>{assessment.competency.title}</td>
-                      <td>{assessment.graduate.name}</td>
-                      <td>{readableStatus(assessment.status)}</td>
-                      <td>{formatPercent(assessment.scores.finalScore)}</td>
-                      <td>
-                        <GapBadge level={assessment.gapLevel} />
-                      </td>
-                      <td>{formatDate(assessment.createdAt)}</td>
-                    </tr>
+            <>
+              <ListToolbar
+                search={assessmentSearch}
+                onSearchChange={setAssessmentSearch}
+                searchPlaceholder="Search graduate, email, competency..."
+                totalCount={data.length}
+                filteredCount={filteredAssessments.length}
+              >
+                <SelectField
+                  label="Status"
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  {queueStatusOptions.map((option) => (
+                    option.value !== "all" && (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    )
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </SelectField>
+              </ListToolbar>
+              {filteredAssessments.length === 0 ? (
+                <EmptyState message="No assessments match your search or filter." />
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Competency</th>
+                        <th>Graduate</th>
+                        <th>Status</th>
+                        <th>Final Score</th>
+                        <th>Gap</th>
+                        <th>Submitted</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAssessments.map((assessment) => (
+                        <tr key={assessment._id}>
+                          <td className="table-code-cell">{assessment.competency.code || "N/A"}</td>
+                          <td>{assessment.competency.title}</td>
+                          <td>{assessment.graduate.name}</td>
+                          <td>{readableStatus(assessment.status)}</td>
+                          <td>{formatPercent(assessment.scores.finalScore)}</td>
+                          <td>
+                            <GapBadge level={assessment.gapLevel} />
+                          </td>
+                          <td>{formatDate(assessment.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </Card>
       )}
@@ -2410,7 +2591,7 @@ function ReviewAssessmentPanel({
       <div className="review-workspace-hero">
         <div>
           <span className="eyebrow">Assessment review</span>
-          <h2>{assessment.competency.title}</h2>
+          <h2>{assessment.competency.code || "N/A"} - {assessment.competency.title}</h2>
           <p>
             Review the GitHub practical task, theory answers, and final
             recommendation before submitting the official gap result.
@@ -3011,6 +3192,7 @@ export function GapResultsPage({ token }: { token: string }) {
   );
   const [gapSearch, setGapSearch] = useState("");
   const [gapLevelFilter, setGapLevelFilter] = useState("all");
+  const [gapPage, setGapPage] = useState(1);
   const gapLevelOptions = useMemo(
     () => uniqueFilterOptions(data.map((assessment) => assessment.gapLevel)),
     [data],
@@ -3038,6 +3220,14 @@ export function GapResultsPage({ token }: { token: string }) {
       }),
     [data, gapLevelFilter, gapSearch, recommendations],
   );
+  const paginatedGapResults = useMemo(
+    () => paginateItems(filteredGapResults, gapPage),
+    [filteredGapResults, gapPage],
+  );
+
+  useEffect(() => {
+    setGapPage(1);
+  }, [gapLevelFilter, gapSearch]);
 
   if (isLoading) return <LoadingState message="Loading gap results..." />;
 
@@ -3113,51 +3303,43 @@ export function GapResultsPage({ token }: { token: string }) {
           {filteredGapResults.length === 0 ? (
             <EmptyState message="No gap results match your search or filter." />
           ) : (
-            <div className="table-wrap page-data-table-wrap">
-              <table className="page-data-table gap-results-table compact-results-table">
+            <div className="table-wrap">
+              <table>
                 <thead>
                   <tr>
+                    <th>Code</th>
                     <th>Competency</th>
                     <th>Scores</th>
+                    <th>Gap</th>
                     <th>Skill gap score</th>
                     <th>Benchmark</th>
                     <th>Date</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredGapResults.map((assessment) => (
+                  {paginatedGapResults.items.map((assessment) => (
                     <tr key={assessment._id}>
+                      <td className="table-code-cell">{assessment.competency.code || "N/A"}</td>
+                      <td>{assessment.competency.title}</td>
+                      <td>{formatPercent(assessment.scores.finalScore)}</td>
                       <td>
-                        <div className="table-primary-cell">
-                          <strong>{assessment.competency.title}</strong>
-                        </div>
+                        <GapBadge level={assessment.gapLevel} />
                       </td>
-                      <td>
-                        <div className="score-stack">
-                          <strong>{formatPercent(assessment.scores.finalScore)}</strong>
-                          <ProgressBar value={assessment.scores.finalScore} />
-
-                        </div>
-                      </td>
-                      <td>
-                        <strong className="table-number-cell">
-                          {formatPercent(assessment.skillGap)}
-                        </strong>
-                      </td>
-                      <td>
-                        <strong className="table-number-cell">
-                          {formatPercent(assessment.benchmarkScore)}
-                        </strong>
-                      </td>
-                      <td>
-                        <span className="table-date-text">
-                          {formatDate(assessment.reviewedAt || assessment.createdAt)}
-                        </span>
-                      </td>
+                      <td>{formatPercent(assessment.skillGap)}</td>
+                      <td>{formatPercent(assessment.benchmarkScore)}</td>
+                      <td>{formatDate(assessment.reviewedAt || assessment.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <PaginationControls
+                currentPage={paginatedGapResults.currentPage}
+                totalPages={paginatedGapResults.totalPages}
+                totalItems={filteredGapResults.length}
+                startIndex={paginatedGapResults.startIndex}
+                endIndex={paginatedGapResults.endIndex}
+                onPageChange={setGapPage}
+              />
             </div>
           )}
         </>
@@ -3173,6 +3355,7 @@ export function RecommendationsPage({ token }: { token: string }) {
   );
   const [recommendationSearch, setRecommendationSearch] = useState("");
   const [recommendationPriorityFilter, setRecommendationPriorityFilter] = useState("all");
+  const [recommendationPage, setRecommendationPage] = useState(1);
   const [activeRecommendation, setActiveRecommendation] = useState<Recommendation | null>(null);
   const [activeResources, setActiveResources] = useState<Recommendation | null>(null);
   const recommendationPriorityOptions = useMemo(
@@ -3202,6 +3385,14 @@ export function RecommendationsPage({ token }: { token: string }) {
       }),
     [data, recommendationPriorityFilter, recommendationSearch],
   );
+  const paginatedRecommendations = useMemo(
+    () => paginateItems(filteredRecommendations, recommendationPage),
+    [filteredRecommendations, recommendationPage],
+  );
+
+  useEffect(() => {
+    setRecommendationPage(1);
+  }, [recommendationPriorityFilter, recommendationSearch]);
 
   if (isLoading) return <LoadingState message="Loading recommendations..." />;
 
@@ -3279,6 +3470,7 @@ export function RecommendationsPage({ token }: { token: string }) {
               <table className="page-data-table recommendations-table compact-recommendations-table">
                 <thead>
                   <tr>
+                    <th>Code</th>
                     <th>Competency</th>
                     <th>Recommendation</th>
                     <th>Date</th>
@@ -3286,16 +3478,12 @@ export function RecommendationsPage({ token }: { token: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRecommendations.map((recommendation) => (
+                  {paginatedRecommendations.items.map((recommendation) => (
                     <tr key={recommendation._id}>
-                      <td>
-                        <div className="table-primary-cell">
-                          <strong>{recommendation.competency.title}</strong>
-                        </div>
-                      </td>
+                      <td className="table-code-cell">{recommendation.competency.code || "N/A"}</td>
+                      <td>{recommendation.competency.title}</td>
                       <td>
                         <Button
-                          variant="secondary"
                           onClick={() => setActiveRecommendation(recommendation)}
                         >
                           View recommendation
@@ -3319,6 +3507,14 @@ export function RecommendationsPage({ token }: { token: string }) {
                   ))}
                 </tbody>
               </table>
+              <PaginationControls
+                currentPage={paginatedRecommendations.currentPage}
+                totalPages={paginatedRecommendations.totalPages}
+                totalItems={filteredRecommendations.length}
+                startIndex={paginatedRecommendations.startIndex}
+                endIndex={paginatedRecommendations.endIndex}
+                onPageChange={setRecommendationPage}
+              />
             </div>
           )}
         </>
@@ -3326,7 +3522,7 @@ export function RecommendationsPage({ token }: { token: string }) {
 
       {activeRecommendation && (
         <DetailModal
-          title={activeRecommendation.competency.title}
+          title={`${activeRecommendation.competency.code || "N/A"} - ${activeRecommendation.competency.title}`}
           subtitle="Approved recommendation and action plan"
           onClose={() => setActiveRecommendation(null)}
         >
@@ -3365,7 +3561,7 @@ export function RecommendationsPage({ token }: { token: string }) {
 
       {activeResources && (
         <DetailModal
-          title={activeResources.competency.title}
+          title={`${activeResources.competency.code || "N/A"} - ${activeResources.competency.title}`}
           subtitle="Learning resources to close the measured skill gap"
           onClose={() => setActiveResources(null)}
         >
@@ -3391,6 +3587,7 @@ export function ReportsPage({ token, role }: PageProps) {
   const [message, setMessage] = useState("");
   const [reportSearch, setReportSearch] = useState("");
   const [reportGapFilter, setReportGapFilter] = useState("all");
+  const [reportPage, setReportPage] = useState(1);
   const [activeReport, setActiveReport] = useState<Report | null>(null);
   const reportGapOptions = useMemo(
     () => uniqueFilterOptions(data.map((report) => report.overallGapLevel)),
@@ -3417,6 +3614,14 @@ export function ReportsPage({ token, role }: PageProps) {
       }),
     [data, reportGapFilter, reportSearch],
   );
+  const paginatedReports = useMemo(
+    () => paginateItems(filteredReports, reportPage),
+    [filteredReports, reportPage],
+  );
+
+  useEffect(() => {
+    setReportPage(1);
+  }, [reportGapFilter, reportSearch]);
 
   async function handleGenerate() {
     setMessage("");
@@ -3543,7 +3748,7 @@ export function ReportsPage({ token, role }: PageProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredReports.map((report) => (
+                  {paginatedReports.items.map((report) => (
                     <tr key={report._id}>
                       <td>
                         <div className="table-primary-cell">
@@ -3562,7 +3767,6 @@ export function ReportsPage({ token, role }: PageProps) {
                       </td>
                       <td>
                         <Button
-                          variant="secondary"
                           onClick={() => setActiveReport(report)}
                         >
                           View report details
@@ -3571,7 +3775,6 @@ export function ReportsPage({ token, role }: PageProps) {
                       <td>
                         <div className="table-action-row">
                           <Button
-                            variant="secondary"
                             onClick={() => downloadReport(report)}
                           >
                             Download
@@ -3582,6 +3785,14 @@ export function ReportsPage({ token, role }: PageProps) {
                   ))}
                 </tbody>
               </table>
+              <PaginationControls
+                currentPage={paginatedReports.currentPage}
+                totalPages={paginatedReports.totalPages}
+                totalItems={filteredReports.length}
+                startIndex={paginatedReports.startIndex}
+                endIndex={paginatedReports.endIndex}
+                onPageChange={setReportPage}
+              />
             </div>
           )}
         </>
@@ -3603,7 +3814,7 @@ export function ReportsPage({ token, role }: PageProps) {
               <ul>
                 {activeReport.assessments.map((assessment) => (
                   <li key={assessment._id}>
-                    <strong>{assessment.competency.title}</strong>
+                    <strong>{assessment.competency.code || "N/A"} - {assessment.competency.title}</strong>
                     <span>
                       {formatPercent(assessment.scores.finalScore)} - {assessment.gapLevel}
                     </span>
@@ -3620,7 +3831,7 @@ export function ReportsPage({ token, role }: PageProps) {
               <ul>
                 {activeReport.assessments.map((assessment) => (
                   <li key={`${activeReport._id}-${assessment._id}-repo`}>
-                    <strong>{assessment.competency.title}</strong>
+                    <strong>{assessment.competency.code || "N/A"} - {assessment.competency.title}</strong>
                     <ReadMoreText
                       text={assessment.evidence.repositorySummary?.summaryText}
                       emptyText="No repository summary available."
@@ -3699,7 +3910,7 @@ function buildReportHtml(report: Report) {
         : "No verification checks recorded.";
 
       return `<section class="summary">
-        <h3>${escapeHtml(assessment.competency.title)}</h3>
+        <h3>${escapeHtml(assessment.competency.code)} - ${escapeHtml(assessment.competency.title)}</h3>
         <p>${escapeHtml(summary?.summaryText || "No repository summary available.")}</p>
         <p><strong>Repository quality:</strong> ${escapeHtml(formatPercent(summary?.codeQualityScore || 0))}</p>
         <p><strong>Evidence completeness:</strong> ${escapeHtml(formatPercent(summary?.evidenceCompletenessScore || 0))}</p>
@@ -3721,6 +3932,7 @@ function buildReportHtml(report: Report) {
       const recommendation = recommendationFor(assessment);
       return `
         <tr>
+          <td>${escapeHtml(assessment.competency.code)}</td>
           <td>${escapeHtml(assessment.competency.title)}</td>
           <td>${escapeHtml(formatPercent(assessment.scores.finalScore))}</td>
           <td>${escapeHtml(formatPercent(assessment.benchmarkScore))}</td>
@@ -3775,7 +3987,7 @@ function buildReportHtml(report: Report) {
         assessments
           .map(
             (assessment) =>
-              `<li><strong>${escapeHtml(assessment.competency.title)}</strong>: ${escapeHtml(
+              `<li><strong>${escapeHtml(assessment.competency.code)} - ${escapeHtml(assessment.competency.title)}</strong>: ${escapeHtml(
                 assessment.evidence.repositorySummary?.summaryText ||
                   "No repository summary available.",
               )}</li>`,
@@ -3788,6 +4000,7 @@ function buildReportHtml(report: Report) {
     <table>
       <thead>
         <tr>
+          <th>Code</th>
           <th>Competency</th>
           <th>Graduate Score</th>
           <th>RTB Benchmark</th>
@@ -3797,7 +4010,7 @@ function buildReportHtml(report: Report) {
           <th>Recommendation</th>
         </tr>
       </thead>
-      <tbody>${assessmentRows || '<tr><td colspan="7">No assessment results found.</td></tr>'}</tbody>
+      <tbody>${assessmentRows || '<tr><td colspan="8">No assessment results found.</td></tr>'}</tbody>
     </table>
   </body>
 </html>`;
@@ -3971,6 +4184,38 @@ function AdminNotificationsPage({ token }: { token: string }) {
     recipientId: "",
   });
   const [message, setMessage] = useState("");
+  const [notificationSearch, setNotificationSearch] = useState("");
+  const [notificationStatusFilter, setNotificationStatusFilter] = useState("all");
+  const [notificationTypeFilter, setNotificationTypeFilter] = useState("all");
+  const notificationTypeOptions = useMemo(
+    () => uniqueFilterOptions(data.map((notification) => notification.type)),
+    [data],
+  );
+  const filteredNotifications = useMemo(
+    () =>
+      data.filter((notification) => {
+        const matchesStatus =
+          notificationStatusFilter === "all" ||
+          (notificationStatusFilter === "unread" && !notification.isRead) ||
+          (notificationStatusFilter === "read" && notification.isRead);
+        const matchesType =
+          notificationTypeFilter === "all" || notification.type === notificationTypeFilter;
+
+        return (
+          matchesStatus &&
+          matchesType &&
+          matchesSearchTerm(
+            notificationSearch,
+            notification.title,
+            notification.message,
+            notification.type,
+            notification.recipient,
+            notification.createdAt,
+          )
+        );
+      }),
+    [data, notificationSearch, notificationStatusFilter, notificationTypeFilter],
+  );
   const unreadCount = data.filter(
     (notification) => !notification.isRead,
   ).length;
@@ -4093,34 +4338,69 @@ function AdminNotificationsPage({ token }: { token: string }) {
         {data.length === 0 ? (
           <EmptyState message="No notifications found." />
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Recipient</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((notification) => (
-                  <tr key={notification._id}>
-                    <td>{notification.title}</td>
-                    <td>
-                      {notification.recipient?.name || "Unknown"}
-                      <br />
-                      <small>{notification.recipient?.role || "N/A"}</small>
-                    </td>
-                    <td>{notification.type}</td>
-                    <td>{notification.isRead ? "Read" : "Unread"}</td>
-                    <td>{formatDate(notification.createdAt)}</td>
-                  </tr>
+          <>
+            <ListToolbar
+              search={notificationSearch}
+              onSearchChange={setNotificationSearch}
+              searchPlaceholder="Search title, message, recipient, role..."
+              totalCount={data.length}
+              filteredCount={filteredNotifications.length}
+            >
+              <SelectField
+                label="Status"
+                value={notificationStatusFilter}
+                onChange={(event) => setNotificationStatusFilter(event.target.value)}
+              >
+                <option value="all">All statuses</option>
+                <option value="unread">Unread</option>
+                <option value="read">Read</option>
+              </SelectField>
+              <SelectField
+                label="Type"
+                value={notificationTypeFilter}
+                onChange={(event) => setNotificationTypeFilter(event.target.value)}
+              >
+                <option value="all">All types</option>
+                {notificationTypeOptions.map((type) => (
+                  <option key={type} value={type}>
+                    {optionLabel(type)}
+                  </option>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </SelectField>
+            </ListToolbar>
+            {filteredNotifications.length === 0 ? (
+              <EmptyState message="No notifications match your search or filter." />
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Title</th>
+                      <th>Recipient</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredNotifications.map((notification) => (
+                      <tr key={notification._id}>
+                        <td>{notification.title}</td>
+                        <td>
+                          {notification.recipient?.name || "Unknown"}
+                          <br />
+                          <small>{roleLabel(notification.recipient?.role || "normal_user")}</small>
+                        </td>
+                        <td>{optionLabel(notification.type)}</td>
+                        <td>{notification.isRead ? "Read" : "Unread"}</td>
+                        <td>{formatDate(notification.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </Card>
     </section>
@@ -4168,6 +4448,46 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("all");
+  const [userStatusFilter, setUserStatusFilter] = useState("all");
+  const [userOrganizationFilter, setUserOrganizationFilter] = useState("all");
+
+  const userRoleOptions = useMemo(
+    () => uniqueFilterOptions(data.map((user) => user.role)),
+    [data],
+  );
+  const userOrganizationOptions = useMemo(
+    () => uniqueFilterOptions(data.map((user) => organizationName(user))),
+    [data],
+  );
+  const filteredUsers = useMemo(
+    () =>
+      data.filter((user) => {
+        const status = user.isActive === false ? "inactive" : "active";
+        const organization = organizationName(user);
+        const passwordState = user.mustChangePassword
+          ? "temporary password"
+          : "user managed password";
+
+        return (
+          (userRoleFilter === "all" || user.role === userRoleFilter) &&
+          (userStatusFilter === "all" || status === userStatusFilter) &&
+          (userOrganizationFilter === "all" || organization === userOrganizationFilter) &&
+          matchesSearchTerm(
+            userSearch,
+            user.name,
+            user.email,
+            user.role,
+            roleLabel(user.role),
+            organization,
+            status,
+            passwordState,
+          )
+        );
+      }),
+    [data, userOrganizationFilter, userRoleFilter, userSearch, userStatusFilter],
+  );
 
   const creatableRoles =
     role === "super_admin"
@@ -4481,55 +4801,102 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
         {data.length === 0 ? (
           <EmptyState message="No users found." />
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Organization</th>
-                  <th>Status</th>
-                  <th>Password access</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((user) => (
-                  <tr key={user.id}>
-                    <td>{user.name}</td>
-                    <td>{user.email}</td>
-                    <td>{roleLabel(user.role)}</td>
-                    <td>{organizationName(user)}</td>
-                    <td>{user.isActive === false ? "Inactive" : "Active"}</td>
-                    <td>
-                      {user.mustChangePassword
-                        ? "Temporary password"
-                        : "User-managed password"}
-                    </td>
-                    <td>
-                      <div className="button-row">
-                        <Button
-                          variant="secondary"
-                          onClick={() => startEditUser(user)}
-                          disabled={editingUserId !== null}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="danger"
-                          disabled={isDeleting === user.id}
-                          onClick={() => void handleDeleteUser(user.id)}
-                        >
-                          {isDeleting === user.id ? "Deleting..." : "Delete"}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
+          <>
+            <ListToolbar
+              search={userSearch}
+              onSearchChange={setUserSearch}
+              searchPlaceholder="Search name, email, role, organization..."
+              totalCount={data.length}
+              filteredCount={filteredUsers.length}
+            >
+              <SelectField
+                label="Role"
+                value={userRoleFilter}
+                onChange={(event) => setUserRoleFilter(event.target.value)}
+              >
+                <option value="all">All roles</option>
+                {userRoleOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {roleLabel(item as Role)}
+                  </option>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </SelectField>
+              <SelectField
+                label="Organization"
+                value={userOrganizationFilter}
+                onChange={(event) => setUserOrganizationFilter(event.target.value)}
+              >
+                <option value="all">All organizations</option>
+                {userOrganizationOptions.map((organization) => (
+                  <option key={organization} value={organization}>
+                    {organization}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                label="Status"
+                value={userStatusFilter}
+                onChange={(event) => setUserStatusFilter(event.target.value)}
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </SelectField>
+            </ListToolbar>
+            {filteredUsers.length === 0 ? (
+              <EmptyState message="No users match your search or filter." />
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Role</th>
+                      <th>Organization</th>
+                      <th>Status</th>
+                      <th>Password access</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((user) => (
+                      <tr key={user.id}>
+                        <td>{user.name}</td>
+                        <td>{user.email}</td>
+                        <td>{roleLabel(user.role)}</td>
+                        <td>{organizationName(user)}</td>
+                        <td>{user.isActive === false ? "Inactive" : "Active"}</td>
+                        <td>
+                          {user.mustChangePassword
+                            ? "Temporary password"
+                            : "User-managed password"}
+                        </td>
+                        <td>
+                          <div className="button-row">
+                            <Button
+                              variant="secondary"
+                              onClick={() => startEditUser(user)}
+                              disabled={editingUserId !== null}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="danger"
+                              disabled={isDeleting === user.id}
+                              onClick={() => void handleDeleteUser(user.id)}
+                            >
+                              {isDeleting === user.id ? "Deleting..." : "Delete"}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </Card>
     </section>
@@ -4562,6 +4929,48 @@ export function OrganizationsPage({ token }: { token: string }) {
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [organizationSearch, setOrganizationSearch] = useState("");
+  const [organizationTypeFilter, setOrganizationTypeFilter] = useState("all");
+  const [organizationStatusFilter, setOrganizationStatusFilter] = useState("all");
+  const [organizationDistrictFilter, setOrganizationDistrictFilter] = useState("all");
+
+  const organizationTypeOptions = useMemo(
+    () => uniqueFilterOptions(data.map((organization) => organization.type)),
+    [data],
+  );
+  const organizationDistrictOptions = useMemo(
+    () => uniqueFilterOptions(data.map((organization) => organization.district)),
+    [data],
+  );
+  const organizationStatusOptions = useMemo(
+    () => uniqueFilterOptions(data.map((organization) => organization.status || "active")),
+    [data],
+  );
+  const filteredOrganizations = useMemo(
+    () =>
+      data.filter((organization) => {
+        const status = organization.status || "active";
+        const type = organization.type || "other";
+        const district = organization.district || "N/A";
+
+        return (
+          (organizationTypeFilter === "all" || type === organizationTypeFilter) &&
+          (organizationStatusFilter === "all" || status === organizationStatusFilter) &&
+          (organizationDistrictFilter === "all" || district === organizationDistrictFilter) &&
+          matchesSearchTerm(
+            organizationSearch,
+            organization.name,
+            district,
+            type,
+            status,
+            organization.contactEmail,
+            organization.phone,
+            organization.address,
+          )
+        );
+      }),
+    [data, organizationDistrictFilter, organizationSearch, organizationStatusFilter, organizationTypeFilter],
+  );
 
   async function handleCreateOrganization(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -4830,55 +5239,105 @@ export function OrganizationsPage({ token }: { token: string }) {
         {data.length === 0 ? (
           <EmptyState message="No organizations found." />
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>District</th>
-                  <th>Type</th>
-                  <th>Contact</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((organization) => (
-                  <tr key={organization._id}>
-                    <td>{organization.name}</td>
-                    <td>{organization.district || "N/A"}</td>
-                    <td>{organization.type || "N/A"}</td>
-                    <td>
-                      {organization.contactEmail || organization.phone || "N/A"}
-                    </td>
-                    <td>{organization.status || "active"}</td>
-                    <td>
-                      <div className="button-row">
-                        <Button
-                          variant="secondary"
-                          onClick={() => startEditOrganization(organization)}
-                          disabled={editingId !== null}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="danger"
-                          disabled={isDeleting === organization._id}
-                          onClick={() =>
-                            void handleDeleteOrganization(organization._id)
-                          }
-                        >
-                          {isDeleting === organization._id
-                            ? "Deleting..."
-                            : "Delete"}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
+          <>
+            <ListToolbar
+              search={organizationSearch}
+              onSearchChange={setOrganizationSearch}
+              searchPlaceholder="Search name, district, contact, address..."
+              totalCount={data.length}
+              filteredCount={filteredOrganizations.length}
+            >
+              <SelectField
+                label="Type"
+                value={organizationTypeFilter}
+                onChange={(event) => setOrganizationTypeFilter(event.target.value)}
+              >
+                <option value="all">All types</option>
+                {organizationTypeOptions.map((type) => (
+                  <option key={type} value={type}>
+                    {optionLabel(type)}
+                  </option>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </SelectField>
+              <SelectField
+                label="District"
+                value={organizationDistrictFilter}
+                onChange={(event) => setOrganizationDistrictFilter(event.target.value)}
+              >
+                <option value="all">All districts</option>
+                {organizationDistrictOptions.map((district) => (
+                  <option key={district} value={district}>
+                    {district}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                label="Status"
+                value={organizationStatusFilter}
+                onChange={(event) => setOrganizationStatusFilter(event.target.value)}
+              >
+                <option value="all">All statuses</option>
+                {organizationStatusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {optionLabel(status)}
+                  </option>
+                ))}
+              </SelectField>
+            </ListToolbar>
+            {filteredOrganizations.length === 0 ? (
+              <EmptyState message="No organizations match your search or filter." />
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>District</th>
+                      <th>Type</th>
+                      <th>Contact</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredOrganizations.map((organization) => (
+                      <tr key={organization._id}>
+                        <td>{organization.name}</td>
+                        <td>{organization.district || "N/A"}</td>
+                        <td>{optionLabel(organization.type || "other")}</td>
+                        <td>
+                          {organization.contactEmail || organization.phone || "N/A"}
+                        </td>
+                        <td>{optionLabel(organization.status || "active")}</td>
+                        <td>
+                          <div className="button-row">
+                            <Button
+                              variant="secondary"
+                              onClick={() => startEditOrganization(organization)}
+                              disabled={editingId !== null}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="danger"
+                              disabled={isDeleting === organization._id}
+                              onClick={() =>
+                                void handleDeleteOrganization(organization._id)
+                              }
+                            >
+                              {isDeleting === organization._id
+                                ? "Deleting..."
+                                : "Delete"}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </Card>
     </section>
@@ -4907,33 +5366,16 @@ const CHECKLIST_VALIDATION_TYPES = [
   "manual_review",
 ];
 
-function formatChecklistRows(task?: PracticalTask) {
-  return (task?.reviewChecklist || [])
-    .map((item) =>
-      [
-        item.title,
-        item.category || "general",
-        item.validationType || "implementation_review",
-        item.maxScore || 10,
-        item.weight || 10,
-        item.feedbackWhenFailed || "",
-      ].join(" | "),
-    )
-    .join("\n");
-}
-
 function parseChecklistRows(value: string) {
   return value
     .split("\n")
     .map((line, index) => {
-      const [
-        title,
-        category = "general",
-        validationType = "implementation_review",
-        maxScore = "10",
-        weight = "10",
-        feedbackWhenFailed = "",
-      ] = line.split("|").map((part) => part.trim());
+      const parts = line.split("|").map((part) => part.trim());
+      const [title, category = "general", validationType = "implementation_review"] = parts;
+      const usesLegacyFormat = parts.length >= 6;
+      const weightValue = usesLegacyFormat ? parts[4] : parts[3];
+      const feedbackWhenFailed = usesLegacyFormat ? parts[5] || "" : parts[4] || "";
+      const weight = Math.min(Math.max(Number(weightValue) || 10, 1), 100);
 
       if (!title) return null;
 
@@ -4944,8 +5386,8 @@ function parseChecklistRows(value: string) {
         validationType: CHECKLIST_VALIDATION_TYPES.includes(validationType)
           ? validationType
           : "implementation_review",
-        maxScore: Math.min(Math.max(Number(maxScore) || 10, 1), 100),
-        weight: Math.min(Math.max(Number(weight) || 10, 1), 100),
+        maxScore: weight,
+        weight,
         successThreshold: 70,
         feedbackWhenFailed,
       };
@@ -4953,12 +5395,580 @@ function parseChecklistRows(value: string) {
     .filter(Boolean);
 }
 
-function checklistWeightTotal(value: string) {
-  return parseChecklistRows(value).reduce(
-    (sum, item) => sum + Number(item?.weight || 0),
-    0,
+function serializeChecklistRows(rows: PracticalTaskChecklistItem[]) {
+  return rows
+    .map((item) =>
+      [
+        item.title || "",
+        item.category || "general",
+        item.validationType || "implementation_review",
+        item.weight || 10,
+        item.feedbackWhenFailed || "",
+      ].join(" | "),
+    )
+    .join("\n");
+}
+
+function createChecklistBuilderRow(index: number): PracticalTaskChecklistItem {
+  return {
+    key: `checklist-${Date.now()}-${index}`,
+    title: "",
+    category: "general",
+    validationType: "implementation_review",
+    maxScore: 10,
+    weight: 10,
+    successThreshold: 70,
+    feedbackWhenFailed: "",
+  };
+}
+
+function checklistTaskName(checklist: RepositoryChecklist) {
+  const task = checklist.competency?.practicalTasks?.find(
+    (item) => item._id === checklist.practicalTaskId,
+  );
+
+  return task?.title || "Selected practical task";
+}
+
+function checklistWeight(items: PracticalTaskChecklistItem[] = []) {
+  return items.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+}
+
+function ChecklistBuilderModal({
+  rows,
+  onRowsChange,
+  onClose,
+}: {
+  rows: PracticalTaskChecklistItem[];
+  onRowsChange: (rows: PracticalTaskChecklistItem[]) => void;
+  onClose: () => void;
+}) {
+  const [draftRows, setDraftRows] = useState<PracticalTaskChecklistItem[]>(
+    rows.length > 0 ? rows : [createChecklistBuilderRow(1)],
+  );
+  const totalWeight = checklistWeight(draftRows);
+  const hasRequirements = draftRows.some((row) => String(row.title || "").trim());
+  const canApplyChecklist = hasRequirements && totalWeight === 100;
+
+  function updateRow(index: number, changes: Partial<PracticalTaskChecklistItem>) {
+    setDraftRows((currentRows) =>
+      currentRows.map((row, rowIndex) => {
+        if (rowIndex !== index) return row;
+
+        if (changes.weight !== undefined) {
+          const currentWeight = Number(row.weight || 0);
+          const otherRowsWeight = checklistWeight(currentRows) - currentWeight;
+          const maxAllowedForRow = Math.max(1, 100 - otherRowsWeight);
+          const safeWeight = Math.min(
+            Math.max(Number(changes.weight) || 1, 1),
+            maxAllowedForRow,
+          );
+
+          return {
+            ...row,
+            ...changes,
+            weight: safeWeight,
+            maxScore: safeWeight,
+            category: row.category || "general",
+            validationType: row.validationType || "implementation_review",
+            feedbackWhenFailed: row.feedbackWhenFailed || "",
+          };
+        }
+
+        return {
+          ...row,
+          ...changes,
+          category: row.category || "general",
+          validationType: row.validationType || "implementation_review",
+          feedbackWhenFailed: row.feedbackWhenFailed || "",
+        };
+      }),
+    );
+  }
+
+  function addRow() {
+    setDraftRows((currentRows) => {
+      const remainingWeight = 100 - checklistWeight(currentRows);
+      if (remainingWeight <= 0) return currentRows;
+
+      const rowWeight = Math.min(10, remainingWeight);
+      return [
+        ...currentRows,
+        {
+          ...createChecklistBuilderRow(currentRows.length + 1),
+          weight: rowWeight,
+          maxScore: rowWeight,
+        },
+      ];
+    });
+  }
+
+  function removeRow(index: number) {
+    setDraftRows((currentRows) => currentRows.filter((_, rowIndex) => rowIndex !== index));
+  }
+
+  function handleDone() {
+    const cleanedRows = draftRows
+      .filter((row) => String(row.title || "").trim())
+      .map((row) => {
+        const weight = Number(row.weight || 0);
+        return {
+          ...row,
+          title: String(row.title || "").trim(),
+          category: "general" as PracticalTaskChecklistItem["category"],
+          validationType: "implementation_review" as PracticalTaskChecklistItem["validationType"],
+          maxScore: weight,
+          weight,
+          successThreshold: 70,
+          feedbackWhenFailed: "",
+        };
+      });
+
+    onRowsChange(cleanedRows);
+    onClose();
+  }
+
+  return (
+    <DetailModal
+      title="Checklist item builder"
+      subtitle="Add measurable requirements and assign a fair weight. The total weight must be exactly 100%."
+      onClose={onClose}
+    >
+      <div className="checklist-builder-toolbar">
+        <div>
+          <strong>Total checklist weight: {totalWeight} / 100</strong>
+          <span>
+            {totalWeight === 100
+              ? "Ready to apply. These requirements will be checked against the submitted repository."
+              : `Assign ${100 - totalWeight}% more before applying this checklist.`}
+          </span>
+        </div>
+        <Button onClick={addRow} disabled={totalWeight >= 100}>
+          Add requirement
+        </Button>
+      </div>
+
+      <div className="checklist-builder-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Requirement</th>
+              <th>Weight</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {draftRows.map((row, index) => {
+              const rowWeight = Number(row.weight || 0);
+              const maxWeightForRow = Math.max(1, 100 - (totalWeight - rowWeight));
+
+              return (
+                <tr key={row.key || index}>
+                  <td>
+                    <input
+                      aria-label="Checklist requirement"
+                      className="table-form-control"
+                      value={row.title || ""}
+                      onChange={(event) => updateRow(index, { title: event.target.value })}
+                      placeholder="Example: Hidden task tests pass"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      aria-label="Checklist weight"
+                      className="table-form-control weight-input"
+                      type="number"
+                      min="1"
+                      max={maxWeightForRow}
+                      value={row.weight || 1}
+                      onChange={(event) => {
+                        updateRow(index, { weight: Number(event.target.value) || 1 });
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <Button
+                      variant="danger"
+                      disabled={draftRows.length === 1}
+                      onClick={() => removeRow(index)}
+                    >
+                      Remove
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="checklist-weight-meter">
+        <span>{totalWeight}% assigned</span>
+        <em>{100 - totalWeight}% remaining. Total cannot exceed 100%.</em>
+      </div>
+
+      <div className="form-actions">
+        <Button onClick={handleDone} disabled={!canApplyChecklist}>Apply checklist</Button>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+      </div>
+    </DetailModal>
   );
 }
+
+export function RepositoryChecklistsPage({ token }: { token: string }) {
+  const {
+    data: competencies,
+    isLoading: isLoadingCompetencies,
+    error: competencyError,
+  } = useAsyncData(() => api.competencies(token), [] as Competency[]);
+  const {
+    data: checklists,
+    isLoading: isLoadingChecklists,
+    error: checklistError,
+    refresh,
+  } = useAsyncData(() => api.checklists(token), [] as RepositoryChecklist[]);
+  const [form, setForm] = useState({
+    competency: "",
+    practicalTaskId: "",
+    checklistRows: "",
+  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [competencyFilter, setCompetencyFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [message, setMessage] = useState("");
+  const [formError, setFormError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [isChecklistBuilderOpen, setIsChecklistBuilderOpen] = useState(false);
+
+  const selectedCompetency = competencies.find((item) => item._id === form.competency);
+  const availableTasks = selectedCompetency?.practicalTasks || [];
+  const parsedRows = parseChecklistRows(form.checklistRows) as PracticalTaskChecklistItem[];
+  const parsedWeight = checklistWeight(parsedRows);
+  const normalizedSearch = search.trim().toLowerCase();
+  const competencyOptions = useMemo(
+    () => uniqueFilterOptions(checklists.map((item) => item.competency?.code || item.competency?.title)),
+    [checklists],
+  );
+  const filteredChecklists = checklists.filter((item) => {
+    const active = item.isActive !== false;
+    const statusMatches =
+      statusFilter === "all" ||
+      (statusFilter === "active" && active) ||
+      (statusFilter === "inactive" && !active);
+    const competencyLabel = `${item.competency?.code || ""} ${item.competency?.title || ""}`.trim();
+    const matchesCompetency =
+      competencyFilter === "all" ||
+      item.competency?.code === competencyFilter ||
+      item.competency?.title === competencyFilter;
+    const matchesSearch =
+      normalizedSearch.length === 0 ||
+      matchesSearchTerm(
+        search,
+        item.title,
+        competencyLabel,
+        checklistTaskName(item),
+        item.items,
+      );
+
+    return statusMatches && matchesCompetency && matchesSearch;
+  });
+
+  function resetForm() {
+    setForm({ competency: "", practicalTaskId: "", checklistRows: "" });
+    setEditingId(null);
+    setIsChecklistBuilderOpen(false);
+  }
+
+  function updateChecklistRows(rows: PracticalTaskChecklistItem[]) {
+    setForm((current) => ({
+      ...current,
+      checklistRows: serializeChecklistRows(rows),
+    }));
+  }
+
+  function openChecklistBuilder() {
+    setIsChecklistBuilderOpen(true);
+  }
+
+  function startEditChecklist(checklist: RepositoryChecklist) {
+    setEditingId(checklist._id);
+    setForm({
+      competency: checklist.competency?._id || "",
+      practicalTaskId: checklist.practicalTaskId,
+      checklistRows: (checklist.items || [])
+        .map((item) =>
+          [
+            item.title,
+            item.category || "general",
+            item.validationType || "implementation_review",
+            item.weight || 10,
+            item.feedbackWhenFailed || "",
+          ].join(" | "),
+        )
+        .join("\n"),
+    });
+    setFormError("");
+    setMessage("");
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    setFormError("");
+
+    if (!form.competency || !form.practicalTaskId) {
+      setFormError("Select a competency and practical task before saving the checklist.");
+      return;
+    }
+
+    if (parsedRows.length === 0) {
+      setFormError("Add at least one measurable checklist requirement.");
+      return;
+    }
+
+    if (parsedWeight !== 100) {
+      setFormError(`Checklist weight must total 100. Current total is ${parsedWeight}.`);
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const selectedTask = availableTasks.find((task) => task._id === form.practicalTaskId);
+      const body = {
+        competency: form.competency,
+        practicalTaskId: form.practicalTaskId,
+        title: `${selectedCompetency?.code || "Competency"} - ${selectedTask?.title || "Repository checklist"}`,
+        items: parsedRows,
+      };
+
+      if (editingId) {
+        await api.updateChecklist(token, editingId, body);
+        setMessage("Repository review checklist updated successfully.");
+      } else {
+        await api.createChecklist(token, body);
+        setMessage("Repository review checklist created successfully.");
+      }
+
+      resetForm();
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to save repository review checklist",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleDeleteChecklist(id: string) {
+    if (!window.confirm("Deactivate this repository review checklist?")) return;
+
+    setIsDeleting(id);
+    setFormError("");
+    setMessage("");
+
+    try {
+      await api.deleteChecklist(token, id);
+      setMessage("Repository review checklist deactivated successfully.");
+      await refresh();
+      if (editingId === id) resetForm();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to deactivate repository review checklist",
+      );
+    } finally {
+      setIsDeleting(null);
+    }
+  }
+
+  if (isLoadingCompetencies || isLoadingChecklists) {
+    return <LoadingState message="Loading repository review checklists..." />;
+  }
+
+  const error = competencyError || checklistError;
+
+  return (
+    <section className="page-stack">
+      <PageHeader
+        title="Repository Review Checklists"
+        description="Define the measurable requirements used to score GitHub practical evidence for each competency task."
+        onRefresh={refresh}
+      />
+      {error && <Alert type="error">{error}</Alert>}
+      {message && <Alert type="success">{message}</Alert>}
+      {formError && <Alert type="error">{formError}</Alert>}
+
+      <Card title={editingId ? "Edit repository checklist" : "Create repository checklist"}>
+        <form className="form-grid" onSubmit={handleSubmit}>
+          <SelectField
+            label="Competency"
+            value={form.competency}
+            onChange={(event) =>
+              setForm({ competency: event.target.value, practicalTaskId: "", checklistRows: form.checklistRows })
+            }
+            required
+          >
+            <option value="">Select competency</option>
+            {competencies.map((competency) => (
+              <option key={competency._id} value={competency._id}>
+                {competency.code} - {competency.title}
+              </option>
+            ))}
+          </SelectField>
+
+          <SelectField
+            label="Practical task"
+            value={form.practicalTaskId}
+            onChange={(event) => setForm({ ...form, practicalTaskId: event.target.value })}
+            required
+          >
+            <option value="">Select practical task</option>
+            {availableTasks.map((task) => (
+              <option key={task._id} value={task._id}>
+                {task.title}
+              </option>
+            ))}
+          </SelectField>
+
+          <div className="full-span weighted-checklist-editor">
+            <div className="checklist-editor-header">
+              <div>
+                <strong>Checklist requirements</strong>
+                <span>Open the builder to add structured scoring rows for this practical task.</span>
+              </div>
+              <Button type="button" onClick={openChecklistBuilder}>
+                {parsedRows.length > 0 ? "Edit checklist items" : "Add checklist items"}
+              </Button>
+            </div>
+            <div className="checklist-weight-meter">
+              <span>Total checklist weight: {parsedWeight} / 100</span>
+              <em>Rows are saved in MongoDB and used by the automatic repository review engine.</em>
+            </div>
+            <AdminChecklistPreviewTable value={form.checklistRows} />
+          </div>
+
+          <div className="form-actions full-span">
+            <Button disabled={isSaving} type="submit">
+              {isSaving
+                ? "Saving..."
+                : editingId
+                  ? "Update Checklist"
+                  : "Create Checklist"}
+            </Button>
+            {editingId && (
+              <Button variant="secondary" onClick={resetForm}>
+                Cancel Edit
+              </Button>
+            )}
+          </div>
+        </form>
+      </Card>
+
+      <Card title="Checklist records">
+        {checklists.length === 0 ? (
+          <EmptyState message="No repository review checklists have been created yet." />
+        ) : (
+          <>
+            <ListToolbar
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search code, competency, task, requirement..."
+              totalCount={checklists.length}
+              filteredCount={filteredChecklists.length}
+            >
+              <SelectField
+                label="Competency"
+                value={competencyFilter}
+                onChange={(event) => setCompetencyFilter(event.target.value)}
+              >
+                <option value="all">All competencies</option>
+                {competencyOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                label="Status"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </SelectField>
+            </ListToolbar>
+            {filteredChecklists.length === 0 ? (
+              <EmptyState message="No checklist records match your search or filter." />
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Competency</th>
+                      <th>Practical task</th>
+                      <th>Items</th>
+                      <th>Weight</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredChecklists.map((checklist) => (
+                      <tr key={checklist._id}>
+                        <td className="table-code-cell">{checklist.competency?.code || "N/A"}</td>
+                        <td>{checklist.competency?.title || "N/A"}</td>
+                        <td>{checklistTaskName(checklist)}</td>
+                        <td>{checklist.items?.length || 0}</td>
+                        <td>{checklistWeight(checklist.items)} / 100</td>
+                        <td>{checklist.isActive === false ? "Inactive" : "Active"}</td>
+                        <td>
+                          <div className="button-row">
+                            <Button
+                              variant="secondary"
+                              onClick={() => startEditChecklist(checklist)}
+                              disabled={editingId !== null}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="danger"
+                              disabled={isDeleting === checklist._id || checklist.isActive === false}
+                              onClick={() => void handleDeleteChecklist(checklist._id)}
+                            >
+                              {isDeleting === checklist._id ? "Deleting..." : "Delete"}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
+      {isChecklistBuilderOpen && (
+        <ChecklistBuilderModal
+          rows={parsedRows}
+          onRowsChange={updateChecklistRows}
+          onClose={() => setIsChecklistBuilderOpen(false)}
+        />
+      )}
+    </section>
+  );
+}
+
 export function CompetenciesPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.competencies(token),
@@ -4973,7 +5983,6 @@ export function CompetenciesPage({ token }: { token: string }) {
     practicalTaskTitle: "",
     practicalTaskInstructions: "",
     practicalTaskDeliverables: "",
-    practicalTaskChecklist: "",
     practicalTaskTestCommand: "",
     practicalTaskTestFilePath: "",
     practicalTaskTestFileContent: "",
@@ -4996,7 +6005,6 @@ export function CompetenciesPage({ token }: { token: string }) {
     practicalTaskTitle: "",
     practicalTaskInstructions: "",
     practicalTaskDeliverables: "",
-    practicalTaskChecklist: "",
     practicalTaskTestCommand: "",
     practicalTaskTestFilePath: "",
     practicalTaskTestFileContent: "",
@@ -5044,8 +6052,7 @@ export function CompetenciesPage({ token }: { token: string }) {
       practicalTaskTitle: "",
       practicalTaskInstructions: "",
       practicalTaskDeliverables: "",
-      practicalTaskChecklist: "",
-      practicalTaskTestCommand: "",
+        practicalTaskTestCommand: "",
       practicalTaskTestFilePath: "",
       practicalTaskTestFileContent: "",
       theoryQuestion: "",
@@ -5064,8 +6071,7 @@ export function CompetenciesPage({ token }: { token: string }) {
       practicalTaskTitle: "",
       practicalTaskInstructions: "",
       practicalTaskDeliverables: "",
-      practicalTaskChecklist: "",
-      practicalTaskTestCommand: "",
+        practicalTaskTestCommand: "",
       practicalTaskTestFilePath: "",
       practicalTaskTestFileContent: "",
       theoryQuestion: "",
@@ -5088,7 +6094,6 @@ export function CompetenciesPage({ token }: { token: string }) {
       practicalTaskTitle: practicalTask?.title || "",
       practicalTaskInstructions: practicalTask?.instructions || "",
       practicalTaskDeliverables: practicalTask?.deliverables || "",
-      practicalTaskChecklist: formatChecklistRows(practicalTask),
       practicalTaskTestCommand: practicalTask?.automatedTestCommand || "",
       practicalTaskTestFilePath:
         practicalTask?.automatedTestFiles?.[0]?.path || "",
@@ -5135,7 +6140,6 @@ export function CompetenciesPage({ token }: { token: string }) {
                 deliverables: editForm.practicalTaskDeliverables.trim(),
                 estimatedMinutes: 60,
                 maxScore: 100,
-                reviewChecklist: parseChecklistRows(editForm.practicalTaskChecklist),
                 automatedTestCommand: editForm.practicalTaskTestCommand.trim(),
                 automatedTestFiles:
                   editForm.practicalTaskTestFilePath.trim() &&
@@ -5285,7 +6289,6 @@ export function CompetenciesPage({ token }: { token: string }) {
                 deliverables: form.practicalTaskDeliverables.trim(),
                 estimatedMinutes: 60,
                 maxScore: 100,
-                reviewChecklist: parseChecklistRows(form.practicalTaskChecklist),
                 // These hidden tests are injected into a graduate repository
                 // during review to verify the exact practical task behavior.
                 automatedTestCommand: form.practicalTaskTestCommand.trim(),
@@ -5485,42 +6488,7 @@ export function CompetenciesPage({ token }: { token: string }) {
                   disabled={editingCompetencyId ? isSaving : false}
                 />
               </div>
-              <div className="full-span weighted-checklist-editor">
-                <TextArea
-                  label="Repository review checklist"
-                  rows={5}
-                  value={
-                    editingCompetencyId
-                      ? editForm.practicalTaskChecklist
-                      : form.practicalTaskChecklist
-                  }
-                  onChange={(event) =>
-                    editingCompetencyId
-                      ? setEditForm({
-                          ...editForm,
-                          practicalTaskChecklist: event.target.value,
-                        })
-                      : setForm({
-                          ...form,
-                          practicalTaskChecklist: event.target.value,
-                        })
-                  }
-                  placeholder={[
-                    "Project installs and runs | deployment | automated_test | 10 | 15 | Fix install/build errors.",
-                    "Hidden task tests passed | testing | hidden_test | 20 | 25 | Make the code produce the expected task output.",
-                    "Authentication is implemented | authentication | implementation_review | 20 | 20 | Complete login, JWT, and protected routes.",
-                  ].join("\n")}
-                  disabled={editingCompetencyId ? isSaving : false}
-                />
-                <div className="checklist-weight-meter">
-                  <span>
-                    Total checklist weight: {checklistWeightTotal(editingCompetencyId ? editForm.practicalTaskChecklist : form.practicalTaskChecklist)} / 100
-                  </span>
-                  <em>
-                    Format: title | category | validation type | max score | weighted score | feedback when failed
-                  </em>
-                </div>
-              </div>
+
               <TextField
                 label="Instructor test command"
                 value={
@@ -5737,7 +6705,7 @@ export function CompetenciesPage({ token }: { token: string }) {
 
                   return (
                     <tr key={item._id}>
-                      <td>{item.code}</td>
+                      <td className="table-code-cell">{item.code}</td>
                       <td>{item.title}</td>
                       <td>{item.category}</td>
                       <td>{item.expectedEvidence || "N/A"}</td>
@@ -6098,6 +7066,7 @@ export function BenchmarksPage({ token }: { token: string }) {
                 <table>
                   <thead>
                     <tr>
+                      <th>Code</th>
                       <th>Competency</th>
                       <th>Required Score</th>
                       <th>Level</th>
@@ -6107,6 +7076,7 @@ export function BenchmarksPage({ token }: { token: string }) {
                   <tbody>
                     {filteredBenchmarks.map((item) => (
                       <tr key={item._id}>
+                  <td className="table-code-cell">{item.competency.code || "N/A"}</td>
                   <td>{item.competency.title}</td>
                   <td>{formatPercent(item.requiredScore)}</td>
                   <td>{item.level}</td>
@@ -6164,3 +7134,4 @@ function PageHeader({
     </div>
   );
 }
+

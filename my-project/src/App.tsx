@@ -11,6 +11,7 @@ import {
   BenchmarksPage,
   CompetenciesPage,
   DashboardPage,
+  RepositoryChecklistsPage,
   GapResultsPage,
   GraduateProfilePage,
   NotificationsPage,
@@ -95,6 +96,10 @@ function AppContent() {
 
     if (currentView === 'competencies') {
       return <CompetenciesPage token={token} />
+    }
+
+    if (currentView === 'checklists') {
+      return <RepositoryChecklistsPage token={token} />
     }
 
     if (currentView === 'benchmarks') {

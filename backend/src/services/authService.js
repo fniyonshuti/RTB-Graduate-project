@@ -2,6 +2,7 @@ import User from '../models/User.js';
 import { PASSWORD_HASHING } from '../constants/password.js';
 import crypto from 'node:crypto';
 import dotenv from 'dotenv';
+import { OAuth2Client } from 'google-auth-library';
 import { AppError } from './errorService.js';
 import { ROLES } from '../constants/roles.js';
 
@@ -302,9 +303,6 @@ export async function loginUser(email, password) {
 
 async function verifyGoogleCredential(credential) {
   const googleClientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
-  const tokenInfoUrl = String(
-    process.env.GOOGLE_TOKENINFO_URL || 'https://oauth2.googleapis.com/tokeninfo',
-  ).trim();
 
   if (!googleClientId) {
     throw new AppError(
@@ -318,27 +316,24 @@ async function verifyGoogleCredential(credential) {
     throw new AppError('Google credential is required', 400);
   }
 
-  let response;
+  let profile;
   try {
-    response = await fetch(`${tokenInfoUrl}?id_token=${encodeURIComponent(normalizedCredential)}`);
+    const googleClient = new OAuth2Client(googleClientId);
+    const ticket = await googleClient.verifyIdToken({
+      idToken: normalizedCredential,
+      audience: googleClientId,
+    });
+    profile = ticket.getPayload();
   } catch (error) {
-    console.error('Google token verification request failed:', error);
+    console.error('Google token verification failed:', error);
     throw new AppError(
-      'Google sign-in could not contact Google verification service. Try again shortly.',
-      502,
+      'Google sign-in failed because the Google credential could not be verified. Confirm VITE_GOOGLE_CLIENT_ID and GOOGLE_CLIENT_ID use the same OAuth Client ID.',
+      401,
     );
   }
 
-  let profile;
-  try {
-    profile = await response.json();
-  } catch {
-    throw new AppError('Google sign-in returned an invalid verification response.', 502);
-  }
-
-  if (!response.ok) {
-    const googleMessage = profile?.error_description || profile?.error || 'Invalid Google credential';
-    throw new AppError(`Google sign-in failed: ${googleMessage}`, 401);
+  if (!profile?.email || !profile?.sub) {
+    throw new AppError('Google did not return the required account information', 401);
   }
 
   if (profile.aud !== googleClientId) {
@@ -348,12 +343,8 @@ async function verifyGoogleCredential(credential) {
     );
   }
 
-  if (String(profile.email_verified).toLowerCase() !== 'true') {
+  if (profile.email_verified !== true && String(profile.email_verified).toLowerCase() !== 'true') {
     throw new AppError('Google account email is not verified', 401);
-  }
-
-  if (!profile.email || !profile.sub) {
-    throw new AppError('Google did not return the required account information', 401);
   }
 
   return {
@@ -363,41 +354,96 @@ async function verifyGoogleCredential(credential) {
   };
 }
 
+function normalizeGoogleAuthError(error) {
+  if (error instanceof AppError) return error;
+
+  if (error?.code === 11000) {
+    return new AppError(
+      'This Google account is already linked to another user. Sign in with the original email account or contact the system administrator.',
+      409,
+    );
+  }
+
+  if (error?.name === 'ValidationError') {
+    return new AppError(
+      Object.values(error.errors || {})
+        .map((fieldError) => fieldError.message)
+        .join(', ') || 'Google account data is invalid',
+      400,
+    );
+  }
+
+  if (String(error?.message || '').includes('JWT_SECRET')) {
+    return new AppError(
+      'Google sign-in could not create a login session because JWT_SECRET is missing or invalid on the backend.',
+      503,
+    );
+  }
+
+  if (
+    error?.name === 'MongoNetworkError' ||
+    error?.name === 'MongoServerSelectionError' ||
+    String(error?.message || '').toLowerCase().includes('mongo')
+  ) {
+    return new AppError(
+      'Google sign-in could not access the database. Confirm MongoDB Atlas connection settings and try again.',
+      503,
+    );
+  }
+
+  console.error('Google sign-in completion failed:', error);
+  return new AppError(
+    'Google sign-in could not be completed on the backend. Check Render logs for the request ID and confirm OAuth environment variables are configured.',
+    502,
+  );
+}
+
 export async function loginWithGoogle(credential) {
-  const googleProfile = await verifyGoogleCredential(credential);
-  let user = await User.findOne({ email: googleProfile.email }).populate('organization', 'name district type status');
+  try {
+    const googleProfile = await verifyGoogleCredential(credential);
+    let user = await User.findOne({ email: googleProfile.email }).populate('organization', 'name district type status');
 
-  if (user && !user.isActive) {
-    throw new AppError('User account is not available', 401);
+    if (user && !user.isActive) {
+      throw new AppError('User account is not available', 401);
+    }
+
+    if (!user) {
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+      const { passwordHash, passwordSalt } = hashPassword(randomPassword);
+
+      user = await User.create({
+        name: googleProfile.name,
+        email: googleProfile.email,
+        passwordHash,
+        passwordSalt,
+        role: ROLES.NORMAL_USER,
+        googleId: googleProfile.googleId,
+        authProvider: 'google',
+        lastLoginAt: new Date(),
+      });
+    } else {
+      if (user.googleId && user.googleId !== googleProfile.googleId) {
+        throw new AppError(
+          'This email is already linked to a different Google account. Use the original Google account or sign in with email and password.',
+          409,
+        );
+      }
+
+      user.googleId = googleProfile.googleId;
+      user.authProvider = 'google';
+      user.lastLoginAt = new Date();
+      await user.save();
+    }
+
+    const token = signJwt({ sub: user._id.toString(), role: user.role });
+
+    return {
+      user: sanitizeUser(user),
+      token,
+    };
+  } catch (error) {
+    throw normalizeGoogleAuthError(error);
   }
-
-  if (!user) {
-    const randomPassword = crypto.randomBytes(32).toString('hex');
-    const { passwordHash, passwordSalt } = hashPassword(randomPassword);
-
-    user = await User.create({
-      name: googleProfile.name,
-      email: googleProfile.email,
-      passwordHash,
-      passwordSalt,
-      role: ROLES.NORMAL_USER,
-      googleId: googleProfile.googleId,
-      authProvider: 'google',
-      lastLoginAt: new Date(),
-    });
-  } else {
-    user.googleId = user.googleId || googleProfile.googleId;
-    user.authProvider = user.authProvider || 'google';
-    user.lastLoginAt = new Date();
-    await user.save();
-  }
-
-  const token = signJwt({ sub: user._id.toString(), role: user.role });
-
-  return {
-    user: sanitizeUser(user),
-    token,
-  };
 }
 export async function changePassword(userId, currentPassword, newPassword) {
   const user = await User.findById(userId).select('+passwordHash +passwordSalt');
@@ -524,17 +570,15 @@ export async function resetPassword(resetToken, newPassword) {
   return sanitizeUser(user);
 }
 
-class AuthService {
-  sanitizeUser = sanitizeUser;
-  getActiveUserById = getActiveUserById;
-  registerUser = registerUser;
-  loginUser = loginUser;
-  loginWithGoogle = loginWithGoogle;
-  changePassword = changePassword;
-  requestPasswordReset = requestPasswordReset;
-  resetPassword = resetPassword;
-}
-
-const authService = new AuthService();
+const authService = {
+  sanitizeUser,
+  getActiveUserById,
+  registerUser,
+  loginUser,
+  loginWithGoogle,
+  changePassword,
+  requestPasswordReset,
+  resetPassword,
+};
 
 export default authService;

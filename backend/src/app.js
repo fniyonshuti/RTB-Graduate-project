@@ -7,6 +7,7 @@ import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import graduateRoutes from './routes/graduateRoutes.js';
 import competencyRoutes from './routes/competencyRoutes.js';
+import checklistRoutes from './routes/checklistRoutes.js';
 import benchmarkRoutes from './routes/benchmarkRoutes.js';
 import assessmentRoutes from './routes/assessmentRoutes.js';
 import recommendationRoutes from './routes/recommendationRoutes.js';
@@ -109,6 +110,7 @@ app.use(
 app.use('/api/users', userRoutes);
 app.use('/api/graduates', graduateRoutes);
 app.use('/api/competencies', competencyRoutes);
+app.use('/api/checklists', checklistRoutes);
 app.use('/api/benchmarks', benchmarkRoutes);
 app.use('/api/assessments', assessmentRoutes);
 app.use('/api/recommendations', recommendationRoutes);

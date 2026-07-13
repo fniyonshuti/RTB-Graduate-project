@@ -41,6 +41,16 @@ export function errorHandler(error, req, res, _next) {
     });
   }
 
+  if (!error.isOperational && req.originalUrl === "/api/auth/google") {
+    return res.status(502).json({
+      success: false,
+      message:
+        "Google sign-in failed on the backend. Confirm GOOGLE_CLIENT_ID matches VITE_GOOGLE_CLIENT_ID, JWT_SECRET is set, MongoDB is connected, and the backend has been redeployed.",
+      requestId: req.id,
+      ...(isProduction ? {} : { error: error.message }),
+    });
+  }
+
   return res.status(statusCode).json({
     success: false,
     message: error.isOperational ? error.message : "Internal server error",

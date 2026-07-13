@@ -68,4 +68,44 @@ describe("Express app integration", () => {
     assert.match(body.message, /Route not found/);
     assert.ok(body.requestId);
   });
+
+  it("explains that Google auth browser checks must use POST", async () => {
+    const { response, body } = await request("/api/auth/google", {
+      headers: {
+        Origin: testFrontendOrigin,
+      },
+    });
+
+    assert.equal(response.status, 405);
+    assert.equal(body.success, false);
+    assert.match(body.message, /POST \/api\/auth\/google/);
+    assert.ok(body.requestId);
+  });
+
+  it("registers the Google auth POST route", async () => {
+    const { response, body } = await request("/api/auth/google", {
+      method: "POST",
+      headers: {
+        Origin: testFrontendOrigin,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(body.success, false);
+    assert.equal(body.message, "credential is required");
+  });
+
+  it("registers the repository checklist route", async () => {
+    const { response, body } = await request("/api/checklists?activeOnly=false", {
+      headers: {
+        Origin: testFrontendOrigin,
+      },
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(body.success, false);
+    assert.equal(body.message, "Authentication token is required");
+  });
 });

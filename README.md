@@ -22,7 +22,7 @@ The system helps identify the gap between ICT skills demonstrated by TVET gradua
 | Frontend          | React, Vite, TypeScript, Tailwind CSS, Recharts, Lucide icons |
 | Backend           | Node.js, Express.js, ES Modules                               |
 | Database          | MongoDB Atlas, Mongoose                                       |
-| Authentication    | JWT                                                           |
+| Authentication    | JWT, Google OAuth                                             |
 | Email             | Resend email API for password reset links                     |
 | Repository Review | GitHub API, optional repository execution settings            |
 | AI Recommendation | Gemini API                                                    |
@@ -62,7 +62,7 @@ The active system roles are:
 
 ## Repository Evaluator Contract
 
-Competra uses a controlled submission contract for automatic repository assessment. A submission should include `competra.json` so the system knows the language, runtime, commands, working directory, and observable input/output protocol. See [Evaluator Architecture](docs/evaluator-architecture.md) for task specification examples, manifest examples, Docker sandbox rules, scoring design, and the MVP language-adapter plan.
+Competra uses a controlled submission contract for automatic repository assessment. A submission can include `competra.json` so the system knows the language, runtime, commands, working directory, and observable input/output protocol. Admin-created competency checklists remain the primary scoring guide, while optional repository execution settings make automated tests more objective when a task provides runnable commands.
 
 ## Scoring Logic
 
@@ -100,7 +100,6 @@ RTB-Graduate-project/
       routes/
       scripts/
       services/
-      utils/
     tests/
     package.json
     .env.example
@@ -150,7 +149,7 @@ MongoDB Atlas
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `backend/src/server.js`                  | Starts the API server and connects to MongoDB.                                                                                          |
 | `backend/src/app.js`                     | Configures Express, security middleware, CORS, rate limits, routes, and error handling.                                                 |
-| `backend/src/config/env.js`              | Reads and normalizes environment variables.                                                                                             |
+| `backend/src/config/db.js`               | Connects the API to MongoDB Atlas using environment variables.                                                                          |
 | `backend/src/constants/roles.js`         | Defines active system roles and role-management rules.                                                                                  |
 | `backend/src/routes/*.js`                | Defines API endpoints.                                                                                                                  |
 | `backend/src/controllers/*.js`           | Handles request/response logic.                                                                                                         |
@@ -179,8 +178,12 @@ Create `backend/.env` from `backend/.env.example`.
 ```env
 PORT=5000
 HOST=0.0.0.0
+API_PUBLIC_URL=http://localhost:5000/api
 NODE_ENV=development
+LOCAL_DEVELOPMENT_HOSTS=localhost,127.0.0.1
+LOCAL_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 MONGO_URI=mongodb+srv://<db_username>:<db_password>@<cluster-host>/rtb_skills_gap?retryWrites=true&w=majority
+MONGO_DIRECT_URI=
 JWT_SECRET=replace_with_a_long_random_secret
 JWT_EXPIRES_IN_SECONDS=86400
 
@@ -201,7 +204,7 @@ EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE=true
 
 SUPER_ADMIN_NAME=System Admin
 SUPER_ADMIN_EMAIL=admin@example.com
-SUPER_ADMIN_PASSWORD=ChangeMe123!
+SUPER_ADMIN_PASSWORD=replace_with_a_strong_temporary_password
 SUPER_ADMIN_INSTITUTION=RTB
 SUPER_ADMIN_RESET_PASSWORD=false
 SUPER_ADMIN_PROMOTE_EXISTING=false
@@ -209,11 +212,15 @@ SUPER_ADMIN_PROMOTE_EXISTING=false
 EMAIL_PROVIDER=resend
 EMAIL_API_KEY=
 EMAIL_API_URL=
+EMAIL_RESEND_API_URL=https://api.resend.com/emails
+EMAIL_BREVO_API_URL=https://api.brevo.com/v3/smtp/email
 EMAIL_FROM=no-reply@your-verified-domain.com
-EMAIL_FROM_NAME=Skills Gap Analysis Tool
+EMAIL_FROM_NAME=Competra
 EMAIL_TEST_TO=
+TEST_EMAIL_TO=
 
 GITHUB_TOKEN=
+GITHUB_WEB_BASE_URL=https://github.com
 GITHUB_API_URL=https://api.github.com
 GITHUB_API_BASE_URL=https://api.github.com
 GITHUB_RAW_BASE_URL=https://raw.githubusercontent.com
@@ -227,8 +234,11 @@ REPOSITORY_DOCKER_IMAGE=node:20-alpine
 ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION=false
 
 GEMINI_API_KEY=
+GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models
 GEMINI_RECOMMENDATION_MODEL=gemini-2.5-flash
 GEMINI_RECOMMENDATION_API_URL=
+
+GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 ```
 
 ### Important Email Note
@@ -245,6 +255,10 @@ Create `my-project/.env` if needed:
 
 ```env
 VITE_API_URL=http://localhost:5000/api
+VITE_GITHUB_INDIVIDUAL_PROJECT_PLACEHOLDER=https://github.com/username/project
+VITE_GITHUB_ORGANIZATION_REPO_PLACEHOLDER=https://github.com/owner/repository
+VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+VITE_GOOGLE_IDENTITY_SCRIPT_URL=https://accounts.google.com/gsi/client
 ```
 
 ## Installation and Running Locally
@@ -284,7 +298,7 @@ npm run dev
 Frontend URL:
 
 ```text
-https://rtb-graduate-project.onrender.com
+http://localhost:5173
 ```
 
 ## Useful Scripts
@@ -325,7 +339,7 @@ Frontend:
 8. Run backend `npm install`.
 9. Run `npm run seed:admin`.
 10. Run backend `npm run dev`.
-11. Create `my-project/.env` with `VITE_API_URL=http://localhost:5000/api`.
+11. Create `my-project/.env` with `VITE_API_URL=http://localhost:5000/api`. Add `VITE_GOOGLE_CLIENT_ID` when Google sign-in is enabled.
 12. Run frontend `npm install`.
 13. Run frontend `npm run dev`.
 14. Login with the seeded super admin account.
@@ -366,6 +380,7 @@ Content-Type: application/json
 | ------ | ----------------------- | ------------- |
 | POST   | `/auth/register`        | Public        |
 | POST   | `/auth/login`           | Public        |
+| POST   | `/auth/google`          | Public        |
 | POST   | `/auth/forgot-password` | Public        |
 | POST   | `/auth/reset-password`  | Public        |
 | GET    | `/auth/me`              | Authenticated |
@@ -390,6 +405,14 @@ Login example:
 {
   "email": "thierry@example.com",
   "password": "StrongPass123!"
+}
+```
+
+Google sign-in example:
+
+```json
+{
+  "credential": "GOOGLE_ID_TOKEN_FROM_FRONTEND"
 }
 ```
 
@@ -808,7 +831,8 @@ Body:
 
 - Frontend styling uses Tailwind CSS.
 - Dashboards use real data charts through Recharts.
-- Long content uses Read more/Read less controls to keep cards clean.
+- Long content uses Read more/Read less controls and detail modals to keep cards and tables clean.
+- Gap results, recommendations, and reports use clean table layouts with modal windows for long details and resource lists.
 - The profile icon opens a hover account menu with email, role, profile, dashboard, and logout actions.
 - Layouts are responsive for desktop, tablet, and mobile.
 
@@ -829,11 +853,12 @@ Required backend environment variables include:
 ```env
 NODE_ENV=production
 HOST=0.0.0.0
+API_PUBLIC_URL=https://rtb-graduate-project.onrender.com/api
 MONGO_URI=your_mongodb_atlas_uri
+MONGO_DIRECT_URI=optional_standard_atlas_mongodb_uri
 JWT_SECRET=your_strong_secret
 FRONTEND_URL=https://rtb-graduate-project.vercel.app
 CORS_ORIGINS=https://rtb-graduate-project.vercel.app,https://*.vercel.app
-API_PUBLIC_URL=https://rtb-graduate-project.onrender.com/api
 GITHUB_API_URL=https://api.github.com
 GITHUB_API_BASE_URL=https://api.github.com
 GITHUB_RAW_BASE_URL=https://raw.githubusercontent.com
@@ -842,6 +867,7 @@ GITHUB_TOKEN=optional_for_private_repositories
 GEMINI_API_KEY=your_gemini_key
 GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models
 GEMINI_RECOMMENDATION_MODEL=gemini-2.5-flash
+GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 EMAIL_PROVIDER=resend
 EMAIL_API_KEY=your_resend_key
 EMAIL_RESEND_API_URL=https://api.resend.com/emails
@@ -859,10 +885,12 @@ ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION=false
 | Build Command     | `npm install && npm run build` |
 | Publish Directory | `dist`                         |
 
-Required frontend environment variable:
+Required frontend environment variables:
 
 ```env
 VITE_API_URL=https://your-backend-url/api
+VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+VITE_GOOGLE_IDENTITY_SCRIPT_URL=https://accounts.google.com/gsi/client
 ```
 
 For your current deployed backend, Vercel should use:
