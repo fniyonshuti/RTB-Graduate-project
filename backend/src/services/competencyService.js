@@ -26,25 +26,6 @@ function formatCompetencyForRole(competency, role) {
   return isLearnerRole(role) ? hideCorrectAnswers(competency) : competency;
 }
 
-async function syncChecklistDocuments(competency, createdBy) {
-  await Checklist.deleteMany({ competency: competency._id });
-
-  const checklistDocuments = (competency.practicalTasks || [])
-    .filter((task) => Array.isArray(task.reviewChecklist) && task.reviewChecklist.length > 0)
-    .map((task) => ({
-      competency: competency._id,
-      practicalTaskId: task._id,
-      title: `${competency.code} - ${task.title}`,
-      items: task.reviewChecklist,
-      createdBy: createdBy || competency.createdBy,
-      isActive: competency.isActive,
-    }));
-
-  if (checklistDocuments.length > 0) {
-    await Checklist.insertMany(checklistDocuments);
-  }
-}
-
 export async function listCompetenciesForRole(filters = {}, role) {
   const query = {};
 
@@ -72,13 +53,10 @@ export async function getCompetencyForRole(competencyId, role) {
 }
 
 export async function createCompetency(payload, createdBy) {
-  const competency = await Competency.create({
+  return Competency.create({
     ...payload,
     createdBy,
   });
-
-  await syncChecklistDocuments(competency, createdBy);
-  return competency;
 }
 
 export async function updateCompetencyById(competencyId, payload) {
@@ -91,7 +69,6 @@ export async function updateCompetencyById(competencyId, payload) {
     throw new AppError("Competency was not found", 404);
   }
 
-  await syncChecklistDocuments(competency, competency.createdBy);
   return competency;
 }
 

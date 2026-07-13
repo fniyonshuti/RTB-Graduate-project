@@ -96,6 +96,18 @@ export type PracticalTask = {
   reviewChecklist?: PracticalTaskChecklistItem[]
 }
 
+export type RepositoryChecklist = {
+  _id: string
+  competency: Competency
+  practicalTaskId: string
+  title: string
+  items: PracticalTaskChecklistItem[]
+  isActive?: boolean
+  createdAt?: string
+  updatedAt?: string
+  createdBy?: { name?: string; email?: string }
+}
+
 export type TheoryQuestion = {
   _id: string
   question: string

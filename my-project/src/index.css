@@ -85,6 +85,23 @@
   tbody tr {
     @apply transition hover:bg-slate-50;
   }
+
+  .pagination-bar {
+    @apply flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-5 py-4 text-sm font-semibold text-slate-600;
+  }
+
+  .pagination-actions {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .pagination-actions .button {
+    @apply h-10 w-auto min-w-24 px-4 py-2;
+  }
+
+  .pagination-page-count {
+    @apply inline-flex min-h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-[#0B3142];
+  }
+
 }
 
 @layer components {
@@ -968,6 +985,100 @@
     @apply grid gap-5 rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm max-[640px]:gap-4 max-[640px]:p-4;
   }
 
+
+
+  .assessment-workspace-panel {
+    @apply grid gap-5 max-[640px]:gap-4;
+  }
+
+  .assessment-simple-helper {
+    @apply rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold leading-6 text-slate-600;
+  }
+
+  .assessment-guidance-card {
+    @apply rounded-lg border border-slate-200 bg-slate-50 p-4;
+  }
+
+  .assessment-guidance-card__icon {
+    @apply hidden;
+  }
+
+  .assessment-guidance-card p {
+    @apply text-sm leading-6 text-slate-600;
+  }
+
+  .assessment-evidence-layout {
+    @apply grid min-w-0 grid-cols-[minmax(0,1.35fr)_minmax(300px,0.9fr)] gap-5 max-[1100px]:grid-cols-1;
+  }
+
+  .assessment-evidence-main,
+  .assessment-theory-panel,
+  .repository-evidence-card {
+    @apply grid min-w-0 gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50;
+  }
+
+  .assessment-theory-panel {
+    @apply content-start;
+  }
+
+  .assessment-section-title {
+    @apply flex min-w-0 items-start gap-3 border-b border-slate-100 pb-3;
+  }
+
+  .assessment-section-title.compact {
+    @apply border-b-0 pb-0;
+  }
+
+  .assessment-section-title > span {
+    @apply grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#0077B6]/10 text-xs font-black text-[#0077B6];
+  }
+
+  .assessment-section-title strong {
+    @apply block text-base font-black leading-6 text-[#0B3142];
+  }
+
+  .assessment-section-title p {
+    @apply mt-0.5 text-sm font-medium leading-6 text-slate-500;
+  }
+
+  .practical-task-card {
+    @apply border-slate-200 bg-white shadow-sm;
+  }
+
+  .deliverable-note {
+    @apply grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3;
+  }
+
+  .deliverable-note > strong {
+    @apply text-xs font-black uppercase tracking-wide text-slate-500;
+  }
+
+  .assessment-action-row,
+  .assessment-navigation-row {
+    @apply grid grid-cols-2 gap-3 max-[520px]:grid-cols-1;
+  }
+
+  .assessment-action-row .button,
+  .assessment-navigation-row .button {
+    @apply w-full;
+  }
+
+  .supporting-evidence-grid {
+    @apply grid min-w-0 gap-4;
+  }
+
+  .theory-question-list {
+    @apply max-h-[720px] overflow-y-auto pr-1 max-[1100px]:max-h-none max-[1100px]:overflow-visible max-[1100px]:pr-0;
+  }
+
+  .assessment-footer-panel {
+    @apply grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(240px,340px)] items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm max-[860px]:grid-cols-1;
+  }
+
+  .assessment-footer-panel .evidence-readiness {
+    @apply border-0 bg-slate-50 shadow-none;
+  }
+
   .file-drop {
     @apply grid cursor-pointer place-items-center rounded-lg border-2 border-dashed border-[#0077B6]/35 bg-[#0077B6]/10 p-7 text-center font-black text-[#0077B6] transition hover:-translate-y-0.5 hover:bg-[#0077B6]/15 hover:shadow-md max-[640px]:p-4;
   }
@@ -1025,6 +1136,58 @@
 
   .weighted-checklist-editor {
     @apply grid gap-3 rounded-xl border border-[#0077B6]/15 bg-[#0077B6]/5 p-4 shadow-sm transition duration-300 hover:border-[#0077B6]/30 hover:shadow-md;
+  }
+
+  .checklist-editor-header {
+    @apply flex flex-wrap items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4;
+  }
+
+  .checklist-editor-header strong {
+    @apply block text-base font-black text-[#0B3142];
+  }
+
+  .checklist-editor-header span {
+    @apply mt-1 block text-sm font-semibold text-slate-500;
+  }
+
+  .checklist-builder-toolbar {
+    @apply flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#0077B6]/15 bg-[#0077B6]/5 p-4;
+  }
+
+  .checklist-builder-toolbar strong {
+    @apply block text-base font-black text-[#0B3142];
+  }
+
+  .checklist-builder-toolbar span {
+    @apply mt-1 block text-sm font-semibold text-slate-500;
+  }
+
+  .checklist-builder-table {
+    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/60;
+  }
+
+  .checklist-builder-table table {
+    @apply min-w-[620px] w-full border-collapse;
+  }
+
+  .checklist-builder-table th {
+    @apply border-b border-slate-200 bg-slate-50 px-3 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500;
+  }
+
+  .checklist-builder-table td {
+    @apply border-b border-slate-100 px-3 py-3 align-top;
+  }
+
+  .checklist-builder-table tbody tr {
+    @apply transition duration-200 hover:bg-[#0077B6]/5;
+  }
+
+  .table-form-control {
+    @apply min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-[#0077B6] focus:ring-4 focus:ring-[#0077B6]/15;
+  }
+
+  .table-form-control.weight-input {
+    @apply min-w-24 text-right;
   }
 
   .checklist-weight-meter {
@@ -1122,6 +1285,65 @@
 
   .repository-checklist-result td strong {
     @apply block min-w-0 break-words text-sm font-bold leading-6 text-slate-800;
+  }
+
+  .repository-checklist-result table {
+    @apply min-w-[640px];
+  }
+
+  .repository-checklist-result td span {
+    @apply mt-1 block text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+
+  .repository-checklist-result th:nth-child(2),
+  .repository-checklist-result td:nth-child(2) {
+    @apply w-44 text-right;
+  }
+
+  .repository-checklist-result th:nth-child(3),
+  .repository-checklist-result td:nth-child(3) {
+    @apply w-32 text-right;
+  }
+
+  .repository-checklist-result tfoot td {
+    @apply border-t border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-[#0B3142];
+  }
+
+  .admin-checklist-preview {
+    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/60;
+  }
+
+  .admin-checklist-preview table {
+    @apply min-w-[460px] w-full border-collapse;
+  }
+
+  .admin-checklist-preview th {
+    @apply border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500;
+  }
+
+  .admin-checklist-preview td {
+    @apply border-b border-slate-100 px-4 py-4 align-top text-sm text-slate-700;
+  }
+
+  .admin-checklist-preview tbody tr {
+    @apply transition duration-200 hover:bg-[#0077B6]/5;
+  }
+
+  .admin-checklist-preview td strong {
+    @apply block text-sm font-bold leading-6 text-slate-800;
+  }
+
+  .admin-checklist-preview td span {
+    @apply mt-1 block text-xs font-semibold leading-5 text-slate-500;
+  }
+
+  .admin-checklist-preview th:nth-child(2),
+  .admin-checklist-preview td:nth-child(2) {
+    @apply w-28 text-right;
+  }
+
+  .checklist-empty-preview {
+    @apply rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-slate-500;
   }
   .task-check {
     @apply rounded-lg border border-slate-200 bg-white p-4 shadow-sm;
@@ -1966,6 +2188,14 @@
     @apply grid max-h-[70vh] gap-5 overflow-y-auto pr-1;
   }
 
+  .repository-result-summary {
+    @apply grid grid-cols-2 gap-3 rounded-xl border border-[#0077B6]/15 bg-[#0077B6]/5 p-4 max-[640px]:grid-cols-1;
+  }
+
+  .repository-result-summary span {
+    @apply rounded-lg bg-white px-4 py-3 text-sm font-black text-[#0B3142] shadow-sm;
+  }
+
   .detail-modal-section {
     @apply grid gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4;
   }
@@ -2014,6 +2244,36 @@
     @apply w-[14%];
   }
 
+
+
+  .compact-recommendations-table th:nth-child(1),
+  .compact-recommendations-table td:nth-child(1) {
+    @apply w-24 max-w-28;
+  }
+
+  .compact-recommendations-table th:nth-child(2),
+  .compact-recommendations-table td:nth-child(2) {
+    @apply w-[34%];
+  }
+
+  .compact-recommendations-table th:nth-child(3),
+  .compact-recommendations-table td:nth-child(3),
+  .compact-recommendations-table th:nth-child(5),
+  .compact-recommendations-table td:nth-child(5) {
+    @apply w-[18%];
+  }
+
+  .compact-recommendations-table th:nth-child(4),
+  .compact-recommendations-table td:nth-child(4) {
+    @apply w-36;
+  }
+  .table-code-cell {
+    @apply w-24 max-w-28 whitespace-nowrap text-xs font-black uppercase tracking-wide text-[#0077B6];
+  }
+
+  .table-code-cell + td {
+    @apply min-w-[220px];
+  }
   .table-inline-meta {
     @apply flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm font-bold text-slate-500;
   }
@@ -2073,3 +2333,4 @@
     @apply min-h-10 text-sm font-semibold;
   }
 }
+

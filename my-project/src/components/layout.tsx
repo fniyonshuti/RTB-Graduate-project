@@ -4,6 +4,7 @@ import {
   Bell,
   BookOpenCheck,
   ClipboardCheck,
+  ClipboardList,
   FileText,
   Gauge,
   Landmark,
@@ -31,6 +32,7 @@ type ViewKey =
   | 'users'
   | 'organizations'
   | 'competencies'
+  | 'checklists'
   | 'benchmarks'
   | 'recommendations'
 
@@ -52,6 +54,7 @@ const navItems: NavItem[] = [
   { key: 'users', label: 'Users', icon: Users, roles: ['org_admin', 'admin', 'super_admin'] },
   { key: 'organizations', label: 'Organizations', icon: Landmark, roles: ['admin', 'super_admin'] },
   { key: 'competencies', label: 'Competencies', icon: Settings, roles: ['admin', 'super_admin'] },
+  { key: 'checklists', label: 'Review Checklists', icon: ClipboardList, roles: ['admin', 'super_admin'] },
   { key: 'benchmarks', label: 'RTB Benchmarks', icon: BarChart3, roles: ['admin', 'super_admin'] },
   { key: 'reports', label: 'Reports', icon: FileText, roles: ['normal_user', 'organization_user'] },
   { key: 'notifications', label: 'Notifications', icon: Bell, roles: ['normal_user', 'organization_user'] },

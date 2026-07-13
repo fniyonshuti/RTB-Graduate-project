@@ -627,7 +627,7 @@ async function loadAdminChecklistRubric(competency, practicalTask) {
 
   if (rubric.length === 0) {
     throw new AppError(
-      "Repository review checklist is not configured for this practical task. Ask an admin to add checklist items in the competency before reviewing a repository.",
+      "Repository review checklist is not configured for this practical task. Ask an admin to open Review Checklists and add a 100-point checklist before reviewing a repository.",
       400,
     );
   }

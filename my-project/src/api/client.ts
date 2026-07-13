@@ -12,13 +12,20 @@ import type {
   LearningResource,
   RepositoryAssessmentResult,
   Report,
+  RepositoryChecklist,
   RepositorySummary,
   RepositoryTaskReview,
   Role,
   User,
 } from '../types'
 
-const configuredApiUrl = String(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
+function normalizeApiUrl(value: string) {
+  const cleanedUrl = value.trim().replace(/\/+$/, '')
+  if (!cleanedUrl) return ''
+  return cleanedUrl.endsWith('/api') ? cleanedUrl : `${cleanedUrl}/api`
+}
+
+const configuredApiUrl = normalizeApiUrl(String(import.meta.env.VITE_API_URL || ''))
 
 function currentFrontendOrigin() {
   if (typeof window === 'undefined') return 'this frontend domain'
@@ -71,6 +78,18 @@ function buildHttpErrorMessage(path: string, response: Response, payload: ApiRes
 
   if (response.status === 403) {
     return `${message}. Your account may not have permission for this action, or the frontend origin is not allowed by backend CORS.${requestId}`
+  }
+
+  if (response.status === 404 && path.startsWith('/checklists')) {
+    return `Repository checklist API is not available on the current backend deployment. Redeploy the Render backend with the latest code, then refresh the frontend.${requestId}`
+  }
+
+  if (path === '/auth/google' && response.status >= 500) {
+    return `${message}.${requestId}`.trim()
+  }
+
+  if (response.status === 503) {
+    return `${message}.${requestId}`.trim()
   }
 
   if (response.status >= 500) {
@@ -199,6 +218,34 @@ export const api = {
 
   deleteCompetency: (token: string, id: string) =>
     request<Competency>(`/competencies/${id}`, { method: 'DELETE', token }),
+
+  checklists: (token: string) =>
+    request<RepositoryChecklist[]>('/checklists?activeOnly=false', { token }),
+
+  createChecklist: (
+    token: string,
+    body: {
+      competency: string
+      practicalTaskId: string
+      title?: string
+      items: Record<string, unknown>[]
+    },
+  ) => request<RepositoryChecklist>('/checklists', { method: 'POST', token, body }),
+
+  updateChecklist: (
+    token: string,
+    id: string,
+    body: Partial<{
+      competency: string
+      practicalTaskId: string
+      title: string
+      items: Record<string, unknown>[]
+      isActive: boolean
+    }>,
+  ) => request<RepositoryChecklist>(`/checklists/${id}`, { method: 'PUT', token, body }),
+
+  deleteChecklist: (token: string, id: string) =>
+    request<RepositoryChecklist>(`/checklists/${id}`, { method: 'DELETE', token }),
 
   benchmarks: (token: string) =>
     request<Benchmark[]>('/benchmarks?activeOnly=true', { token }),
