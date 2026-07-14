@@ -15,6 +15,18 @@ The system helps identify the gap between ICT skills demonstrated by TVET gradua
 - Gemini recommendation generation.
 - User notifications and downloadable reports.
 
+
+## Project Objectives
+
+The Competra system was developed to achieve the following objectives:
+
+- Assess ICT TVET graduates' competencies using practical GitHub repository evidence and theory assessments.
+- Compare graduate competency scores against RTB benchmark scores.
+- Automatically calculate competency gaps using a weighted scoring algorithm.
+- Generate AI-powered recommendations to help graduates improve identified competency gaps.
+- Provide administrators with dashboards, reports, and analytics to support competency management.
+- Improve the accuracy and objectivity of competency assessment by reducing reliance on self-reported skills.
+
 ## Technology Stack
 
 | Layer             | Technology                                                    |
@@ -33,6 +45,100 @@ demo video and live application url :
 
 https://docs.google.com/document/d/1c0gMfJDdh6FZgHur0QYa_gu9NMmWGgFYGAZr0C8HBaY/edit?tab=t.0
 
+
+# System Screenshots
+
+## Home Page
+
+
+
+![Home Page](docs/screenshots/homepage.png)
+
+---
+
+## Login Page
+
+
+
+![Login](docs/screenshots/sign-in.png)
+
+---
+## create account Page
+
+
+
+![Create Account](docs/screenshots/sign-up.png)
+
+---
+
+## Dashboard
+
+
+
+![Dashboard](docs/screenshots/user-dashboard.png)
+
+---
+## Admin Dashboard
+
+
+
+![Admin Dashboard](docs/screenshots/admin-dashboard.png)
+
+---
+
+## Competency Management
+
+
+
+![Competencies](docs/screenshots/competency.png)
+
+---
+
+## Assessment Page
+
+
+![Assessment](docs/screenshots/assessment.png)
+
+---
+
+
+
+## Skill Gap Result
+
+
+
+![Gap Result](docs/screenshots/gapresult.png)
+
+---
+## view assessment result
+
+
+
+![Gap Result](docs/screenshots/view-assessment.png)
+
+---
+
+##  Recommendation
+
+
+![Recommendation](docs/screenshots/recommendation.png)
+
+---
+
+## Reports
+
+
+![Reports](docs/screenshots/report.png)
+
+---
+
+## Notifications
+
+
+
+![Notifications](docs/screenshots/notification.png)
+
+
 ## User Roles
 
 The active system roles are:
@@ -46,6 +152,27 @@ The active system roles are:
 | `super_admin`       | Highest platform administrator. Can seed/manage platform-level admin access.                                                                           |
 
 `assessor` exists only as a legacy role label in code for old data compatibility. New accounts should use the active roles above.
+
+## Key Features
+
+The system provides the following core functionalities:
+
+- User authentication (Email/JWT and Google OAuth)
+- Role-based access control
+- Organization management
+- Graduate profile management
+- RTB competency management
+- RTB benchmark management
+- Practical GitHub repository assessment
+- Theory assessment
+- Automated repository review
+- Automatic weighted score calculation
+- Skill gap analysis
+- AI-generated learning recommendations
+- Notifications
+- Downloadable reports
+- Dashboards and analytics
+- Password reset via email
 
 ## Core Workflow
 
@@ -774,6 +901,65 @@ Leave `GEMINI_RECOMMENDATION_API_URL` empty unless you intentionally want to ove
 12. `POST /api/reports` as learner.
 13. `GET /api/notifications`
 
+# Testing Strategy
+
+The application was evaluated using multiple software testing strategies to verify functionality, correctness, usability, and reliability.
+
+| Testing Strategy | Purpose |
+|------------------|---------|
+| Unit Testing | Verify individual functions and modules |
+| Integration Testing | Verify communication between frontend, backend, and database |
+| Functional Testing | Verify core business workflows |
+| Validation Testing | Verify user input validation |
+| Repository Review Testing | Verify automated GitHub repository evaluation |
+| Performance Testing | Evaluate response time and application performance |
+| Responsive Testing | Verify compatibility across different screen sizes and browsers |
+# Testing Results
+
+## Unit Testing
+
+
+![Unit Test](docs/screenshots/frontendtest.png)
+
+---
+
+## Integration Testing
+
+**Placeholder:** Insert screenshot demonstrating frontend-backend integration.
+
+![Integration Test](docs/screenshots/backendtest.png)
+
+---
+
+
+
+## Validation Testing
+
+
+![Validation](docs/screenshots/validation2.png)
+
+---
+
+## Performance Testing
+
+
+
+![Performance](docs/screenshots/performance.png)
+
+# Cross-Platform Compatibility
+
+The system was tested in multiple environments.
+
+| Platform | Browser | Status |
+|-----------|----------|--------|
+| Windows 11 | Chrome | ✔ Passed |
+| Windows 11 | Microsoft Edge | ✔ Passed |
+| Android | Chrome | ✔ Passed |
+| Tablet | Chrome | ✔ Passed |
+
+![responsive](docs/screenshots/responsive.png)
+
+
 ## Testing External APIs
 
 ### GitHub API
@@ -839,6 +1025,29 @@ Body:
 ## Render Deployment Settings
 
 Deploy the backend and frontend as separate Render services because this project is a two-folder application.
+
+# Deployment Verification
+
+The application was successfully deployed.
+
+## Frontend
+
+Vercel
+
+https://rtb-graduate-project.vercel.app/
+
+## Backend
+
+Render
+
+https://rtb-graduate-project.onrender.com
+
+![successful frontend deployment](docs/screenshots/frontend-deployment.png)
+![successful backend deployment](docs/screenshots/backend-deployment.png)
+
+![application running in production.](docs/screenshots/application-production.png)
+
+
 
 ### Backend Web Service
 
@@ -1004,6 +1213,64 @@ Check:
 - Repository is public, or `GITHUB_TOKEN` has access.
 - GitHub rate limit is not exceeded.
 - Repository contains supported source files and README evidence.
+
+# Analysis
+
+The testing results demonstrate that the system successfully implements the objectives defined in the project proposal.
+
+The weighted scoring algorithm correctly calculates graduate competency scores using repository review and theory assessment results.
+
+The system accurately compares competency scores against RTB benchmark scores to determine competency gaps and automatically classifies graduates into appropriate gap levels.
+
+AI-generated recommendations provide personalized guidance based on identified competency gaps.
+
+The testing also confirmed that the application functions correctly across supported browsers and devices while maintaining acceptable performance.
+
+Limitations observed during testing include:
+
+- Repository analysis depends on GitHub repository accessibility.
+- AI recommendations require internet connectivity.
+- Repository execution is limited to supported project configurations.
+
+# Discussion
+
+The milestones achieved demonstrate that Competra successfully automates competency assessment using objective evidence rather than relying solely on self-assessment.
+
+The integration of GitHub repository review, automated scoring, RTB benchmark comparison, and AI-generated recommendations provides graduates with meaningful feedback while reducing manual assessment effort.
+
+The project contributes toward improving competency evaluation within ICT TVET education and supports graduates in identifying areas requiring improvement before entering the workforce.
+
+# Recommendations
+
+Future improvements may include:
+
+- Support additional programming languages.
+- Integrate directly with RTB competency databases.
+- Add employer dashboards.
+- Add mobile application support.
+- Improve repository execution sandbox.
+- Introduce plagiarism detection.
+- Add interview simulation using AI.
+- Provide personalized learning roadmaps.
+# Known Limitations
+
+Current limitations include:
+
+- Repository review requires accessible GitHub repositories.
+- AI recommendations require Gemini API availability.
+- Offline assessment is not currently supported.
+- Repository execution supports only configured environments.
+# Future Work
+
+Future development will focus on:
+
+- Real-time RTB integration.
+- Employer feedback integration.
+- AI interview assessment.
+- Learning management system integration.
+- Advanced analytics dashboards.
+- Multi-language support.
+- Mobile application development.
 
 ## Production Readiness Checklist
 
