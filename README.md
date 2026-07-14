@@ -925,7 +925,7 @@ The application was evaluated using multiple software testing strategies to veri
 
 ## Integration Testing
 
-**Placeholder:** Insert screenshot demonstrating frontend-backend integration.
+
 
 ![Integration Test](docs/screenshots/backendtest.png)
 
