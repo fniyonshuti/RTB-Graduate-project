@@ -7,6 +7,7 @@ import {
   updateAssessment,
   deleteAssessment,
   myResults,
+  myResult,
   previewReviewRecommendation,
   reviewRepositoryTask,
 } from "../controllers/assessmentController.js";
@@ -19,6 +20,7 @@ const router = express.Router();
 router.use(protect);
 
 router.get("/results/me", authorize("learner"), myResults);
+router.get("/results/:id", authorize("learner"), myResult);
 
 router.post(
   "/repository-task-review",
@@ -58,3 +60,4 @@ router.post(
 );
 
 export default router;
+

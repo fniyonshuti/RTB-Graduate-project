@@ -19,6 +19,10 @@ import {
   validateGitHubRepositoryUrl,
 } from "./githubService.js";
 import { generateGraduateReport } from "./reportService.js";
+import {
+  buildAssessmentResultUrl,
+  sendAssessmentResultEmail,
+} from "./emailService.js";
 
 // Assessment scoring and gap analysis are part of assessment logic.
 
@@ -132,6 +136,74 @@ function removeCorrectTheoryAnswers(assessment) {
   return data;
 }
 
+function resultNotificationLink(assessmentId) {
+  return `/results/${assessmentId}`;
+}
+
+async function notifyAssessmentResultReady({ assessment, competency, graduate, recommendation }) {
+  const graduateUser = graduate?.email
+    ? graduate
+    : await User.findById(assessment.graduate).select('name email isActive');
+
+  if (!graduateUser || !graduateUser.isActive) return;
+
+  const notificationLink = resultNotificationLink(assessment._id);
+  const existingNotification = await Notification.findOne({
+    recipient: graduateUser._id,
+    type: 'assessment',
+    link: notificationLink,
+  });
+
+  if (!existingNotification) {
+    await Notification.create({
+      recipient: graduateUser._id,
+      title: 'Assessment Result Ready',
+      message: `Your ${competency.title} assessment result is ready. Gap level: ${assessment.gapLevel}.`,
+      type: 'assessment',
+      link: notificationLink,
+    });
+  }
+
+  if (assessment.resultEmail?.sentAt) return;
+
+  try {
+    const emailResult = await sendAssessmentResultEmail({
+      to: graduateUser.email,
+      name: graduateUser.name,
+      competencyTitle: competency.title,
+      finalScore: assessment.scores?.finalScore,
+      benchmarkScore: assessment.benchmarkScore,
+      skillGap: assessment.skillGap,
+      gapLevel: assessment.gapLevel,
+      priority: recommendation?.priority || getPriorityFromGap(assessment.gapLevel),
+      recommendationSummary: recommendation?.message,
+      completedAt: assessment.reviewedAt || assessment.updatedAt,
+      resultLink: buildAssessmentResultUrl(assessment._id),
+    });
+
+    assessment.resultEmail = {
+      sentAt: new Date(),
+      provider: emailResult.provider,
+      messageId: emailResult.messageId,
+      failedAt: undefined,
+      failureReason: undefined,
+    };
+    await assessment.save();
+  } catch (error) {
+    const failureReason = error?.message || 'Assessment result email failed';
+    console.error('Assessment result email failed after result save', {
+      assessmentId: String(assessment._id),
+      graduateId: String(graduateUser._id),
+      message: failureReason,
+    });
+    assessment.resultEmail = {
+      ...(assessment.resultEmail || {}),
+      failedAt: new Date(),
+      failureReason: failureReason.slice(0, 500),
+    };
+    await assessment.save().catch(() => null);
+  }
+}
 // Theory answer scoring
 function normalizeTheoryAnswerText(value = "") {
   return String(value).trim().toLowerCase();
@@ -405,18 +477,17 @@ export async function submitAssessment(user, payload) {
     reviewedAt: new Date(),
   });
 
-  await upsertAssessmentRecommendation({
+  const recommendation = await upsertAssessmentRecommendation({
     assessment,
     assessorId: user._id,
     recommendation: { automaticDraft },
   });
 
-  await Notification.create({
-    recipient: graduate._id,
-    title: "Automatic Assessment Completed",
-    message: `${competency.title} was scored instantly. Gap level: ${assessment.gapLevel}.`,
-    type: "assessment",
-    link: "/graduate/results",
+  await notifyAssessmentResultReady({
+    assessment,
+    competency,
+    graduate,
+    recommendation,
   });
 
   await generateGraduateReport(graduate._id, user).catch(() => null);
@@ -1065,12 +1136,12 @@ export async function reviewAssessment(assessmentId, assessorId, payload) {
     recommendation: payload.recommendation,
   });
 
-  await Notification.create({
-    recipient: assessment.graduate,
-    title: "Assessment Reviewed",
-    message: `Your ${competency.title} assessment has been reviewed. Gap level: ${assessment.gapLevel}.`,
-    type: "assessment",
-    link: `/graduate/results`,
+  const graduate = await User.findById(assessment.graduate).select("name email isActive");
+  await notifyAssessmentResultReady({
+    assessment,
+    competency,
+    graduate,
+    recommendation,
   });
 
   const assessor = await User.findById(assessorId).select("_id role");
@@ -1162,6 +1233,17 @@ export async function previewRecommendationDraft(assessmentId, payload) {
   };
 }
 
+export async function getGraduateResultById(graduateId, assessmentId) {
+  const assessment = await populateAssessmentRelations(
+    Assessment.findOne({ _id: assessmentId, graduate: graduateId, status: "reviewed" }),
+  );
+
+  if (!assessment) {
+    throw new AppError("Assessment result was not found", 404);
+  }
+
+  return removeCorrectTheoryAnswers(assessment);
+}
 export async function getGraduateResults(graduateId) {
   const assessments = await populateAssessmentRelations(
     Assessment.find({ graduate: graduateId, status: "reviewed" }).sort({
@@ -1182,8 +1264,16 @@ class AssessmentService {
   reviewAssessment = reviewAssessment;
   previewRecommendationDraft = previewRecommendationDraft;
   getGraduateResults = getGraduateResults;
+  getGraduateResultById = getGraduateResultById;
 }
 
 const assessmentService = new AssessmentService();
 
 export default assessmentService;
+
+
+
+
+
+
+

@@ -15,6 +15,7 @@ test('Gemini integration builds the recommendation request and parses JSON respo
   process.env.GEMINI_API_KEY = 'test-gemini-key';
   process.env.GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
   process.env.GEMINI_RECOMMENDATION_MODEL = 'gemini-2.5-flash';
+  process.env.RESOURCE_SEARCH_URL = 'https://www.google.com/search?q=';
   delete process.env.GEMINI_RECOMMENDATION_API_URL;
 
   let capturedUrl = '';

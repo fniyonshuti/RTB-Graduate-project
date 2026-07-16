@@ -1,8 +1,22 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 import { signJwt, verifyJwt } from '../../src/services/authService.js';
 
+const originalJwtSecret = process.env.JWT_SECRET;
+
 describe('JWT utilities', () => {
+  before(() => {
+    process.env.JWT_SECRET = 'unit-test-jwt-secret-for-auth-service';
+  });
+
+  after(() => {
+    if (originalJwtSecret === undefined) {
+      delete process.env.JWT_SECRET;
+      return;
+    }
+
+    process.env.JWT_SECRET = originalJwtSecret;
+  });
   it('verifies a token signed by the application', () => {
     const token = signJwt({ sub: 'user-id', role: 'normal_user' }, 60);
     const payload = verifyJwt(token);

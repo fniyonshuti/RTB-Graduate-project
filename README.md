@@ -35,7 +35,7 @@ The Competra system was developed to achieve the following objectives:
 | Backend           | Node.js, Express.js, ES Modules                               |
 | Database          | MongoDB Atlas, Mongoose                                       |
 | Authentication    | JWT, Google OAuth                                             |
-| Email             | Resend email API for password reset links                     |
+| Email             | Brevo email API for password reset links                     |
 | Repository Review | GitHub API, optional repository execution settings            |
 | AI Recommendation | Gemini API                                                    |
 
@@ -296,7 +296,7 @@ MongoDB Atlas
 - MongoDB Atlas database.
 - GitHub account and repository URLs for testing.
 - Gemini API key.
-- Resend API key and verified sender domain for production password reset email delivery.
+- Brevo API key and verified sender email for production password reset email delivery.
 
 ## Backend Environment Variables
 
@@ -307,8 +307,8 @@ PORT=5000
 HOST=0.0.0.0
 API_PUBLIC_URL=http://localhost:5000/api
 NODE_ENV=development
+APP_NAME=Competra
 LOCAL_DEVELOPMENT_HOSTS=localhost,127.0.0.1
-LOCAL_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 MONGO_URI=mongodb+srv://<db_username>:<db_password>@<cluster-host>/rtb_skills_gap?retryWrites=true&w=majority
 MONGO_DIRECT_URI=
 JWT_SECRET=replace_with_a_long_random_secret
@@ -320,7 +320,7 @@ PBKDF2_DIGEST=sha512
 
 DB_CONNECT_TIMEOUT_MS=8000
 FRONTEND_URL=http://localhost:5173
-CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+# CORS is open in the backend API so any frontend application can send requests.
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=300
 AUTH_RATE_LIMIT_MAX_REQUESTS=20
@@ -336,13 +336,14 @@ SUPER_ADMIN_INSTITUTION=RTB
 SUPER_ADMIN_RESET_PASSWORD=false
 SUPER_ADMIN_PROMOTE_EXISTING=false
 
-EMAIL_PROVIDER=resend
-EMAIL_API_KEY=
+EMAIL_PROVIDER=brevo
+EMAIL_API_KEY=your_brevo_api_key
 EMAIL_API_URL=
-EMAIL_RESEND_API_URL=https://api.resend.com/emails
 EMAIL_BREVO_API_URL=https://api.brevo.com/v3/smtp/email
+EMAIL_REQUEST_TIMEOUT_MS=15000
 EMAIL_FROM=no-reply@your-verified-domain.com
 EMAIL_FROM_NAME=Competra
+EMAIL_REPLY_TO=
 EMAIL_TEST_TO=
 TEST_EMAIL_TO=
 
@@ -370,10 +371,16 @@ GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 
 ### Important Email Note
 
-For Resend, `EMAIL_FROM` must use a verified domain in production. Resend test senders can only send to the verified account owner. To send reset links to any user, verify a domain in Resend and set:
+For Brevo, create an HTTP API key from SMTP & API > API keys and verify the sender email or domain in Brevo. To send reset links to users, set:
 
 ```env
+EMAIL_PROVIDER=brevo
+EMAIL_API_KEY=your_brevo_api_key
+EMAIL_BREVO_API_URL=https://api.brevo.com/v3/smtp/email
+EMAIL_REQUEST_TIMEOUT_MS=15000
 EMAIL_FROM=no-reply@your-verified-domain.com
+EMAIL_FROM_NAME=Competra
+EMAIL_REPLY_TO=
 ```
 
 ## Frontend Environment Variables
@@ -442,7 +449,7 @@ Backend:
 | `npm run seed:admin`        | Create the first super admin from `.env`.  |
 | `npm run seed:competency`   | Seed sample competency and benchmark data. |
 | `npm run seed:database-api` | Seed database/API competency data.         |
-| `npm run test:resend`       | Test Resend email configuration.           |
+| `npm run test:brevo`        | Test Brevo password reset email configuration. |
 
 Frontend:
 
@@ -459,10 +466,10 @@ Frontend:
 1. Create MongoDB Atlas cluster and database user.
 2. Add your current IP address to Atlas Network Access.
 3. Create `backend/.env`.
-4. Set `MONGO_URI`, `JWT_SECRET`, `FRONTEND_URL`, and `CORS_ORIGINS`.
+4. Set `MONGO_URI`, `JWT_SECRET`, and `FRONTEND_URL`. `FRONTEND_URL` is used for password reset links; API CORS is open for frontend clients.
 5. Add `GITHUB_TOKEN` if private repository access or higher rate limit is needed.
 6. Add `GEMINI_API_KEY`.
-7. Configure Resend email values if password reset emails must be delivered.
+7. Configure Brevo email values if password reset emails must be delivered.
 8. Run backend `npm install`.
 9. Run `npm run seed:admin`.
 10. Run backend `npm run dev`.
@@ -1067,7 +1074,7 @@ MONGO_URI=your_mongodb_atlas_uri
 MONGO_DIRECT_URI=optional_standard_atlas_mongodb_uri
 JWT_SECRET=your_strong_secret
 FRONTEND_URL=https://rtb-graduate-project.vercel.app
-CORS_ORIGINS=https://rtb-graduate-project.vercel.app,https://*.vercel.app
+# CORS is open in the backend API so any frontend application can send requests.
 GITHUB_API_URL=https://api.github.com
 GITHUB_API_BASE_URL=https://api.github.com
 GITHUB_RAW_BASE_URL=https://raw.githubusercontent.com
@@ -1077,11 +1084,13 @@ GEMINI_API_KEY=your_gemini_key
 GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models
 GEMINI_RECOMMENDATION_MODEL=gemini-2.5-flash
 GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
-EMAIL_PROVIDER=resend
-EMAIL_API_KEY=your_resend_key
-EMAIL_RESEND_API_URL=https://api.resend.com/emails
+EMAIL_PROVIDER=brevo
+EMAIL_API_KEY=your_brevo_api_key
+EMAIL_BREVO_API_URL=https://api.brevo.com/v3/smtp/email
+EMAIL_REQUEST_TIMEOUT_MS=15000
 EMAIL_FROM=noreply@your-verified-domain.com
 EMAIL_FROM_NAME=Competra
+EMAIL_REPLY_TO=
 EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE=false
 ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION=false
 ```
@@ -1184,16 +1193,16 @@ Check:
 - Backend health endpoint returns success: `https://rtb-graduate-project.onrender.com/api/health`.
 - Vercel has `VITE_API_URL=https://rtb-graduate-project.onrender.com/api`.
 - Render has `FRONTEND_URL=https://rtb-graduate-project.vercel.app`.
-- Render has `CORS_ORIGINS=https://rtb-graduate-project.vercel.app,https://*.vercel.app`.
+- The Render backend is redeployed with the latest open-CORS backend code.
 - Both Render and Vercel were redeployed after environment variables changed.
 
 ### Password reset email fails
 
 Check:
 
-- `EMAIL_PROVIDER=resend`.
+- `EMAIL_PROVIDER=brevo`.
 - `EMAIL_API_KEY` is set.
-- `EMAIL_FROM` uses a verified Resend domain for production delivery.
+- `EMAIL_FROM` uses a sender email or domain verified in Brevo for production delivery.
 - Backend was restarted after editing `.env`.
 
 ### Gemini recommendation fails
@@ -1275,9 +1284,9 @@ Future development will focus on:
 ## Production Readiness Checklist
 
 - Use a strong `JWT_SECRET`.
-- Use a verified email domain for Resend.
+- Use a verified sender email or domain in Brevo.
 - Disable `EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE` in production.
-- Configure `CORS_ORIGINS` for the production frontend domain.
+- Keep backend CORS open only if the API is intended to support multiple frontend clients; protect data with JWT authorization and role checks.
 - Restrict MongoDB Atlas network access.
 - Use HTTPS.
 - Keep `ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION=false` unless running inside a disposable sandbox.
@@ -1285,3 +1294,7 @@ Future development will focus on:
 - Add cloud file storage if large uploads are required.
 - Monitor GitHub and Gemini API quota.
 - Run backend and frontend lint/tests before release.
+
+
+
+

@@ -25,10 +25,43 @@ function normalizeList(values = []) {
     : [];
 }
 
+function resourceSearchUrl() {
+  return safeString(process.env.RESOURCE_SEARCH_URL);
+}
+
+function configuredLearningResourceUrls() {
+  const rawValue = safeString(process.env.LEARNING_RESOURCE_URLS_JSON);
+  if (!rawValue) return {};
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function configuredLearningResourceUrl(key) {
+  return safeString(configuredLearningResourceUrls()[key]);
+}
+
 function buildSearchUrl(query) {
   const normalizedQuery = safeString(query);
-  if (!normalizedQuery) return "";
-  return `https://www.google.com/search?q=${encodeURIComponent(normalizedQuery)}`;
+  const configuredSearchUrl = resourceSearchUrl();
+  if (!normalizedQuery || !configuredSearchUrl) return "";
+
+  const encodedQuery = encodeURIComponent(normalizedQuery);
+
+  if (configuredSearchUrl.includes("{query}")) {
+    return configuredSearchUrl.replace("{query}", encodedQuery);
+  }
+
+  if (configuredSearchUrl.endsWith("=") || configuredSearchUrl.endsWith("/")) {
+    return `${configuredSearchUrl}${encodedQuery}`;
+  }
+
+  const separator = configuredSearchUrl.includes("?") ? "&" : "?q=";
+  return `${configuredSearchUrl}${separator}${encodedQuery}`;
 }
 
 const RESOURCE_TYPES = new Set([
@@ -189,7 +222,7 @@ function buildPrompt(context) {
     "resources must be an array of 2 to 5 short resource summary strings that include a direct URL, except for No Gap where 1 to 3 enrichment resources are enough.",
     "learningResources must be an array of 2 to 5 objects. Each object must include: type, title, provider, url, searchQuery, skillArea, reason. The url field is required and must be a valid https link.",
     "Resource type must be one of: video, course, documentation, practice, article, tool, other.",
-    "Every learning resource must address a specific weak area, failed repository check, failed hidden test, theory weakness, security issue, or benchmark gap. Prefer beginner-friendly free resources with stable URLs; when unsure, use a Google search URL generated from a precise searchQuery.",
+    "Every learning resource must address a specific weak area, failed repository check, failed hidden test, theory weakness, security issue, or benchmark gap. Prefer beginner-friendly free resources with stable URLs; when unsure, use a search URL generated from a precise searchQuery and the configured RESOURCE_SEARCH_URL.",
     "priority must be one of low, medium, or high.",
     "Use the supplied RTB benchmark, final score, skill gap, gap meaning, weak areas, improvement priorities, repository evidence, repository summary, and automatic review note.",
     "Keep the recommendation aligned to the selected competency and the evidence reviewed.",
@@ -318,7 +351,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "course",
       title: "freeCodeCamp JavaScript Algorithms and Data Structures",
       provider: "freeCodeCamp",
-      url: "https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures-v8/",
+      url: configuredLearningResourceUrl("freecodecamp_javascript_algorithms"),
       searchQuery: "freeCodeCamp JavaScript Algorithms and Data Structures",
       skillArea: "Programming fundamentals",
       reason: "Useful when practical code fails expected behavior or edge-case tests.",
@@ -327,7 +360,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "documentation",
       title: "MDN JavaScript Guide",
       provider: "MDN Web Docs",
-      url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide",
+      url: configuredLearningResourceUrl("mdn_javascript_guide"),
       searchQuery: "MDN JavaScript Guide",
       skillArea: "JavaScript implementation",
       reason: "Helps strengthen syntax, data handling, functions, and control flow used in practical tasks.",
@@ -336,7 +369,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "practice",
       title: "Build and test one small feature with input, output, validation, and error handling",
       provider: "Competra practice plan",
-      url: "https://developer.mozilla.org/en-US/docs/Learn/Forms/Form_validation",
+      url: configuredLearningResourceUrl("mdn_form_validation"),
       searchQuery: "practice building tested web app feature input validation error handling",
       skillArea: "Verified implementation",
       reason: "Directly improves objective proof before resubmission.",
@@ -347,7 +380,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "documentation",
       title: "React Learn",
       provider: "React",
-      url: "https://react.dev/learn",
+      url: configuredLearningResourceUrl("react_learn"),
       searchQuery: "React official learn components forms state",
       skillArea: "Frontend UI",
       reason: "Useful when UI components, forms, state, or interaction evidence is weak.",
@@ -356,7 +389,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "video",
       title: "React forms and state management tutorial",
       provider: "YouTube search",
-      url: "https://react.dev/reference/react-dom/components/input",
+      url: configuredLearningResourceUrl("react_input_reference"),
       searchQuery: "React forms state management validation tutorial",
       skillArea: "Frontend forms",
       reason: "Helps learners practice form handling and visible user feedback.",
@@ -367,7 +400,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "documentation",
       title: "Express Routing Guide",
       provider: "Express.js",
-      url: "https://expressjs.com/en/guide/routing.html",
+      url: configuredLearningResourceUrl("express_routing_guide"),
       searchQuery: "Express routing guide controllers services validation",
       skillArea: "Backend APIs",
       reason: "Useful when API route or controller evidence is missing or incorrect.",
@@ -376,7 +409,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "course",
       title: "Node.js and Express API course",
       provider: "freeCodeCamp / YouTube search",
-      url: "https://www.freecodecamp.org/news/build-a-restful-api-using-node-express-and-mongodb/",
+      url: configuredLearningResourceUrl("freecodecamp_node_express_mongodb_api"),
       searchQuery: "Node.js Express REST API MongoDB JWT freeCodeCamp course",
       skillArea: "Backend API development",
       reason: "Supports practical API implementation and integration practice.",
@@ -387,7 +420,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "course",
       title: "MongoDB University Mongoose or Node.js learning path",
       provider: "MongoDB University",
-      url: "https://learn.mongodb.com/",
+      url: configuredLearningResourceUrl("mongodb_university"),
       searchQuery: "MongoDB University Node.js Mongoose CRUD",
       skillArea: "Database persistence",
       reason: "Useful when CRUD, schema, or persistence checks fail.",
@@ -398,7 +431,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "article",
       title: "OWASP Authentication Cheat Sheet",
       provider: "OWASP",
-      url: "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+      url: configuredLearningResourceUrl("owasp_authentication_cheat_sheet"),
       searchQuery: "OWASP Authentication Cheat Sheet JWT password hashing",
       skillArea: "Secure authentication",
       reason: "Helps correct weak login, password, JWT, and protected-route implementations.",
@@ -409,7 +442,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "documentation",
       title: "Jest Getting Started",
       provider: "Jest",
-      url: "https://jestjs.io/docs/getting-started",
+      url: configuredLearningResourceUrl("jest_getting_started"),
       searchQuery: "Jest getting started tests JavaScript",
       skillArea: "Automated tests",
       reason: "Useful when submitted tests or hidden tests fail.",
@@ -418,7 +451,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "documentation",
       title: "Supertest API testing",
       provider: "npm / GitHub",
-      url: "https://github.com/ladjs/supertest",
+      url: configuredLearningResourceUrl("supertest_github"),
       searchQuery: "Supertest Express API testing examples",
       skillArea: "API integration testing",
       reason: "Helps learners prove API behavior with repeatable tests.",
@@ -429,7 +462,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "article",
       title: "OWASP Top 10 Web Application Security Risks",
       provider: "OWASP",
-      url: "https://owasp.org/www-project-top-ten/",
+      url: configuredLearningResourceUrl("owasp_top_ten"),
       searchQuery: "OWASP Top 10 web application security risks",
       skillArea: "Security",
       reason: "Useful when security scan, hardcoded secret, or authentication checks fail.",
@@ -440,7 +473,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "course",
       title: "CS50 Web Programming with Python and JavaScript",
       provider: "Harvard / edX",
-      url: "https://cs50.harvard.edu/web/",
+      url: configuredLearningResourceUrl("cs50_web_programming"),
       searchQuery: "CS50 Web Programming Python JavaScript web development concepts",
       skillArea: "Web development theory",
       reason: "Helps connect theory concepts with practical implementation.",
@@ -449,7 +482,7 @@ const LEARNING_RESOURCE_CATALOG = {
       type: "documentation",
       title: "MDN Learn Web Development",
       provider: "MDN Web Docs",
-      url: "https://developer.mozilla.org/en-US/docs/Learn",
+      url: configuredLearningResourceUrl("mdn_learn_web_development"),
       searchQuery: "MDN Learn Web Development HTML CSS JavaScript HTTP",
       skillArea: "Web fundamentals",
       reason: "Good for revising core concepts missed in theory questions.",

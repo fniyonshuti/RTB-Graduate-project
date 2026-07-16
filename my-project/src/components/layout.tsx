@@ -61,6 +61,10 @@ const navItems: NavItem[] = [
   { key: 'notifications', label: 'Manage Notifications', icon: Bell, roles: ['admin', 'super_admin'] },
 ]
 
+export function canAccessView(role: Role, view: ViewKey) {
+  return navItems.some((item) => item.key === view && item.roles.includes(role))
+}
+
 export function AppLayout({
   children,
   currentView,

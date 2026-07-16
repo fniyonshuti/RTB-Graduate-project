@@ -1,8 +1,22 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 import { parseGithubUrl } from '../../src/services/githubService.js';
 
+const originalGithubWebBaseUrl = process.env.GITHUB_WEB_BASE_URL;
+
 describe('parseGithubUrl', () => {
+  before(() => {
+    process.env.GITHUB_WEB_BASE_URL = 'https://github.com';
+  });
+
+  after(() => {
+    if (originalGithubWebBaseUrl === undefined) {
+      delete process.env.GITHUB_WEB_BASE_URL;
+      return;
+    }
+
+    process.env.GITHUB_WEB_BASE_URL = originalGithubWebBaseUrl;
+  });
   it('parses an HTTPS GitHub repository URL', () => {
     assert.deepEqual(parseGithubUrl('https://github.com/openai/codex'), {
       url: 'https://github.com/openai/codex',

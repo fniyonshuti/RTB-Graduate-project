@@ -50,7 +50,7 @@ function buildConnectionErrorMessage(baseUrl: string, details: string[]) {
       'Connection problem: the app could not reach the backend API.',
       `Backend API: ${baseUrl}`,
       `Frontend origin: ${frontendOrigin}`,
-      'Check that the Render backend is running, VITE_API_URL points to the deployed backend /api URL, and the backend CORS_ORIGINS includes this frontend origin.',
+      'Check that the Render backend is running, VITE_API_URL points to the deployed backend /api URL, and the backend was redeployed with the latest code.',
       'After changing Vercel or Render environment variables, redeploy both services.',
       details.length > 0 ? `Technical detail: ${details.join(' | ')}` : '',
     ]
@@ -77,7 +77,7 @@ function buildHttpErrorMessage(path: string, response: Response, payload: ApiRes
   }
 
   if (response.status === 403) {
-    return `${message}. Your account may not have permission for this action, or the frontend origin is not allowed by backend CORS.${requestId}`
+    return `${message}. Your account may not have permission for this action.${requestId}`
   }
 
   if (response.status === 404 && path.startsWith('/checklists')) {
