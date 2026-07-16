@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Alert, Button, Card, TextField } from './components/common'
-import { AppLayout, type ViewKey } from './components/layout'
+import { AppLayout, canAccessView, type ViewKey } from './components/layout'
 import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './context/useAuth'
 import { AuthPages } from './pages/AuthPages'
@@ -26,6 +26,18 @@ function AppContent() {
   const { user, token, isAuthenticated, isLoading, logout } = useAuth()
   const [currentView, setCurrentView] = useState<ViewKey>('dashboard')
 
+  useEffect(() => {
+    const path = window.location.pathname
+    if (isAuthenticated && user && path.startsWith('/results/')) {
+      setCurrentView('results')
+      return
+    }
+
+    if (user && !canAccessView(user.role, currentView)) {
+      setCurrentView('dashboard')
+    }
+  }, [currentView, isAuthenticated, user])
+
   if (isLoading) {
     return <div className="boot-screen">Loading application...</div>
   }
@@ -49,6 +61,10 @@ function AppContent() {
 
   function renderPage() {
     if (!user || !token) return null
+
+    if (!canAccessView(user.role, currentView)) {
+      return <DashboardPage onNavigate={setCurrentView} role={user.role} token={token} />
+    }
 
     if (currentView === 'dashboard') {
       return <DashboardPage onNavigate={setCurrentView} role={user.role} token={token} />
@@ -205,3 +221,4 @@ function App() {
 }
 
 export default App
+

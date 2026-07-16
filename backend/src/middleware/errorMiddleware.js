@@ -41,11 +41,12 @@ export function errorHandler(error, req, res, _next) {
     });
   }
 
-  if (!error.isOperational && req.originalUrl === "/api/auth/google") {
-    return res.status(502).json({
+  if (req.originalUrl.startsWith("/api/auth/google") && statusCode >= 500) {
+    return res.status(statusCode).json({
       success: false,
-      message:
-        "Google sign-in failed on the backend. Confirm GOOGLE_CLIENT_ID matches VITE_GOOGLE_CLIENT_ID, JWT_SECRET is set, MongoDB is connected, and the backend has been redeployed.",
+      message: error.isOperational
+        ? error.message
+        : "Google sign-in failed on the backend. Confirm GOOGLE_CLIENT_ID matches VITE_GOOGLE_CLIENT_ID, JWT_SECRET is set, MongoDB is connected, and the backend has been redeployed.",
       requestId: req.id,
       ...(isProduction ? {} : { error: error.message }),
     });

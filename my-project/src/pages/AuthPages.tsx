@@ -159,10 +159,7 @@ declare global {
 
 const GOOGLE_SCRIPT_ELEMENT_ID = 'google-identity-services-script';
 const googleClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
-const googleIdentityScriptUrl = String(
-  import.meta.env.VITE_GOOGLE_IDENTITY_SCRIPT_URL ||
-    'https://accounts.google.com/gsi/client',
-).trim();
+const googleIdentityScriptUrl = String(import.meta.env.VITE_GOOGLE_IDENTITY_SCRIPT_URL || '').trim();
 let googleIdentityScriptPromise: Promise<void> | null = null;
 let googleIdentityInitialized = false;
 let latestGoogleCredentialHandler: ((response: GoogleCredentialResponse) => void) | null = null;
@@ -213,6 +210,7 @@ export function AuthPages() {
   const [password, setPassword] = useState("");
   const [resetToken, setResetToken] = useState(initialAuthState.resetToken);
   const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -258,7 +256,7 @@ export function AuthPages() {
   const [googleInitialized, setGoogleInitialized] = useState(googleIdentityInitialized);
 
   useEffect(() => {
-    if (!googleClientId) return;
+    if (!googleClientId || !googleIdentityScriptUrl) return;
 
     loadGoogleIdentityScript()
       .then(() => {
@@ -283,7 +281,7 @@ export function AuthPages() {
 
   useEffect(() => {
     if (!showAuthPanel || (mode !== 'login' && mode !== 'register')) return undefined;
-    if (!googleClientId || !googleInitialized || !googleButtonRef.current) return undefined;
+    if (!googleClientId || !googleIdentityScriptUrl || !googleInitialized || !googleButtonRef.current) return undefined;
 
     const buttonHost = googleButtonRef.current;
     buttonHost.innerHTML = '';
@@ -339,6 +337,18 @@ export function AuthPages() {
       return;
     }
 
+    if (mode === "reset") {
+      if (newPassword.length < 6) {
+        setError("New password must be at least 6 characters.");
+        return;
+      }
+
+      if (newPassword !== confirmNewPassword) {
+        setError("New password and confirmation do not match.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -349,19 +359,11 @@ export function AuthPages() {
         setTermsAccepted(false);
       } else if (mode === "forgot") {
         const result = await api.forgotPassword(email);
-        if (result.emailStatus === "resend_domain_verification_required") {
-          setMessage(
-            result.resetLink
-              ? `${result.message} For local testing, use this reset link: ${result.resetLink}. To send email to any recipient, verify your domain in Resend and set EMAIL_FROM to that verified domain.`
-              : result.emailMessage || result.message,
-          );
-        } else {
-          setMessage(
-            result.resetLink
-              ? `${result.message} Reset link for testing: ${result.resetLink}`
-              : result.message,
-          );
-        }
+        setMessage(
+          result.resetLink
+            ? `${result.message} Reset link for local testing: ${result.resetLink}`
+            : result.message,
+        );
       } else {
         await api.resetPassword(resetToken, newPassword);
         setMessage(
@@ -370,10 +372,11 @@ export function AuthPages() {
         setMode("login");
         setPassword("");
         setNewPassword("");
+        setConfirmNewPassword("");
         window.history.replaceState(
           {},
           document.title,
-          window.location.pathname,
+          "/",
         );
       }
     } catch (caughtError) {
@@ -635,6 +638,17 @@ export function AuthPages() {
                     required
                   />
                 )}
+                {mode === "reset" && (
+                  <TextField
+                    autoComplete="new-password"
+                    label="Confirm new password"
+                    placeholder="Re-enter the new password"
+                    type="password"
+                    value={confirmNewPassword}
+                    onChange={(event) => setConfirmNewPassword(event.target.value)}
+                    required
+                  />
+                )}
                 {mode === "register" && (
                   <label className="auth-terms">
                     <input
@@ -681,7 +695,7 @@ export function AuthPages() {
                       </span>
                     </div>
                     <div className="auth-social-actions">
-                      {googleClientId ? (
+                      {googleClientId && googleIdentityScriptUrl ? (
                         <div
                           ref={googleButtonRef}
                           className="auth-google-button-host"
@@ -693,7 +707,7 @@ export function AuthPages() {
                           type="button"
                           onClick={() =>
                             setError(
-                              "Google sign-in is not configured. Add VITE_GOOGLE_CLIENT_ID in the frontend and GOOGLE_CLIENT_ID in the backend.",
+                              "Google sign-in is not configured. Add VITE_GOOGLE_CLIENT_ID and VITE_GOOGLE_IDENTITY_SCRIPT_URL in the frontend, and GOOGLE_CLIENT_ID in the backend.",
                             )
                           }
                         >

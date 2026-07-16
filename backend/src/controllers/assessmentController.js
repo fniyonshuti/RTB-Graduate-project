@@ -47,6 +47,11 @@ class AssessmentController {
     const results = await assessmentService.getGraduateResults(req.user._id);
     sendSuccess(res, 'Gap analysis results loaded', results);
   });
+
+  myResult = asyncHandler(async (req, res) => {
+    const result = await assessmentService.getGraduateResultById(req.user._id, req.params.id);
+    sendSuccess(res, 'Gap analysis result loaded', result);
+  });
 }
 
 const assessmentController = new AssessmentController();
@@ -60,4 +65,5 @@ export const deleteAssessment = assessmentController.deleteAssessment;
 export const review = assessmentController.review;
 export const previewReviewRecommendation = assessmentController.previewReviewRecommendation;
 export const myResults = assessmentController.myResults;
+export const myResult = assessmentController.myResult;
 export default assessmentController;

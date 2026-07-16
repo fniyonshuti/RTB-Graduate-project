@@ -1,4 +1,4 @@
-import authService from '../services/authService.js';
+import authService, { loginWithGoogle as loginWithGoogleUser } from '../services/authService.js';
 import { AppError, asyncHandler } from '../services/errorService.js';
 import { sendSuccess } from '../services/responseService.js';
 
@@ -14,7 +14,7 @@ class AuthController {
   });
   googleLogin = asyncHandler(async (req, res) => {
     try {
-      const result = await authService.loginWithGoogle(req.body.credential);
+      const result = await loginWithGoogleUser(req.body.credential);
       sendSuccess(res, 'Google sign-in completed successfully', result);
     } catch (error) {
       if (error instanceof AppError) throw error;

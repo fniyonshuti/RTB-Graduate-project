@@ -6,6 +6,29 @@ dotenv.config({ quiet: true });
 
 const requestBuckets = new Map();
 
+export function corsMiddleware(req, res, next) {
+  const requestOrigin = req.headers.origin;
+
+  if (requestOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+    res.setHeader('Vary', 'Origin');
+  }
+
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Request-Id',
+  );
+  res.setHeader('Access-Control-Max-Age', '86400');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  return next();
+}
+
 function clientKey(req, scope) {
   return `${scope}:${req.ip || req.socket.remoteAddress || 'unknown'}`;
 }

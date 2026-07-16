@@ -150,6 +150,25 @@ function ListToolbar({
 
 const TABLE_PAGE_SIZE = 6;
 
+const resourceSearchUrl = String(import.meta.env.VITE_RESOURCE_SEARCH_URL || "").trim();
+
+function buildResourceSearchUrl(query: string) {
+  const normalizedQuery = query.trim();
+  if (!resourceSearchUrl || !normalizedQuery) return "";
+  const encodedQuery = encodeURIComponent(normalizedQuery);
+
+  if (resourceSearchUrl.includes("{query}")) {
+    return resourceSearchUrl.replace("{query}", encodedQuery);
+  }
+
+  if (resourceSearchUrl.endsWith("=") || resourceSearchUrl.endsWith("/")) {
+    return `${resourceSearchUrl}${encodedQuery}`;
+  }
+
+  const separator = resourceSearchUrl.includes("?") ? "&" : "?q=";
+  return `${resourceSearchUrl}${separator}${encodedQuery}`;
+}
+
 function paginateItems<T>(items: T[], currentPage: number, pageSize = TABLE_PAGE_SIZE) {
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
   const safePage = Math.min(Math.max(currentPage, 1), totalPages);
@@ -215,15 +234,15 @@ function PaginationControls({
 function resourceLink(resource: LearningResource) {
   if (resource.url) return resource.url;
   if (resource.searchQuery) {
-    return `https://www.google.com/search?q=${encodeURIComponent(resource.searchQuery)}`;
+    return buildResourceSearchUrl(resource.searchQuery);
   }
   return "";
 }
 
 function fallbackResourceLink(resource: string) {
-  const directUrl = resource.match(/https?:\/\/[^\s)]+/i)?.[0];
+  const directUrl = resource.match(new RegExp("(?:https?)://[^\\s)]+", "i"))?.[0];
   if (directUrl) return directUrl;
-  return `https://www.google.com/search?q=${encodeURIComponent(resource)}`;
+  return buildResourceSearchUrl(resource);
 }
 
 function LearningResourceCards({

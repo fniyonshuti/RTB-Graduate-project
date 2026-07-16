@@ -5,6 +5,7 @@ dotenv.config({ quiet: true });
 
 async function connectDB() {
   const mongoUri = process.env.MONGO_DIRECT_URI || process.env.MONGO_URI;
+  console.log(`DB URI: ${mongoUri}`);
   const dbConnectTimeoutMs = Number(process.env.DB_CONNECT_TIMEOUT_MS) || 8000;
 
   if (!mongoUri) {

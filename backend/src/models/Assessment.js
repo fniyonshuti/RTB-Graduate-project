@@ -317,6 +317,22 @@ const assessmentSchema = new mongoose.Schema(
     reviewedAt: {
       type: Date,
     },
+    resultEmail: {
+      sentAt: Date,
+      provider: {
+        type: String,
+        trim: true,
+      },
+      messageId: {
+        type: String,
+        trim: true,
+      },
+      failedAt: Date,
+      failureReason: {
+        type: String,
+        trim: true,
+      },
+    },
   },
   { timestamps: true }
 );
@@ -327,3 +343,4 @@ assessmentSchema.index({ assessor: 1, status: 1 });
 assessmentSchema.index({ status: 1, createdAt: -1 });
 
 export default mongoose.model('Assessment', assessmentSchema);
+

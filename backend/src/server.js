@@ -24,11 +24,6 @@ function listEnv(name, fallback = []) {
     .filter(Boolean);
 }
 
-function emailDomain(email = "") {
-  const [, domain = ""] = String(email).split("@");
-  return domain.toLowerCase();
-}
-
 function validateRuntimeConfig() {
   const errors = [];
   const warnings = [];
@@ -37,10 +32,10 @@ function validateRuntimeConfig() {
   const mongoUri = process.env.MONGO_DIRECT_URI || process.env.MONGO_URI || "";
   const jwtSecret = String(process.env.JWT_SECRET || "").trim();
   const frontendUrl = process.env.FRONTEND_URL || "";
-  const corsOrigins = listEnv("CORS_ORIGINS", [frontendUrl]);
   const localDevelopmentHosts = listEnv("LOCAL_DEVELOPMENT_HOSTS");
-  const emailProvider = process.env.EMAIL_PROVIDER || "generic";
+  const emailProvider = String(process.env.EMAIL_PROVIDER || "brevo").toLowerCase();
   const emailApiUrl = process.env.EMAIL_API_URL || "";
+  const emailBrevoApiUrl = process.env.EMAIL_BREVO_API_URL || "";
   const emailApiKey = process.env.EMAIL_API_KEY || "";
   const emailFrom = process.env.EMAIL_FROM || "";
   const githubToken = process.env.GITHUB_TOKEN || "";
@@ -60,11 +55,6 @@ function validateRuntimeConfig() {
       "FRONTEND_URL is missing; password reset links will fail until it is set to the deployed frontend URL",
     );
   }
-  if (corsOrigins.length === 0) {
-    warnings.push(
-      "CORS_ORIGINS is missing; browser requests from the frontend will be rejected until it is configured",
-    );
-  }
   if (jwtSecret && jwtSecret.length < 32) {
     errors.push("JWT_SECRET must be at least 32 characters");
   }
@@ -76,14 +66,6 @@ function validateRuntimeConfig() {
 
     if (localDevelopmentHosts.some((host) => frontendUrl.includes(host))) {
       errors.push("FRONTEND_URL must not use a local development host in production");
-    }
-
-    if (
-      corsOrigins.some((origin) =>
-        localDevelopmentHosts.some((host) => origin.includes(host)),
-      )
-    ) {
-      errors.push("CORS_ORIGINS must not include local development hosts in production");
     }
 
     if (!process.env.GEMINI_API_KEY) {
@@ -106,29 +88,19 @@ function validateRuntimeConfig() {
       errors.push("EMAIL_API_KEY and EMAIL_FROM are required in production");
     }
 
+    if (!["brevo", "generic"].includes(emailProvider)) {
+      errors.push("EMAIL_PROVIDER must be brevo or generic");
+    }
+
     if (emailProvider === "generic" && !emailApiUrl) {
       errors.push("EMAIL_API_URL is required when EMAIL_PROVIDER=generic");
     }
 
-    if (
-      emailProvider === "resend" &&
-      ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "resend.dev"].includes(
-        emailDomain(emailFrom),
-      )
-    ) {
-      warnings.push(
-        "EMAIL_FROM should use your verified Resend domain in production; password reset emails to normal users may fail until the sender domain is verified",
-      );
+
+    if (emailProvider === "brevo" && !emailBrevoApiUrl) {
+      errors.push("EMAIL_BREVO_API_URL is required when EMAIL_PROVIDER=brevo");
     }
-  } else if (
-    emailProvider === "resend" &&
-    ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "resend.dev"].includes(
-      emailDomain(emailFrom),
-    )
-  ) {
-    warnings.push(
-      "Resend can only send to any recipient after you verify a domain and set EMAIL_FROM to that domain",
-    );
+
   }
 
   return { errors, warnings };
