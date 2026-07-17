@@ -374,28 +374,18 @@ export async function submitAssessment(user, payload) {
     payload,
     theoryScoringResult,
   });
-  const submittedRepositoryTaskReview = payload.repositoryTaskReview
-    ? null
-    : await previewRepositoryTaskReview(
-        {
-          competency: competency._id,
-          practicalTaskId: selectedPracticalTask?._id,
-          githubRepositoryUrl: payload.githubRepositoryUrl,
-        },
-        user,
-      );
-  const staticRepositoryTaskReview = submittedRepositoryTaskReview
-    ? submittedRepositoryTaskReview
-    : await reviewGitHubRepositoryForTask({
-        repositoryUrl: payload.githubRepositoryUrl,
-        competency,
-        practicalTask: selectedPracticalTask,
-      });
+  const backendRepositoryTaskReview = await previewRepositoryTaskReview(
+    {
+      competency: competency._id,
+      practicalTaskId: selectedPracticalTask?._id,
+      githubRepositoryUrl: payload.githubRepositoryUrl,
+    },
+    user,
+  );
+  const staticRepositoryTaskReview = backendRepositoryTaskReview;
   const repositoryEvidenceSummary = staticRepositoryTaskReview?.repositoryEvidenceSummary || null;
 
-  if (repositoryEvidenceSummary && payload.repositoryTaskReview) {
-    repositoryEvidenceSummary.taskReview = payload.repositoryTaskReview;
-  } else if (repositoryEvidenceSummary && staticRepositoryTaskReview?.taskReview) {
+  if (repositoryEvidenceSummary && staticRepositoryTaskReview?.taskReview) {
     repositoryEvidenceSummary.taskReview = staticRepositoryTaskReview.taskReview;
   }
 
@@ -652,7 +642,7 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
   }
 
   if (validationType === 'hidden_test' || validationType === 'automated_test') {
-    const testRequirements = relatedRequirements.filter((requirement) => /test|build|docker|execution|stage/i.test(`${requirement.id || ''} ${requirement.title || ''}`));
+    const testRequirements = relatedRequirements.filter((requirement) => /test|build|e2b|execution|sandbox|stage/i.test(`${requirement.id || ''} ${requirement.title || ''}`));
     const percent = testRequirements.length > 0
       ? requirementEvidenceScore(testRequirements)
       : Number(repositoryAssessment.accuracyScore || 0);
@@ -851,7 +841,7 @@ export async function previewRepositoryTaskReview(payload, user) {
     ],
     competencyScores: {},
     recommendations: [
-      "Check the backend terminal, Docker Desktop status, GitHub repository access, and instructor test configuration, then run repository review again.",
+      "Check E2B_API_KEY, GitHub repository access, dependency setup, and instructor test configuration, then run repository review again.",
     ],
     assessorValidationRequired: false,
     errorMessage: error.message,

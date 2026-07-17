@@ -930,11 +930,11 @@ function GraduateDashboard({
             />
             <WorkflowStep
               label="3"
-              text="The system reviews the GitHub repository and scores theory evidence."
+              text="The system securely tests the GitHub repository in an isolated sandbox and scores theory answers."
             />
             <WorkflowStep
               label="4"
-              text="The system calculates skill gap, classifies gap level, generates Gemini recommendations, notifies the user, and generates the report."
+              text="The system calculates the final score, compares it with the RTB benchmark, classifies the gap, generates Gemini recommendations, notifies the user, and generates the report."
             />
           </div>
         </Card>
@@ -7153,4 +7153,5 @@ function PageHeader({
     </div>
   );
 }
+
 

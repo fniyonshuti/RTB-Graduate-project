@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import authService from '../../src/services/authService.js';
-import { sendPasswordResetEmail } from '../../src/services/emailService.js';
+import { buildPasswordResetUrl, sendPasswordResetEmail } from '../../src/services/emailService.js';
 
 test('auth service default export exposes Google login handler', () => {
   assert.equal(typeof authService.loginWithGoogle, 'function');
@@ -55,6 +55,25 @@ test('Google login rejects unverifiable credentials with a helpful message', asy
   }
 });
 
+
+test('password reset URL points to the frontend reset page with token', () => {
+  const originalFrontendUrl = process.env.FRONTEND_URL;
+  process.env.FRONTEND_URL = 'https://rtb-graduate-project.vercel.app/';
+
+  try {
+    const resetUrl = buildPasswordResetUrl('abc 123');
+    assert.equal(
+      resetUrl,
+      'https://rtb-graduate-project.vercel.app/reset-password?token=abc%20123',
+    );
+  } finally {
+    if (originalFrontendUrl === undefined) {
+      delete process.env.FRONTEND_URL;
+    } else {
+      process.env.FRONTEND_URL = originalFrontendUrl;
+    }
+  }
+});
 
 test('Brevo password reset sends the correct email payload', async () => {
   const originalEnv = {

@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 @layer base {
   html {
@@ -1613,7 +1613,7 @@
   }
 
   .auth-form {
-    @apply gap-4;
+    @apply gap-5;
   }
 
   .auth-form label span:first-child {
@@ -1661,7 +1661,7 @@
   }
 
   .auth-divider {
-    @apply my-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs font-bold text-[#9C92A3];
+    @apply my-1 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs font-bold text-[#9C92A3];
   }
 
   .auth-divider::before,
@@ -1670,7 +1670,16 @@
   }
 
   .auth-social-actions {
-    @apply grid w-full grid-cols-1;
+    @apply grid w-full grid-cols-1 gap-3;
+  }
+
+  .auth-google-button-host {
+    @apply flex min-h-12 w-full items-center justify-center overflow-hidden rounded-lg border border-[#C6B9CD]/70 bg-white shadow-sm shadow-[#0B3142]/5 transition hover:-translate-y-0.5 hover:border-[#0F5257]/50 hover:bg-[#D6D3F0]/20 focus-within:ring-4 focus-within:ring-[#0F5257]/15;
+  }
+
+  .auth-google-button-host > div,
+  .auth-google-button-host iframe {
+    @apply w-full max-w-none;
   }
 
   .auth-social-button {
@@ -1682,12 +1691,16 @@
   }
 
   .auth-switch {
-    @apply mt-1 flex flex-wrap items-center gap-2 border-t border-[#C6B9CD]/60 pt-5 text-slate-600;
+    @apply mt-1 flex flex-wrap items-center justify-center gap-2 border-t border-[#C6B9CD]/60 pt-5 text-center text-slate-600;
   }
 
   .auth-switch button,
   .text-link-button {
     @apply font-black text-[#0F5257] underline decoration-[#9C92A3]/70 underline-offset-4 transition hover:text-[#0B3142];
+  }
+
+  .text-link-button {
+    @apply flex min-h-12 w-full items-center justify-center rounded-lg border border-[#C6B9CD]/60 bg-white px-4 py-2.5 text-center no-underline shadow-sm shadow-[#0B3142]/5 hover:-translate-y-0.5 hover:border-[#0F5257]/50 hover:bg-[#D6D3F0]/25;
   }
 
   .auth-switch button {
@@ -2333,4 +2346,5 @@
     @apply min-h-10 text-sm font-semibold;
   }
 }
+
 

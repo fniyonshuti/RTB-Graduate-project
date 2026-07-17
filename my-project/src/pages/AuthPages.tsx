@@ -144,6 +144,7 @@ type GoogleIdentityApi = {
           text: 'signin_with' | 'signup_with' | 'continue_with';
           shape: 'rectangular' | 'pill' | 'circle' | 'square';
           width?: number;
+          locale?: string;
         },
       ) => void;
       cancel: () => void;
@@ -293,6 +294,7 @@ export function AuthPages() {
       text: mode === 'register' ? 'signup_with' : 'signin_with',
       shape: 'rectangular',
       width: Math.max(buttonHost.clientWidth, 260),
+      locale: 'en',
     });
 
     return () => {
@@ -813,9 +815,9 @@ export function AuthPages() {
             <h2>From assessment to evidence-based action</h2>
             <p>
               The system follows an evidence-based workflow from competency
-              selection to GitHub repository review, theory scoring, skill gap
-              calculation, Gemini recommendations, notifications, and
-              generated reports.
+              selection to sandbox GitHub repository testing, theory scoring,
+              final score calculation, RTB benchmark comparison, Gemini
+              recommendations, notifications, and generated reports.
             </p>
           </div>
           <div className="workflow-checklist" aria-label="Workflow steps">
@@ -836,14 +838,14 @@ export function AuthPages() {
               <span>
                 <BadgeCheck size={16} />
               </span>
-              System reviews the GitHub repository and scores theory evidence
+              System securely tests the GitHub repository in an isolated sandbox and scores theory answers
             </div>
             <div>
               <span>
                 <Sparkles size={16} />
               </span>
-              System calculates skill gap, classifies gap level, and generates
-              recommendations
+              System calculates the final score, compares it with the RTB
+              benchmark, classifies the gap, and generates Gemini recommendations
             </div>
             <div>
               <span>
@@ -972,3 +974,5 @@ function BadgeLine() {
     </span>
   );
 }
+
+

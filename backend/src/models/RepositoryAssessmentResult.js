@@ -59,7 +59,7 @@ const repositoryAssessmentResultSchema = new mongoose.Schema(
     },
     executionMode: {
       type: String,
-      enum: ['docker', 'local', 'static_only', 'failed'],
+      enum: ['e2b', 'docker', 'local', 'static_only', 'failed'],
       default: 'static_only',
     },
     projectType: String,

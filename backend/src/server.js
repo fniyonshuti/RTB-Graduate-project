@@ -43,10 +43,6 @@ function validateRuntimeConfig() {
     "EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE",
     nodeEnv !== "production",
   );
-  const enableUnsafeLocalRepositoryExecution = booleanEnv(
-    "ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION",
-    false,
-  );
 
   if (!mongoUri) errors.push("MONGO_URI or MONGO_DIRECT_URI is required");
   if (!jwtSecret) errors.push("JWT_SECRET is required");
@@ -76,8 +72,8 @@ function validateRuntimeConfig() {
       errors.push("GITHUB_TOKEN is required in production for reliable repository review");
     }
 
-    if (enableUnsafeLocalRepositoryExecution) {
-      errors.push("ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION must be false in production");
+    if (!process.env.E2B_API_KEY) {
+      errors.push("E2B_API_KEY is required in production for isolated repository assessment");
     }
 
     if (exposePasswordResetLinkInResponse) {
