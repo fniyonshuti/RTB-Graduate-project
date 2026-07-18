@@ -164,7 +164,17 @@ export async function registerUser(payload) {
   const existingUser = await User.findOne({ email: normalizedEmail });
 
   if (existingUser) {
-    throw new AppError('Registration could not be completed with the provided details', 409);
+    if (existingUser.isActive && existingUser.authProvider !== 'google' && existingUser.isEmailVerified === false) {
+      const resendResult = await resendVerificationEmail(existingUser.email, { ignoreCooldown: true });
+      return {
+        user: sanitizeUser(existingUser),
+        verificationRequired: true,
+        emailSent: Boolean(resendResult.emailSent),
+        message: 'Verification email sent. Check your inbox before signing in.',
+      };
+    }
+
+    throw new AppError('This email is already registered. Sign in or use forgot password.', 409);
   }
 
   const { passwordHash, passwordSalt } = hashPassword(password);

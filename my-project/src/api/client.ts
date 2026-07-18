@@ -34,72 +34,86 @@ function currentFrontendOrigin() {
 
 function apiBaseUrl() {
   if (!configuredApiUrl) {
-    throw new Error(
-      'Backend API is not configured. Set VITE_API_URL in the frontend environment variables, then redeploy the frontend.',
-    )
+    throw new Error('Backend API is not configured.')
   }
 
   return configuredApiUrl
 }
 
-function buildConnectionErrorMessage(baseUrl: string, details: string[]) {
-  const frontendOrigin = currentFrontendOrigin()
+function cleanMessage(message: string) {
+  return message.replace(/\s+/g, ' ').replace(/\.+$/, '').trim()
+}
 
-  if (import.meta.env.PROD) {
-    return [
-      'Connection problem: the app could not reach the backend API.',
-      `Backend API: ${baseUrl}`,
-      `Frontend origin: ${frontendOrigin}`,
-      'Check that the Render backend is running, VITE_API_URL points to the deployed backend /api URL, and the backend was redeployed with the latest code.',
-      'After changing Vercel or Render environment variables, redeploy both services.',
-      details.length > 0 ? `Technical detail: ${details.join(' | ')}` : '',
-    ]
-      .filter(Boolean)
-      .join('\n')
-  }
+function buildConnectionErrorMessage() {
+  return import.meta.env.PROD
+    ? 'Cannot connect to the server. Please try again shortly.'
+    : 'Cannot connect to the local backend. Start the backend and refresh.'
+}
 
-  return [
-    'Connection problem: the app could not reach the local backend API.',
-    `Backend API: ${baseUrl}`,
-    'Start the backend, confirm the port matches VITE_API_URL, and refresh the page.',
-    details.length > 0 ? `Technical detail: ${details.join(' | ')}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n')
+function logApiProblem(
+  path: string,
+  context: {
+    baseUrl: string
+    details?: string[]
+    payload?: ApiResponse<unknown>
+    response?: Response
+  },
+) {
+  console.error('API request failed', {
+    path,
+    baseUrl: context.baseUrl,
+    frontendOrigin: currentFrontendOrigin(),
+    status: context.response?.status,
+    requestId: context.payload?.requestId,
+    backendMessage: context.payload?.message,
+    details: context.details,
+  })
 }
 
 function buildHttpErrorMessage(path: string, response: Response, payload: ApiResponse<unknown>) {
-  const requestId = payload.requestId ? ` Request ID: ${payload.requestId}.` : ''
-  const message = payload.message || response.statusText || 'Request failed'
+  const message = cleanMessage(payload.message || response.statusText || 'Request failed')
 
   if (response.status === 401) {
-    return `${message}. Please sign in again.${requestId}`
+    return /invalid email or password/i.test(message)
+      ? 'Invalid email or password.'
+      : 'Your session has expired. Please sign in again.'
   }
 
   if (response.status === 403) {
-    if (/verify your email address/i.test(message)) return message.replace(/\.+$/, '')
-    return `${message}. Your account may not have permission for this action.${requestId}`
+    if (/verify your email address/i.test(message)) return message
+    return 'You do not have permission to perform this action.'
   }
 
   if (response.status === 404 && path.startsWith('/checklists')) {
-    return `Repository checklist API is not available on the current backend deployment. Redeploy the Render backend with the latest code, then refresh the frontend.${requestId}`
+    return 'Repository checklist is not available yet. Please refresh after backend deployment.'
+  }
+
+  if (response.status === 404) {
+    return 'The requested information was not found.'
+  }
+
+  if (response.status === 409) {
+    return `${message}.`
+  }
+
+  if (response.status === 429) {
+    return `${message}.`
   }
 
   if (path === '/auth/google' && response.status >= 500) {
-    return `${message}.${requestId}`.trim()
+    return 'Google sign-in is temporarily unavailable. Please try again shortly.'
   }
 
   if (response.status === 503) {
-    return `${message}.${requestId}`.trim()
+    return 'Service is temporarily unavailable. Please try again shortly.'
   }
 
   if (response.status >= 500) {
-    return `Backend server error while calling ${path}. Please try again shortly or check the Render backend logs.${requestId}`
+    return 'Something went wrong. Please try again shortly.'
   }
 
-  return `${message}.${requestId}`.trim()
+  return `${message}.`
 }
-
 export type RegisterResponse = {
   user: User
   token?: string
@@ -141,20 +155,25 @@ async function request<T>(path: string, options: RequestOptions = {}) {
   }
 
   if (!response) {
-    throw new Error(buildConnectionErrorMessage(baseUrl, connectionErrors))
+    logApiProblem(path, { baseUrl, details: connectionErrors })
+    throw new Error(buildConnectionErrorMessage())
   }
 
   let payload: ApiResponse<T>
 
   try {
     payload = (await response.json()) as ApiResponse<T>
-  } catch {
-    throw new Error(
-      `Backend returned an unexpected response while calling ${path}. Check that VITE_API_URL points to the API base URL and review the backend logs.`,
-    )
+  } catch (error) {
+    logApiProblem(path, {
+      baseUrl,
+      details: [error instanceof Error ? error.message : 'Invalid JSON response'],
+      response,
+    })
+    throw new Error('The server returned an unexpected response. Please try again.')
   }
 
   if (!response.ok) {
+    logApiProblem(path, { baseUrl, payload, response })
     throw new Error(buildHttpErrorMessage(path, response, payload))
   }
 
