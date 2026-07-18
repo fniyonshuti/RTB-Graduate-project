@@ -28,6 +28,12 @@ export function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+function maskEmail(email) {
+  const [name = '', domain = ''] = String(email || '').split('@');
+  if (!name || !domain) return 'unknown-recipient';
+  const visibleName = name.length <= 2 ? `${name[0] || '*'}***` : `${name.slice(0, 2)}***${name.slice(-1)}`;
+  return `${visibleName}@${domain}`;
+}
 function appName() {
   return String(process.env.APP_NAME || DEFAULT_APP_NAME).trim() || DEFAULT_APP_NAME;
 }
@@ -365,6 +371,13 @@ async function sendEmail({ to, toName, subject, text, html, tag, resetLink }) {
   }
 
   const providerResult = await parseProviderSuccess(response);
+  console.info('Transactional email accepted by provider', {
+    provider,
+    tag,
+    recipient: maskEmail(to),
+    ...(providerResult.messageId ? { messageId: providerResult.messageId } : {}),
+  });
+
   return {
     sent: true,
     provider,

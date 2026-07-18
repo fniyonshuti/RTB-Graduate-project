@@ -226,22 +226,14 @@ export async function loginUser(email, password) {
     throw new AppError('Invalid email or password', 401);
   }
   if (user.authProvider !== 'google' && user.isEmailVerified === false) {
-    let verificationMessage = 'Please verify your email address before continuing. Check your email inbox for the verification link.';
-
     try {
-      const resendResult = await resendVerificationEmail(user.email);
-      if (resendResult?.emailSent) {
-        verificationMessage = 'Please verify your email address. A new verification link has been sent to your email.';
-      }
+      await resendVerificationEmail(user.email, { ignoreCooldown: true });
     } catch (error) {
-      if (error?.statusCode === 429) {
-        verificationMessage = 'Please verify your email address. Check your inbox or try again shortly for a new link.';
-      } else {
-        console.error('Verification email could not be sent during login:', error?.message);
-      }
+      console.error('Verification email could not be sent during login:', error?.message);
+      throw new AppError('Verification email could not be sent right now. Please try again later.', 502);
     }
 
-    throw new AppError(verificationMessage, 403);
+    throw new AppError('Please verify your email address. A new verification link has been sent to your email.', 403);
   }
 
   if (
@@ -531,7 +523,7 @@ export async function verifyEmailAddress(rawToken) {
   };
 }
 
-export async function resendVerificationEmail(email) {
+export async function resendVerificationEmail(email, options = {}) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   const safeResponse = {
     message: 'If an account exists and needs verification, a verification email has been sent.',
@@ -542,7 +534,9 @@ export async function resendVerificationEmail(email) {
 
   if (!user || user.isEmailVerified) return safeResponse;
 
-  assertVerificationResendAllowed(user);
+  if (!options.ignoreCooldown) {
+    assertVerificationResendAllowed(user);
+  }
 
   const verificationToken = createRawToken();
   const verificationExpiresInMinutes = Number(process.env.EMAIL_VERIFICATION_TOKEN_EXPIRES_MINUTES) || 30;
@@ -553,14 +547,18 @@ export async function resendVerificationEmail(email) {
   await user.save();
 
   const verificationLink = buildEmailVerificationUrl(verificationToken);
-  await sendEmailVerificationEmail({
+  const emailResult = await sendEmailVerificationEmail({
     to: user.email,
     name: user.name,
     verificationLink,
     expiresInMinutes: verificationExpiresInMinutes,
   });
 
-  return { ...safeResponse, emailSent: true };
+  return {
+    ...safeResponse,
+    emailSent: true,
+    ...(emailResult?.messageId ? { emailMessageId: emailResult.messageId } : {}),
+  };
 }
 export async function resetPassword(resetToken, newPassword) {
   const normalizedToken = String(resetToken || '').trim();
@@ -615,5 +613,6 @@ const authService = {
 };
 
 export default authService;
+
 
 

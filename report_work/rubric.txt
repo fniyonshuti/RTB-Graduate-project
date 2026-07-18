@@ -1,0 +1,129 @@
+. Capstone Report Submission Rubric
+4. Capstone Report Submission Rubric
+Criteria	Ratings	Pts
+This criterion is linked to a Learning OutcomeAbstract
+Abstract content provided, and includes all key elements
+3 to >2.0 pts
+Mastery
+It contains a summary of all the work detailing; the introduction, objectives, methodology used, findings, conclusions, and recommendations.
+2 to >1.0 pts
+Proficient
+The summary of the research work done is not complete
+1 to >0 pts
+Fail
+A very weak abstract or missing
+3 pts
+This criterion is linked to a Learning OutcomeIncorporation of feedback
+4 to >3.0 pts
+Mastery
+Demonstrates exceptional responsiveness to feedback, thoughtfully integrating all suggestions to enhance the clarity, coherence, and overall quality of the report.
+3 to >2.0 pts
+Proficient
+Demonstrates good responsiveness to feedback, incorporating most suggestions to improve the report.
+2 to >0.0 pts
+Proving proficient
+Demonstrates some responsiveness to feedback, integrating selected suggestions with room for further improvement.
+0 pts
+Fail
+Demonstrates limited responsiveness to feedback, with minimal or ineffective incorporation of suggestions.
+4 pts
+This criterion is linked to a Learning OutcomeFormatting/delivery/discourse
+4 to >3.0 pts
+Mastery
+The report adheres to all formatting guidelines, demonstrating professionalism and attention to detail. All the preliminary pages are clear and arranged in their proper order [numbering different from the main chapter pages]. Visual elements (tables, figures, etc.) are used effectively to enhance understanding.
+3 to >0.0 pts
+Proficient
+The report adheres to most formatting guidelines, with minor inconsistencies. All preliminary pages are clear but not arranged in their proper order. Visual elements are present and support the text.
+0 pts
+Fail
+The report lacks proper formatting, hindering readability and professionalism. The cover page needs to be included, or more than half of the preliminary pages need to be included. Visual elements are absent or detract from the content.
+4 pts
+This criterion is linked to a Learning OutcomeSystem implementation & testing
+4 to >3.0 pts
+Mastery
+Provides a clear, detailed, and well-structured description of the implementation process, tools, and technologies used. Screenshots and source code are included with clear explanations and analysis.
+3 to >2.0 pts
+Proficient
+Provides a comprehensive overview of the implementation process, including relevant tools and technologies. Screenshots and source code are present with adequate explanations.
+2 to >0.0 pts
+Proving proficient
+Provides a basic overview of the implementation, but lacks depth or clarity in explaining tools, technologies, or code snippets.
+0 pts
+Fail
+Implementation description is vague or incomplete, lacking essential details or explanations of tools, technologies, or code.
+4 pts
+This criterion is linked to a Learning OutcomeResults & discussion
+4 to >3.0 pts
+Mastery
+Presents a thorough and insightful analysis of the results, connecting them to the research questions and project objectives. Discusses implications, limitations, and potential impact.
+3 to >2.0 pts
+Proficient
+Presents a well-organized analysis of the results, linking them to the research questions. Discusses key findings and implications.
+2 to >0.0 pts
+Proving proficient
+Presents a basic analysis of the results, but lacks depth or critical evaluation. Discussion of implications is limited.
+0 pts
+Fail
+Results analysis is superficial or incomplete, failing to connect findings to research questions or discuss implications.
+4 pts
+This criterion is linked to a Learning OutcomeConclusions & recommendations
+3 to >2.0 pts
+Mastery
+Student offers clear, concise, and well-supported conclusions that directly address the research questions. Provides thoughtful and actionable recommendations for future research and development.
+2 to >1.0 pts
+Proficient
+Student offers clear conclusions that summarize key findings. Provides relevant recommendations for future work.
+1 to >0.0 pts
+Understanding
+Student offers basic conclusions but may lack specificity or direct connection to research questions. Recommendations are general or limited.
+0 pts
+Fail
+Student’s conclusions are vague or unsupported. Recommendations are absent or irrelevant.
+3 pts
+This criterion is linked to a Learning OutcomeOverall writing Mechanics [clarity, coherence, & organization]
+4 to >3.0 pts
+Mastery
+The report is exceptionally well-written, demonstrating clarity, conciseness, and logical flow. Ideas are presented in a cohesive and organized manner, facilitating easy comprehension.
+3 to >2.0 pts
+Proficient
+The report is well-written and organized, with a clear presentation of ideas. Minor improvements in clarity or coherence may be possible.
+2 to >0.0 pts
+Proving proficient
+The report demonstrates basic organization and clarity but may contain grammatical errors or inconsistencies in flow.
+0 pts
+Fail
+The report lacks clarity, coherence, and organization, hindering comprehension and overall effectiveness.
+4 pts
+This criterion is linked to a Learning OutcomeRelevant literature
+3 to >2.0 pts
+Mastery
+Demonstrates a deep understanding of the relevant literature, critically analyzing and synthesizing key concepts to support the research and findings.
+2 to >0.0 pts
+Proficient
+Demonstrates a good understanding of the literature, incorporating relevant concepts to support the research.
+0 pts
+Fail
+Demonstrates a basic understanding of the literature, but may lack depth or critical analysis.
+3 pts
+This criterion is linked to a Learning OutcomeReferences
+4 to >3.0 pts
+Mastery
+Student utilizes a wide range of credible and relevant sources, demonstrating thorough research. All in-text citations adhere perfectly to the required citation style. The reference list is accurately formatted, showcasing attention to detail and adherence to style guidelines.
+3 to >2.0 pts
+Proficient
+Student utilizes some relevant sources, demonstrating adequate research. In-text citations sometimes adhere to the required citation style, with minor inconsistencies. The reference list is well-formatted, with minor inconsistencies or errors.
+2 to >0.0 pts
+Proving proficient
+Student utilizes some relevant sources but may lack depth or variety. Citation may contain inconsistencies or errors. The reference list demonstrates basic formatting but may contain inconsistencies or errors that hinder clarity.
+0 pts
+Fail
+Student utilizes limited or irrelevant sources, demonstrating inadequate research. Citations are inconsistent or absent. The reference list lacks proper formatting or is absent, significantly impacting clarity and professionalism.
+4 pts
+This criterion is linked to a Learning OutcomePlagiarism
+2 to >1.0 pts
+Mastery
+The report is entirely original, with no instances of plagiarism. All sources are properly attributed.
+1 to >0 pts
+Developing
+The report contains instances of plagiarism, with inadequate paraphrasing or quoting without proper attribution or direct copying of text.
+2 pts
