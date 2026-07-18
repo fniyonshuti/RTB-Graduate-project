@@ -43,6 +43,7 @@ export type User = {
   isActive?: boolean
   mustChangePassword?: boolean
   authProvider?: 'local' | 'google'
+  isEmailVerified?: boolean
 }
 
 export type ApiResponse<T> = {

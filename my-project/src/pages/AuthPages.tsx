@@ -433,10 +433,10 @@ export function AuthPages() {
     buttonHost.innerHTML = '';
 
     window.google?.accounts?.id.renderButton(buttonHost, {
-      theme: 'outline',
+      theme: 'filled_black',
       size: 'large',
       type: 'standard',
-      text: mode === 'register' ? 'signup_with' : 'signin_with',
+      text: 'continue_with',
       shape: 'rectangular',
       width: Math.max(buttonHost.clientWidth, 260),
       locale: 'en',
@@ -484,9 +484,14 @@ export function AuthPages() {
       return;
     }
 
+    if (mode === "register" && !getPasswordPolicy(password).isValid) {
+      setError(passwordPolicyMessage("Password"));
+      return;
+    }
+
     if (mode === "reset") {
-      if (newPassword.length < 6) {
-        setError("New password must be at least 6 characters.");
+      if (!getPasswordPolicy(newPassword).isValid) {
+        setError(passwordPolicyMessage("New password"));
         return;
       }
 
@@ -502,8 +507,11 @@ export function AuthPages() {
       if (mode === "login") {
         await login(email, password);
       } else if (mode === "register") {
-        await register({ name, email, password });
+        const result = await register({ name, email, password });
         setTermsAccepted(false);
+        setPassword("");
+        setMessage(result.message || "Account created. Please verify your email address before signing in.");
+        setMode("login");
       } else if (mode === "forgot") {
         const result = await api.forgotPassword(email);
         setMessage(
@@ -511,7 +519,7 @@ export function AuthPages() {
             ? `${result.message} Reset link for local testing: ${result.resetLink}`
             : result.message,
         );
-      } else {
+      } else if (mode === "reset") {
         await api.resetPassword(resetToken, newPassword);
         setMessage(
           "Password reset successfully. Sign in with your new password.",
@@ -531,6 +539,31 @@ export function AuthPages() {
         caughtError instanceof Error
           ? caughtError.message
           : "Authentication failed",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  
+  async function handleResendVerification() {
+    setError("");
+    setMessage("");
+
+    if (!email.trim()) {
+      setError("Enter your email address first, then request a new verification link.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const result = await api.resendVerificationEmail(email);
+      setMessage(result.message || "If your account needs verification, a new email has been sent.");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Verification email could not be sent right now.",
       );
     } finally {
       setIsSubmitting(false);
@@ -713,6 +746,7 @@ export function AuthPages() {
                     {mode === "register" && <GraduationCap size={20} />}
                     {mode === "forgot" && <BellRing size={20} />}
                     {mode === "reset" && <ShieldCheck size={20} />}
+                    {mode === "verify" && <ShieldCheck size={20} />}
                   </div>
                   <div>
                     <strong>{authContent.actionLabel}</strong>
@@ -723,7 +757,9 @@ export function AuthPages() {
                           ? "After signup, complete your profile before taking an assessment."
                           : mode === "forgot"
                             ? "Check your inbox for the reset link after submitting."
-                            : "Choose a strong password, then sign in again."}
+                            : mode === "reset"
+                              ? "Choose a strong password, then sign in again."
+                              : "Your email verification link is being checked."}
                     </span>
                   </div>
                 </div>
@@ -744,7 +780,7 @@ export function AuthPages() {
                     </Alert>
                   </>
                 )}
-                {mode !== "reset" && (
+                {mode !== "reset" && mode !== "verify" && (
                   <TextField
                     autoComplete="email"
                     label="Email"
@@ -755,6 +791,7 @@ export function AuthPages() {
                     required
                   />
                 )}
+
                 {mode === "reset" && (
                   <TextField
                     autoComplete="one-time-code"
@@ -764,12 +801,27 @@ export function AuthPages() {
                     required
                   />
                 )}
-                {mode !== "forgot" && (
+                {mode !== "forgot" && mode !== "verify" && (
                   <TextField
                     autoComplete={
                       mode === "reset" ? "new-password" : "current-password"
                     }
                     label={mode === "reset" ? "New password" : "Password"}
+                    labelAction={
+                      mode === "login" ? (
+                        <button
+                          className="auth-inline-link"
+                          type="button"
+                          onClick={() => {
+                            setError("");
+                            setMessage("");
+                            setMode("forgot");
+                          }}
+                        >
+                          Forgot password?
+                        </button>
+                      ) : undefined
+                    }
                     placeholder={
                       mode === "reset"
                         ? "Create a new password"
@@ -784,6 +836,9 @@ export function AuthPages() {
                     }
                     required
                   />
+                )}
+                {(mode === "register" || mode === "reset") && (
+                  <PasswordStrengthPanel password={mode === "reset" ? newPassword : password} />
                 )}
                 {mode === "reset" && (
                   <TextField
@@ -814,7 +869,7 @@ export function AuthPages() {
                   </label>
                 )}
                 <Button
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || mode === "verify"}
                   icon={
                     mode === "login" ? (
                       <LockKeyhole size={18} />
@@ -832,7 +887,9 @@ export function AuthPages() {
                         ? "Create account"
                         : mode === "forgot"
                           ? "Send reset link"
-                          : "Reset password"}
+                          : mode === "reset"
+                          ? "Reset password"
+                          : "Verifying email..."}
                 </Button>
                 {(mode === "login" || mode === "register") && (
                   <>
@@ -866,17 +923,16 @@ export function AuthPages() {
                   </>
                 )}
                 {mode === "login" && (
-                  <button
-                    className="text-link-button"
-                    type="button"
-                    onClick={() => {
-                      setError("");
-                      setMessage("");
-                      setMode("forgot");
-                    }}
-                  >
-                    Forgot password?
-                  </button>
+                  <>
+
+                    <button
+                      className="text-link-button"
+                      type="button"
+                      onClick={handleResendVerification}
+                    >
+                      Resend verification email
+                    </button>
+                  </>
                 )}
                 <p className="auth-switch">
                   {mode === "login"
@@ -1162,3 +1218,4 @@ function BadgeLine() {
     </span>
   );
 }
+

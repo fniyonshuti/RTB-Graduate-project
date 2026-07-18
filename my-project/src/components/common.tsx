@@ -32,6 +32,8 @@ import {
   AlertTriangle,
   Gauge,
   Activity,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 const toneClasses = {
@@ -110,26 +112,56 @@ export function Button({
 
 export function TextField({
   label,
+  labelAction,
+  type,
   ...props
-}: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+}: { label: string; labelAction?: ReactNode } & React.InputHTMLAttributes<HTMLInputElement>) {
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const generatedInputId = useMemo(() => `field-${Math.random().toString(36).slice(2)}`, []);
+  const inputId = props.id || generatedInputId;
+  const isPasswordField = type === "password";
+  const inputType = isPasswordField && isPasswordVisible ? "text" : type;
+
   return (
-    <label className="grid gap-2.5">
-      <span className="text-sm font-black text-slate-700">{label}</span>
-      <input
-        className="min-h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-[#0077B6] focus:ring-4 focus:ring-[#0077B6]/15"
-        {...props}
-      />
-    </label>
+    <div className="grid gap-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-sm font-black text-slate-700" htmlFor={inputId}>
+          {label}
+        </label>
+        {labelAction}
+      </div>
+      <div className="relative">
+        <input
+          className={`min-h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-[#0077B6] focus:ring-4 focus:ring-[#0077B6]/15 ${isPasswordField ? "pr-12" : ""}`}
+          id={inputId}
+          type={inputType}
+          {...props}
+        />
+        {isPasswordField && (
+          <button
+            aria-label={isPasswordVisible ? "Hide password" : "Show password"}
+            className="absolute inset-y-1 right-1 inline-flex w-10 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-[#0077B6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0077B6]/25 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={props.disabled}
+            type="button"
+            onClick={() => setIsPasswordVisible((visible) => !visible)}
+          >
+            {isPasswordVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
-
 export function TextArea({
   label,
   ...props
 }: { label: string } & React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <label className="grid gap-2.5">
-      <span className="text-sm font-black text-slate-700">{label}</span>
+      <span className="flex items-center justify-between gap-3 text-sm font-black text-slate-700">
+        <span>{label}</span>
+        {labelAction}
+      </span>
       <textarea
         className="min-h-32 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-[#0077B6] focus:ring-4 focus:ring-[#0077B6]/15"
         {...props}
@@ -148,7 +180,10 @@ export function SelectField({
 } & React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <label className="grid gap-2.5">
-      <span className="text-sm font-black text-slate-700">{label}</span>
+      <span className="flex items-center justify-between gap-3 text-sm font-black text-slate-700">
+        <span>{label}</span>
+        {labelAction}
+      </span>
       <select
         className="min-h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition hover:border-slate-400 focus:border-[#0077B6] focus:ring-4 focus:ring-[#0077B6]/15"
         {...props}
@@ -476,4 +511,10 @@ export {
   AlertTriangle,
   Gauge,
   Activity,
+  Eye,
+  EyeOff,
 };
+
+
+
+

@@ -48,3 +48,24 @@ test("checklist validation requires total weight of 100", () => {
   assert.equal(error.statusCode, 400);
   assert.equal(error.message, "Checklist weight must total 100. Current total is 80.");
 });
+
+test("register validation rejects weak passwords", () => {
+  const error = runValidator(validateRegister, {
+    name: "Test User",
+    email: "test@example.com",
+    password: "weakpass",
+  });
+
+  assert.equal(error.statusCode, 400);
+  assert.match(error.message, /uppercase, lowercase, number, special character, and no spaces/);
+});
+
+test("register validation accepts strong passwords", () => {
+  const error = runValidator(validateRegister, {
+    name: "Test User",
+    email: "test@example.com",
+    password: "StrongPass1!",
+  });
+
+  assert.equal(error, undefined);
+});

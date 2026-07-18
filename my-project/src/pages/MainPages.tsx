@@ -19,6 +19,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { api } from "../api/client";
+import { getPasswordPolicy, passwordPolicyMessage } from "../utils/passwordPolicy";
 import type { ViewKey } from "../components/layout";
 import {
   Alert,
@@ -4524,6 +4525,11 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
       setFormError("Name, email, and password are required.");
       return;
     }
+    if (!getPasswordPolicy(form.password).isValid) {
+      setFormError(passwordPolicyMessage("Temporary password"));
+      return;
+    }
+
 
     if (
       ["organization_user", "org_admin"].includes(form.role) &&

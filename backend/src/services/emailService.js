@@ -62,7 +62,7 @@ export function buildPasswordResetUrl(rawToken) {
 }
 
 export function buildEmailVerificationUrl(rawToken) {
-  return buildFrontendUrl(/verify-email?token=);
+  return buildFrontendUrl(`/verify-email?token=${encodeURIComponent(rawToken)}`);
 }
 
 export function buildAssessmentResultUrl(assessmentId) {
