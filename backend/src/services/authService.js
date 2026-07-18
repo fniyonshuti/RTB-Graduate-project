@@ -207,7 +207,8 @@ export async function registerUser(payload) {
 }
 
 export async function loginUser(email, password) {
-  const user = await User.findOne({ email })
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const user = await User.findOne({ email: normalizedEmail })
     .select('+passwordHash +passwordSalt')
     .populate('organization', 'name district type status');
 
@@ -225,23 +226,22 @@ export async function loginUser(email, password) {
     throw new AppError('Invalid email or password', 401);
   }
   if (user.authProvider !== 'google' && user.isEmailVerified === false) {
-    let verificationEmailSent = false;
+    let verificationMessage = 'Please verify your email address before continuing. Check your email inbox for the verification link.';
 
     try {
       const resendResult = await resendVerificationEmail(user.email);
-      verificationEmailSent = Boolean(resendResult?.emailSent);
+      if (resendResult?.emailSent) {
+        verificationMessage = 'Please verify your email address. A new verification link has been sent to your email.';
+      }
     } catch (error) {
-      if (error?.statusCode !== 429) {
+      if (error?.statusCode === 429) {
+        verificationMessage = 'Please verify your email address. Check your inbox or try again shortly for a new link.';
+      } else {
         console.error('Verification email could not be sent during login:', error?.message);
       }
     }
 
-    throw new AppError(
-      verificationEmailSent
-        ? 'Please verify your email address. A new verification link has been sent to your email.'
-        : 'Please verify your email address before continuing.',
-      403,
-    );
+    throw new AppError(verificationMessage, 403);
   }
 
   if (
@@ -615,4 +615,5 @@ const authService = {
 };
 
 export default authService;
+
 

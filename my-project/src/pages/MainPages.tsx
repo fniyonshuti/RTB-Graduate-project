@@ -4558,7 +4558,7 @@ export function UsersPage({ token, role }: { token: string; role: Role }) {
         role: defaultRole as Role,
         organizationId: "",
       });
-      setMessage("User account created successfully.");
+      setMessage("User account created. Verification email sent to the user.");
       await refresh();
     } catch (caughtError) {
       setFormError(
@@ -7159,5 +7159,6 @@ function PageHeader({
     </div>
   );
 }
+
 
 
