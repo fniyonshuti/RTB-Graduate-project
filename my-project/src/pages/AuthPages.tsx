@@ -513,12 +513,8 @@ export function AuthPages() {
         setMessage(result.message || "Account created. Please verify your email address before signing in.");
         setMode("login");
       } else if (mode === "forgot") {
-        const result = await api.forgotPassword(email);
-        setMessage(
-          result.resetLink
-            ? `${result.message} Reset link for local testing: ${result.resetLink}`
-            : result.message,
-        );
+        await api.forgotPassword(email);
+        setMessage("Password reset link sent. Check your email.");
       } else if (mode === "reset") {
         await api.resetPassword(resetToken, newPassword);
         setMessage(

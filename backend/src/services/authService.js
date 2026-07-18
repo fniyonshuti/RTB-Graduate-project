@@ -430,7 +430,7 @@ export async function requestPasswordReset(email) {
   if (!user || !user.isActive) {
     return {
       message:
-        'If an account exists for this email address, a password-reset link has been sent. Please check your inbox and spam folder.',
+        'Password reset link sent. Check your email.',
     };
   }
 
@@ -481,7 +481,7 @@ export async function requestPasswordReset(email) {
   return {
     message:
       emailResult.sent
-        ? 'If an account exists for this email address, a password-reset link has been sent. Please check your inbox and spam folder.'
+        ? 'Password reset link sent. Check your email.'
         : 'Password reset link was created, but email delivery is not configured.',
     ...(shouldExposeResetLink ? { resetLink } : {}),
     expiresInMinutes: passwordResetTokenExpiresMinutes,
@@ -600,13 +600,4 @@ const authService = {
 };
 
 export default authService;
-
-
-
-
-
-
-
-
-
 
