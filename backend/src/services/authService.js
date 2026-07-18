@@ -226,14 +226,7 @@ export async function loginUser(email, password) {
     throw new AppError('Invalid email or password', 401);
   }
   if (user.authProvider !== 'google' && user.isEmailVerified === false) {
-    try {
-      await resendVerificationEmail(user.email, { ignoreCooldown: true });
-    } catch (error) {
-      console.error('Verification email could not be sent during login:', error?.message);
-      throw new AppError('Verification email could not be sent right now. Please try again later.', 502);
-    }
-
-    throw new AppError('Please verify your email address. A new verification link has been sent to your email.', 403);
+    throw new AppError('Please verify your email address before signing in. Check your inbox for the verification link.', 403);
   }
 
   if (
