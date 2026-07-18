@@ -15,7 +15,7 @@ class UserController {
 
   createUser = asyncHandler(async (req, res) => {
     const user = await userService.createManagedUser(req.body, req.user);
-    sendSuccess(res, 'User created', user, 201);
+    sendSuccess(res, 'User created. Verification email sent to the user.', user, 201);
   });
 
   updateUser = asyncHandler(async (req, res) => {

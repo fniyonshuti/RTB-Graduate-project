@@ -1,8 +1,15 @@
 import User from "../models/User.js";
 import Organization from "../models/Organization.js";
-import { sanitizeUser } from "./authService.js";
+import {
+  assertStrongPassword,
+  createRawToken,
+  hashPassword,
+  hashToken,
+  sanitizeUser,
+  verificationTokenExpiresAt,
+} from "./authService.js";
 import { AppError } from "./errorService.js";
-import { assertStrongPassword, hashPassword } from "./authService.js";
+import { buildEmailVerificationUrl, sendEmailVerificationEmail } from "./emailService.js";
 import dotenv from "dotenv";
 import {
   ROLES,
@@ -147,7 +154,8 @@ export async function createManagedUser(payload, actor) {
   }
   assertStrongPassword(password);
 
-  const existing = await User.findOne({ email });
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const existing = await User.findOne({ email: normalizedEmail });
 
   if (existing) {
     throw new AppError("Email is already registered", 409);
@@ -163,6 +171,8 @@ export async function createManagedUser(payload, actor) {
   }
 
   const { passwordHash, passwordSalt } = hashPassword(password);
+  const verificationToken = createRawToken();
+  const verificationExpiresInMinutes = Number(process.env.EMAIL_VERIFICATION_TOKEN_EXPIRES_MINUTES) || 30;
   const temporaryPasswordExpiresHours =
     Number(process.env.TEMPORARY_PASSWORD_EXPIRES_HOURS) || 72;
   const temporaryPasswordExpiresAt = new Date(
@@ -170,7 +180,7 @@ export async function createManagedUser(payload, actor) {
   );
   const user = await User.create({
     name,
-    email,
+    email: normalizedEmail,
     passwordHash,
     passwordSalt,
     role,
@@ -178,9 +188,23 @@ export async function createManagedUser(payload, actor) {
     institution: organization?.name || institution,
     mustChangePassword: true,
     temporaryPasswordExpiresAt,
-    isEmailVerified: true,
-    emailVerifiedAt: new Date(),
+    isEmailVerified: false,
+    emailVerificationTokenHash: hashToken(verificationToken),
+    emailVerificationExpiresAt: verificationTokenExpiresAt(),
+    emailVerificationLastSentAt: new Date(),
   });
+
+  try {
+    await sendEmailVerificationEmail({
+      to: user.email,
+      name: user.name,
+      verificationLink: buildEmailVerificationUrl(verificationToken),
+      expiresInMinutes: verificationExpiresInMinutes,
+    });
+  } catch (error) {
+    await User.findByIdAndDelete(user._id);
+    throw error;
+  }
 
   await user.populate("organization", MANAGED_USER_POPULATE);
   return sanitizeUser(user);
