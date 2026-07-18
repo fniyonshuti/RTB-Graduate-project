@@ -224,9 +224,24 @@ export async function loginUser(email, password) {
   if (!isPasswordValid) {
     throw new AppError('Invalid email or password', 401);
   }
+  if (user.authProvider !== 'google' && user.isEmailVerified === false) {
+    let verificationEmailSent = false;
 
-    if (user.authProvider !== 'google' && user.isEmailVerified === false) {
-    throw new AppError('Please verify your email address before continuing.', 403);
+    try {
+      const resendResult = await resendVerificationEmail(user.email);
+      verificationEmailSent = Boolean(resendResult?.emailSent);
+    } catch (error) {
+      if (error?.statusCode !== 429) {
+        console.error('Verification email could not be sent during login:', error?.message);
+      }
+    }
+
+    throw new AppError(
+      verificationEmailSent
+        ? 'Please verify your email address. A new verification link has been sent to your email.'
+        : 'Please verify your email address before continuing.',
+      403,
+    );
   }
 
   if (
