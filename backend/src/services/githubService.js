@@ -515,150 +515,142 @@ export async function analyzeRepository(localPath, task = {}) {
   };
 }
 
-function npmCommand() {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm';
-}
-
-function enableUnsafeLocalRepositoryExecution() {
-  return (
-    String(process.env.ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION || '').toLowerCase() ===
-    'true'
-  );
-}
+const E2B_REPOSITORY_PATH = '/home/user/competra-repository';
 
 function repositoryAnalysisTimeoutMs() {
   return Number(process.env.REPOSITORY_ANALYSIS_TIMEOUT_MS) || 120000;
 }
 
-function dockerArgs(localPath, command, { network = 'none' } = {}) {
-  const repositoryDockerImage = process.env.REPOSITORY_DOCKER_IMAGE || 'node:20-alpine';
-  // Untrusted graduate code runs in a constrained container by default.
-  // Dependency install can opt into network, while tests/builds stay offline.
-  return [
-    'run',
-    '--rm',
-    '--network',
-    network,
-    '--memory',
-    '512m',
-    '--cpus',
-    '1',
-    '-v',
-    `${localPath}:/workspace`,
-    '-w',
-    '/workspace',
-    repositoryDockerImage,
-    'sh',
-    '-lc',
-    command,
-  ];
+function e2bSandboxTimeoutMs() {
+  return Number(process.env.E2B_SANDBOX_TIMEOUT_MS) || 300000;
 }
 
-async function runSafeCommand({
-  name,
-  localPath,
-  command,
-  args,
-  shellCommand,
-  dockerNetwork = 'none',
-}) {
-  const startedAt = Date.now();
-  const result = enableUnsafeLocalRepositoryExecution()
-    ? await runCommand(command, args, {
-        cwd: localPath,
-        timeoutMs: repositoryAnalysisTimeoutMs(),
-      })
-    : await runCommand('docker', dockerArgs(localPath, shellCommand, { network: dockerNetwork }), {
-        timeoutMs: repositoryAnalysisTimeoutMs(),
-      });
+function requireE2bApiKey() {
+  if (!process.env.E2B_API_KEY) {
+    throw new AppError('E2B_API_KEY is required for isolated repository assessment.', 500);
+  }
+}
 
+function toCommandResult(name, command, result, startedAt) {
   return {
     name,
-    command: shellCommand || [command, ...args].join(' '),
-    success: result.success,
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
+    command,
+    success: Number(result.exitCode || 0) === 0,
+    exitCode: Number(result.exitCode || 0),
+    stdout: String(result.stdout || '').slice(-20000),
+    stderr: String(result.stderr || result.error || '').slice(-20000),
     durationMs: Date.now() - startedAt,
   };
 }
 
-async function runInstructorCommand(localPath, commandText) {
-  const startedAt = Date.now();
-  const result = enableUnsafeLocalRepositoryExecution()
-    ? await runCommand(
-        process.platform === 'win32' ? 'cmd' : 'sh',
-        process.platform === 'win32' ? ['/c', commandText] : ['-lc', commandText],
-        {
-          cwd: localPath,
-          timeoutMs: repositoryAnalysisTimeoutMs(),
-        },
-      )
-    : await runCommand('docker', dockerArgs(localPath, commandText), {
-        timeoutMs: repositoryAnalysisTimeoutMs(),
-      });
-
+function toFailedCommandResult(name, command, error, startedAt) {
   return {
-    name: 'Run instructor task tests',
-    command: commandText,
-    success: result.success,
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
+    name,
+    command,
+    success: false,
+    exitCode: Number(error.exitCode || 1),
+    stdout: String(error.stdout || '').slice(-20000),
+    stderr: String(error.stderr || error.message || 'Command failed in E2B sandbox.').slice(-20000),
     durationMs: Date.now() - startedAt,
   };
 }
 
-async function writeInstructorTestFiles(localPath, testFiles = []) {
+function safeSandboxWorkingDirectory(repositoryPath, workingDirectory = '.') {
+  const segments = String(workingDirectory || '.')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean);
+
+  if (segments.includes('..')) {
+    throw new AppError('competra.json workingDirectory cannot escape the repository.', 400);
+  }
+
+  return segments.length > 0 ? path.posix.join(repositoryPath, ...segments) : repositoryPath;
+}
+
+async function createE2bSandbox() {
+  requireE2bApiKey();
+  return Sandbox.create({ timeoutMs: e2bSandboxTimeoutMs() });
+}
+
+async function runE2bCommand({
+  name,
+  sandbox,
+  repositoryPath = E2B_REPOSITORY_PATH,
+  workingDirectory = '.',
+  command,
+  timeoutMs = repositoryAnalysisTimeoutMs(),
+}) {
+  if (!command) return null;
+
+  const startedAt = Date.now();
+  const cwd = safeSandboxWorkingDirectory(repositoryPath, workingDirectory);
+
+  try {
+    // E2B is the only sandbox used to execute untrusted repository commands.
+    const result = await sandbox.commands.run(command, { cwd, timeoutMs });
+    return toCommandResult(name, command, result, startedAt);
+  } catch (error) {
+    return toFailedCommandResult(name, command, error, startedAt);
+  }
+}
+
+async function createE2bRepositoryContext(repository) {
+  const sandbox = await createE2bSandbox();
+  const startedAt = Date.now();
+
+  try {
+    const cloneResult = await sandbox.git.clone(repository.cloneUrl, {
+      path: E2B_REPOSITORY_PATH,
+      depth: 1,
+      username: process.env.GITHUB_TOKEN ? 'x-access-token' : undefined,
+      password: process.env.GITHUB_TOKEN || undefined,
+      timeoutMs: repositoryAnalysisTimeoutMs(),
+    });
+
+    return {
+      sandbox,
+      repositoryPath: E2B_REPOSITORY_PATH,
+      cloneResult: toCommandResult(
+        'Clone repository in E2B sandbox',
+        'git clone --depth 1 ' + repository.cloneUrl + ' ' + E2B_REPOSITORY_PATH,
+        cloneResult,
+        startedAt,
+      ),
+    };
+  } catch (error) {
+    await sandbox.kill().catch(() => null);
+    throw new AppError(
+      'Repository clone failed inside E2B sandbox. ' + (error.stderr || error.message || ''),
+      400,
+    );
+  }
+}
+
+async function cleanupE2bSandbox(sandbox) {
+  if (!sandbox) return;
+  await sandbox.kill().catch(() => null);
+}
+
+async function writeInstructorTestFilesToSandbox(sandbox, repositoryPath, testFiles = []) {
   const writtenFiles = [];
 
   for (const testFile of testFiles) {
     if (!testFile?.path || !testFile?.content) continue;
 
-    const targetPath = path.resolve(localPath, testFile.path);
-    const relativePath = path.relative(localPath, targetPath);
+    const normalizedPath = String(testFile.path).replace(/\\/g, '/');
+    const segments = normalizedPath.split('/').filter(Boolean);
 
-    // Instructor files are injected into the cloned repo, so reject paths that
-    // would escape the repository directory.
-    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-      throw new AppError(`Unsafe instructor test path rejected: ${testFile.path}`, 400);
+    if (segments.includes('..')) {
+      throw new AppError('Unsafe instructor test path rejected: ' + testFile.path, 400);
     }
 
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.writeFile(targetPath, testFile.content, 'utf8');
+    await sandbox.files.write(path.posix.join(repositoryPath, ...segments), testFile.content);
     writtenFiles.push(testFile.path);
   }
 
   return writtenFiles;
 }
-
-async function checkDockerAvailability() {
-  if (enableUnsafeLocalRepositoryExecution()) {
-    return {
-      available: true,
-      result: null,
-    };
-  }
-
-  const result = await runCommand(
-    'docker',
-    ['version', '--format', '{{.Server.Version}}'],
-    {
-      timeoutMs: 10000,
-    },
-  ).catch((error) => ({
-    success: false,
-    exitCode: 1,
-    stdout: '',
-    stderr: error.message,
-  }));
-
-  return {
-    available: result.success,
-    result,
-  };
-}
-
 
 const SUPPORTED_SUBMISSION_LANGUAGES = new Set([
   'javascript',
@@ -669,11 +661,11 @@ const SUPPORTED_SUBMISSION_LANGUAGES = new Set([
 ]);
 
 const LANGUAGE_ADAPTERS = {
-  javascript: { image: process.env.REPOSITORY_NODE_DOCKER_IMAGE || 'node:20-alpine', runtime: 'node' },
-  typescript: { image: process.env.REPOSITORY_NODE_DOCKER_IMAGE || 'node:20-alpine', runtime: 'node' },
-  node: { image: process.env.REPOSITORY_NODE_DOCKER_IMAGE || 'node:20-alpine', runtime: 'node' },
-  nodejs: { image: process.env.REPOSITORY_NODE_DOCKER_IMAGE || 'node:20-alpine', runtime: 'node' },
-  python: { image: process.env.REPOSITORY_PYTHON_DOCKER_IMAGE || 'python:3.12-alpine', runtime: 'python' },
+  javascript: { runtime: 'node' },
+  typescript: { runtime: 'node' },
+  node: { runtime: 'node' },
+  nodejs: { runtime: 'node' },
+  python: { runtime: 'python' },
 };
 
 function normalizeSubmissionLanguage(value = '') {
@@ -818,67 +810,22 @@ function validateSubmissionManifest(manifest, practicalTask = {}) {
   };
 }
 
-function sandboxDockerArgs({ localPath, workingDirectory, command, image, network = 'none', memoryLimitMb = 512 }) {
-  return [
-    'run',
-    '--rm',
-    '--network',
-    network,
-    '--memory',
-    `${memoryLimitMb}m`,
-    '--cpus',
-    '1',
-    '--pids-limit',
-    '128',
-    '--read-only',
-    '--tmpfs',
-    '/tmp:rw,noexec,nosuid,size=64m',
-    '-v',
-    `${localPath}:/workspace:rw`,
-    '-w',
-    `/workspace/${workingDirectory === '.' ? '' : workingDirectory}`,
-    image,
-    'sh',
-    '-lc',
-    command,
-  ];
-}
-
 async function runManifestCommand({
   name,
-  localPath,
+  sandbox,
+  repositoryPath = E2B_REPOSITORY_PATH,
   workingDirectory = '.',
   command,
-  image,
-  network = 'none',
   timeoutMs,
-  memoryLimitMb,
 }) {
-  if (!command) return null;
-
-  const startedAt = Date.now();
-  const cwd = getSafeWorkingDirectory(localPath, workingDirectory);
-  const result = enableUnsafeLocalRepositoryExecution()
-    ? await runCommand(
-        process.platform === 'win32' ? 'cmd' : 'sh',
-        process.platform === 'win32' ? ['/c', command] : ['-lc', command],
-        { cwd, timeoutMs },
-      )
-    : await runCommand(
-        'docker',
-        sandboxDockerArgs({ localPath, workingDirectory, command, image, network, memoryLimitMb }),
-        { timeoutMs },
-      );
-
-  return {
+  return runE2bCommand({
     name,
+    sandbox,
+    repositoryPath,
+    workingDirectory,
     command,
-    success: result.success,
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    durationMs: Date.now() - startedAt,
-  };
+    timeoutMs,
+  });
 }
 
 function normalizeEvaluatorOutput(value = '') {
@@ -922,15 +869,13 @@ function normalizeTaskTestCases(practicalTask = {}) {
   return [...publicTests, ...hiddenTests];
 }
 
-async function writeBlackBoxInput(localPath, index, input = '') {
-  const testDir = path.join(localPath, '.competra-runtime');
-  await fs.mkdir(testDir, { recursive: true });
-  const relativePath = `.competra-runtime/input-${index}.txt`;
-  await fs.writeFile(path.join(localPath, relativePath), String(input ?? ''), 'utf8');
+async function writeBlackBoxInput({ sandbox, repositoryPath, index, input = '' }) {
+  const relativePath = '.competra-runtime/input-' + index + '.txt';
+  await sandbox.files.write(path.posix.join(repositoryPath, relativePath), String(input ?? ''));
   return relativePath;
 }
 
-async function runBlackBoxStdoutTests({ localPath, contract, practicalTask }) {
+async function runBlackBoxStdoutTests({ sandbox, repositoryPath, contract, practicalTask }) {
   const testCases = [];
   const commandResults = [];
   const configuredTests = normalizeTaskTestCases(practicalTask);
@@ -940,19 +885,17 @@ async function runBlackBoxStdoutTests({ localPath, contract, practicalTask }) {
   }
 
   for (const [index, testCase] of configuredTests.entries()) {
-    const inputPath = await writeBlackBoxInput(localPath, index, testCase.input);
-    const command = `${contract.executionCommand} < ${inputPath}`;
+    const inputPath = await writeBlackBoxInput({ sandbox, repositoryPath, index, input: testCase.input });
+    const command = contract.executionCommand + ' < ' + inputPath;
     const commandResult = await runManifestCommand({
-      name: `${testCase.isHidden ? 'Hidden' : 'Public'} black-box test: ${testCase.title || testCase.id}`,
-      localPath,
+      name: (testCase.isHidden ? 'Hidden' : 'Public') + ' black-box test: ' + (testCase.title || testCase.id),
+      sandbox,
+      repositoryPath,
       workingDirectory: contract.workingDirectory,
       command,
-      image: contract.adapter.image,
-      network: 'none',
       timeoutMs: Number(practicalTask.timeLimitMs || contract.manifest.timeout || 10000),
-      memoryLimitMb: Number(practicalTask.memoryLimitMb || contract.manifest.memoryLimitMb || 512),
     }).catch((error) => ({
-      name: `${testCase.isHidden ? 'Hidden' : 'Public'} black-box test: ${testCase.title || testCase.id}`,
+      name: (testCase.isHidden ? 'Hidden' : 'Public') + ' black-box test: ' + (testCase.title || testCase.id),
       command,
       success: false,
       exitCode: 1,
@@ -969,8 +912,8 @@ async function runBlackBoxStdoutTests({ localPath, contract, practicalTask }) {
 
     commandResults.push(commandResult);
     testCases.push({
-      id: `black-box-${testCase.isHidden ? 'hidden' : 'public'}-${testCase.id}`,
-      title: `${testCase.isHidden ? 'Hidden' : 'Public'} platform-owned correctness test passed`,
+      id: 'black-box-' + (testCase.isHidden ? 'hidden' : 'public') + '-' + testCase.id,
+      title: (testCase.isHidden ? 'Hidden' : 'Public') + ' platform-owned correctness test passed',
       competency: 'testing',
       passed,
       weight: Number(testCase.weight || (testCase.isHidden ? 18 : 10)),
@@ -978,7 +921,7 @@ async function runBlackBoxStdoutTests({ localPath, contract, practicalTask }) {
         ? 'Observed output matched the platform-owned validator.'
         : testCase.isHidden
           ? 'Hidden test failed. Inputs and expected outputs are hidden to preserve assessment integrity.'
-          : `Expected ${JSON.stringify(testCase.expectedOutput)}, received ${JSON.stringify(commandResult.stdout.trim())}.`,
+          : 'Expected ' + JSON.stringify(testCase.expectedOutput) + ', received ' + JSON.stringify(commandResult.stdout.trim()) + '.',
       error: passed
         ? ''
         : commandResult.stderr || 'Output did not satisfy the task validator.',
@@ -988,7 +931,7 @@ async function runBlackBoxStdoutTests({ localPath, contract, practicalTask }) {
   return { testCases, commandResults };
 }
 
-async function evaluateSubmissionContract(localPath, practicalTask, analysis) {
+async function evaluateSubmissionContract({ localPath, practicalTask, analysis, e2bContext }) {
   const { manifest } = await readSubmissionManifest(localPath);
   const contract = validateSubmissionManifest(manifest, practicalTask);
   const commandResults = [];
@@ -1007,10 +950,7 @@ async function evaluateSubmissionContract(localPath, practicalTask, analysis) {
     };
   }
 
-  const networkPolicy = practicalTask.networkPolicy || 'install_only';
-  const installNetwork = networkPolicy === 'enabled' || networkPolicy === 'install_only' ? 'bridge' : 'none';
   const timeoutMs = Number(practicalTask.timeLimitMs || contract.manifest.timeout || repositoryAnalysisTimeoutMs());
-  const memoryLimitMb = Number(practicalTask.memoryLimitMb || contract.manifest.memoryLimitMb || 512);
 
   const installCommand = commandOrEmpty(contract.manifest.installCommand) ||
     (analysis.projectType === 'node' && analysis.hasPackageJson ? 'npm install --ignore-scripts' : '');
@@ -1018,21 +958,19 @@ async function evaluateSubmissionContract(localPath, practicalTask, analysis) {
   const userTestCommand = commandOrEmpty(contract.manifest.testCommand);
 
   for (const commandConfig of [
-    { name: 'Install dependencies from manifest', command: installCommand, network: installNetwork },
-    { name: 'Build project from manifest', command: buildCommand, network: 'none' },
-    { name: 'Run user-written tests from manifest', command: userTestCommand, network: 'none' },
+    { name: 'Install dependencies from manifest', command: installCommand },
+    { name: 'Build project from manifest', command: buildCommand },
+    { name: 'Run user-written tests from manifest', command: userTestCommand },
   ]) {
     if (!commandConfig.command) continue;
     commandResults.push(
       await runManifestCommand({
         name: commandConfig.name,
-        localPath,
+        sandbox: e2bContext.sandbox,
+        repositoryPath: e2bContext.repositoryPath,
         workingDirectory: contract.workingDirectory,
         command: commandConfig.command,
-        image: contract.adapter.image,
-        network: commandConfig.network,
         timeoutMs,
-        memoryLimitMb,
       }).catch((error) => ({
         name: commandConfig.name,
         command: commandConfig.command,
@@ -1085,26 +1023,43 @@ async function evaluateSubmissionContract(localPath, practicalTask, analysis) {
     });
   }
 
-  const blackBoxResult = await runBlackBoxStdoutTests({ localPath, contract, practicalTask });
+  const blackBoxResult = await runBlackBoxStdoutTests({
+    sandbox: e2bContext.sandbox,
+    repositoryPath: e2bContext.repositoryPath,
+    contract,
+    practicalTask,
+  });
 
   return {
     ...contract,
-    executionMode: enableUnsafeLocalRepositoryExecution() ? 'local' : 'docker',
+    executionMode: 'e2b',
     commandResults: [...commandResults, ...blackBoxResult.commandResults],
     testCases: [...testCases, ...blackBoxResult.testCases],
     securityNotes,
   };
 }
 
-export async function runRepositoryTests(localPath, analysis, practicalTask = {}) {
+export async function runRepositoryTests(localPath, analysis, practicalTask = {}, e2bContext) {
   const commandResults = [];
   const testCases = [];
-  const securityNotes = [];
+  const securityNotes = [
+    'Repository commands run only inside an E2B isolated sandbox.',
+  ];
   const instructorTestFiles = practicalTask.automatedTestFiles || [];
   const instructorTestCommand = String(practicalTask.automatedTestCommand || '').trim();
   const hasInstructorTests =
     instructorTestFiles.length > 0 && instructorTestCommand.length > 0;
-  const contractEvaluation = await evaluateSubmissionContract(localPath, practicalTask, analysis);
+
+  if (!e2bContext?.sandbox) {
+    throw new AppError('E2B sandbox was not created for repository assessment.', 500);
+  }
+
+  const contractEvaluation = await evaluateSubmissionContract({
+    localPath,
+    practicalTask,
+    analysis,
+    e2bContext,
+  });
 
   commandResults.push(...contractEvaluation.commandResults);
   testCases.push(...contractEvaluation.testCases);
@@ -1117,7 +1072,7 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
 
   if (!shouldRunLegacyNodeChecks) {
     return {
-      executionMode: contractEvaluation.executionMode || 'static_only',
+      executionMode: contractEvaluation.executionMode || 'e2b',
       totalTestCases: testCases.length,
       passedTestCases: testCases.filter((test) => test.passed).length,
       commandResults,
@@ -1128,90 +1083,25 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
     };
   }
 
-  if (!enableUnsafeLocalRepositoryExecution()) {
-    securityNotes.push(
-      'Repository commands are executed through Docker isolation. Dependency installation may use network, while build and tests run without network access.',
-    );
-  } else {
-    securityNotes.push(
-      'Unsafe local repository execution is enabled. Use only in a disposable sandbox environment.',
-    );
-  }
-
   const hasTestScript = typeof analysis.packageScripts.test === 'string';
   const hasBuildScript = typeof analysis.packageScripts.build === 'string';
   let writtenInstructorTests = [];
-  const dockerStatus = await checkDockerAvailability();
 
-  if (!dockerStatus.available) {
-    // Never fall back to local execution unless explicitly enabled in env;
-    // failing closed avoids running untrusted repositories on the host machine.
-    const message =
-      dockerStatus.result?.stderr ||
-      'Docker is not available. Start Docker Desktop or allow the current user to access Docker.';
-
-    commandResults.push({
-      name: 'Check Docker availability',
-      command: 'docker version --format {{.Server.Version}}',
-      success: false,
-      exitCode: dockerStatus.result?.exitCode || 1,
-      stdout: dockerStatus.result?.stdout || '',
-      stderr: message,
-      durationMs: 0,
-    });
-
-    testCases.push({
-      id: 'docker-isolation',
-      title: 'Docker isolation is available for safe repository execution',
-      competency: 'deployment',
-      passed: false,
-      evidence: '',
-      error: message,
-    });
-
-    return {
-      executionMode: 'docker',
-      totalTestCases: testCases.length,
-      passedTestCases: 0,
-      commandResults,
-      testCases,
-      assessorValidationRequired: true,
-      securityNotes: [
-        ...securityNotes,
-        'The system did not run untrusted repository code because Docker isolation is unavailable.',
-      ],
-    };
-  }
-
-  try {
-    commandResults.push(
-      await runSafeCommand({
-        name: 'Install dependencies',
-        localPath,
-        command: npmCommand(),
-        args: ['install', '--ignore-scripts'],
-        shellCommand: 'npm install --ignore-scripts',
-        dockerNetwork: 'bridge',
-      }),
-    );
-  } catch (error) {
-    commandResults.push({
+  commandResults.push(
+    await runE2bCommand({
       name: 'Install dependencies',
+      sandbox: e2bContext.sandbox,
+      repositoryPath: e2bContext.repositoryPath,
       command: 'npm install --ignore-scripts',
-      success: false,
-      exitCode: 1,
-      stdout: '',
-      stderr: error.message,
-      durationMs: 0,
-    });
-  }
+    }),
+  );
 
   if (hasInstructorTests) {
     try {
-      // Hidden instructor tests are the strongest signal that the repository
-      // satisfies the exact practical task behavior.
-      writtenInstructorTests = await writeInstructorTestFiles(
-        localPath,
+      // Hidden instructor tests prove whether the repository solves the task.
+      writtenInstructorTests = await writeInstructorTestFilesToSandbox(
+        e2bContext.sandbox,
+        e2bContext.repositoryPath,
         instructorTestFiles,
       );
     } catch (error) {
@@ -1229,55 +1119,34 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
 
   if (hasBuildScript) {
     commandResults.push(
-      await runSafeCommand({
+      await runE2bCommand({
         name: 'Build project',
-        localPath,
-        command: npmCommand(),
-        args: ['run', 'build', '--if-present'],
-        shellCommand: 'npm run build --if-present',
-      }).catch((error) => ({
-        name: 'Build project',
+        sandbox: e2bContext.sandbox,
+        repositoryPath: e2bContext.repositoryPath,
         command: 'npm run build --if-present',
-        success: false,
-        exitCode: 1,
-        stdout: '',
-        stderr: error.message,
-        durationMs: 0,
-      })),
+      }),
     );
   }
 
   if (hasTestScript) {
     commandResults.push(
-      await runSafeCommand({
+      await runE2bCommand({
         name: 'Run submitted automated tests',
-        localPath,
-        command: npmCommand(),
-        args: ['test', '--', '--runInBand'],
-        shellCommand: 'npm test -- --runInBand',
-      }).catch((error) => ({
-        name: 'Run submitted automated tests',
+        sandbox: e2bContext.sandbox,
+        repositoryPath: e2bContext.repositoryPath,
         command: 'npm test -- --runInBand',
-        success: false,
-        exitCode: 1,
-        stdout: '',
-        stderr: error.message,
-        durationMs: 0,
-      })),
+      }),
     );
   }
 
   if (hasInstructorTests && writtenInstructorTests.length > 0) {
     commandResults.push(
-      await runInstructorCommand(localPath, instructorTestCommand).catch((error) => ({
+      await runE2bCommand({
         name: 'Run instructor task tests',
+        sandbox: e2bContext.sandbox,
+        repositoryPath: e2bContext.repositoryPath,
         command: instructorTestCommand,
-        success: false,
-        exitCode: 1,
-        stdout: '',
-        stderr: error.message,
-        durationMs: 0,
-      })),
+      }),
     );
   }
 
@@ -1295,8 +1164,8 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
     title: 'Dependencies install successfully',
     competency: 'deployment',
     passed: Boolean(installResult?.success),
-    evidence: installResult?.success ? 'npm install completed successfully.' : '',
-    error: installResult?.success ? '' : installResult?.stderr || 'Dependency installation failed.',
+    evidence: installResult?.success ? 'npm install completed successfully in E2B.' : '',
+    error: installResult?.success ? '' : installResult?.stderr || 'Dependency installation failed in E2B.',
   });
 
   if (hasBuildScript) {
@@ -1305,8 +1174,8 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
       title: 'Project builds successfully',
       competency: 'deployment',
       passed: Boolean(buildResult?.success),
-      evidence: buildResult?.success ? 'Build command completed successfully.' : '',
-      error: buildResult?.success ? '' : buildResult?.stderr || 'Build failed.',
+      evidence: buildResult?.success ? 'Build command completed successfully in E2B.' : '',
+      error: buildResult?.success ? '' : buildResult?.stderr || 'Build failed in E2B.',
     });
   }
 
@@ -1315,11 +1184,11 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
     title: 'Graduate-submitted automated tests pass',
     competency: 'testing',
     passed: Boolean(submittedTestResult?.success),
-    evidence: submittedTestResult?.success ? 'npm test completed successfully.' : '',
+    evidence: submittedTestResult?.success ? 'npm test completed successfully in E2B.' : '',
     error: submittedTestResult?.success
       ? ''
       : hasTestScript
-        ? submittedTestResult?.stderr || 'Submitted automated tests failed.'
+        ? submittedTestResult?.stderr || 'Submitted automated tests failed in E2B.'
         : 'No npm test script was found.',
   });
 
@@ -1329,17 +1198,17 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
     competency: 'testing',
     passed: Boolean(instructorTestResult?.success),
     evidence: instructorTestResult?.success
-      ? `Instructor tests passed. Files injected: ${writtenInstructorTests.join(', ')}.`
+      ? 'Instructor tests passed in E2B. Files injected: ' + writtenInstructorTests.join(', ') + '.'
       : '',
     error: instructorTestResult?.success
       ? ''
       : hasInstructorTests
-        ? instructorTestResult?.stderr || 'Instructor-defined tests failed.'
+        ? instructorTestResult?.stderr || 'Instructor-defined tests failed in E2B.'
         : 'No instructor-defined task tests were configured for this practical task.',
   });
 
   return {
-    executionMode: enableUnsafeLocalRepositoryExecution() ? 'local' : 'docker',
+    executionMode: 'e2b',
     totalTestCases: testCases.length,
     passedTestCases: testCases.filter((test) => test.passed).length,
     commandResults,
@@ -1349,28 +1218,6 @@ export async function runRepositoryTests(localPath, analysis, practicalTask = {}
     securityNotes,
     submissionManifest: contractEvaluation.manifest,
   };
-}
-
-function eslintDockerArgs(localPath) {
-  const repositoryDockerImage = process.env.REPOSITORY_DOCKER_IMAGE || 'node:20-alpine';
-  return [
-    'run',
-    '--rm',
-    '--network',
-    'none',
-    '--memory',
-    '512m',
-    '--cpus',
-    '1',
-    '-v',
-    `${localPath}:/workspace`,
-    '-w',
-    '/workspace',
-    repositoryDockerImage,
-    'sh',
-    '-lc',
-    'npx eslint . --format json',
-  ];
 }
 
 function parseEslintOutput(output = '') {
@@ -1388,7 +1235,7 @@ function parseEslintOutput(output = '') {
   }
 }
 
-export async function runEslint(localPath, analysis) {
+export async function runEslint(localPath, analysis, e2bContext) {
   if (analysis.projectType !== 'node') {
     return {
       available: false,
@@ -1399,36 +1246,24 @@ export async function runEslint(localPath, analysis) {
     };
   }
 
+  if (!e2bContext?.sandbox) {
+    return {
+      available: true,
+      success: false,
+      errors: 0,
+      warnings: 0,
+      output: 'ESLint could not run because the E2B sandbox was not available.',
+    };
+  }
+
   const hasLintScript = typeof analysis.packageScripts.lint === 'string';
   const shellCommand = hasLintScript ? 'npm run lint -- --format json' : 'npx eslint . --format json';
-  const enableUnsafeLocalRepositoryExecution =
-    String(process.env.ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION || '').toLowerCase() === 'true';
-  const repositoryAnalysisTimeoutMs =
-    Number(process.env.REPOSITORY_ANALYSIS_TIMEOUT_MS) || 120000;
-  const command = enableUnsafeLocalRepositoryExecution
-    ? hasLintScript
-      ? process.platform === 'win32'
-        ? 'npm.cmd'
-        : 'npm'
-      : process.platform === 'win32'
-        ? 'npx.cmd'
-        : 'npx'
-    : 'docker';
-  const args = enableUnsafeLocalRepositoryExecution
-    ? hasLintScript
-      ? ['run', 'lint', '--', '--format', 'json']
-      : ['eslint', '.', '--format', 'json']
-    : eslintDockerArgs(localPath);
-
-  const result = await runCommand(command, args, {
-    cwd: localPath,
-    timeoutMs: repositoryAnalysisTimeoutMs,
-  }).catch((error) => ({
-    success: false,
-    stdout: '',
-    stderr: error.message,
-    exitCode: 1,
-  }));
+  const result = await runE2bCommand({
+    name: 'Run ESLint code quality scan',
+    sandbox: e2bContext.sandbox,
+    repositoryPath: e2bContext.repositoryPath,
+    command: shellCommand,
+  });
   const parsed = parseEslintOutput(result.stdout);
 
   return {
@@ -1436,7 +1271,7 @@ export async function runEslint(localPath, analysis) {
     success: result.success,
     errors: parsed.errors,
     warnings: parsed.warnings,
-    output: (result.stdout || result.stderr || `${shellCommand} produced no output.`).slice(-12000),
+    output: (result.stdout || result.stderr || (shellCommand + ' produced no output.')).slice(-12000),
   };
 }
 
@@ -1458,28 +1293,6 @@ const SECRET_PATTERNS = [
     pattern: /-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----/i,
   },
 ];
-
-function securityScanDockerArgs(localPath) {
-  const repositoryDockerImage = process.env.REPOSITORY_DOCKER_IMAGE || 'node:20-alpine';
-  return [
-    'run',
-    '--rm',
-    '--network',
-    'none',
-    '--memory',
-    '512m',
-    '--cpus',
-    '1',
-    '-v',
-    `${localPath}:/workspace`,
-    '-w',
-    '/workspace',
-    repositoryDockerImage,
-    'sh',
-    '-lc',
-    'npm audit --json --audit-level=high',
-  ];
-}
 
 function parseNpmAudit(output = '') {
   try {
@@ -1504,7 +1317,7 @@ function parseNpmAudit(output = '') {
 
 function scanForSecrets(analysis) {
   const sourceText = (analysis.sampledSource || [])
-    .map((file) => `${file.path}\n${file.excerpt || ''}`)
+    .map((file) => file.path + '\n' + (file.excerpt || ''))
     .join('\n');
 
   return SECRET_PATTERNS.filter((rule) => rule.pattern.test(sourceText)).map(
@@ -1512,7 +1325,7 @@ function scanForSecrets(analysis) {
   );
 }
 
-export async function runSecurityScan(localPath, analysis) {
+export async function runSecurityScan(localPath, analysis, e2bContext) {
   const secretFindings = scanForSecrets(analysis);
 
   if (analysis.projectType !== 'node') {
@@ -1527,27 +1340,24 @@ export async function runSecurityScan(localPath, analysis) {
     };
   }
 
-  const enableUnsafeLocalRepositoryExecution =
-    String(process.env.ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION || '').toLowerCase() === 'true';
-  const repositoryAnalysisTimeoutMs =
-    Number(process.env.REPOSITORY_ANALYSIS_TIMEOUT_MS) || 120000;
-  const command = enableUnsafeLocalRepositoryExecution
-    ? process.platform === 'win32'
-      ? 'npm.cmd'
-      : 'npm'
-    : 'docker';
-  const args = enableUnsafeLocalRepositoryExecution
-    ? ['audit', '--json', '--audit-level=high']
-    : securityScanDockerArgs(localPath);
-  const result = await runCommand(command, args, {
-    cwd: localPath,
-    timeoutMs: repositoryAnalysisTimeoutMs,
-  }).catch((error) => ({
-    success: false,
-    stdout: '',
-    stderr: error.message,
-    exitCode: 1,
-  }));
+  if (!e2bContext?.sandbox) {
+    return {
+      available: true,
+      success: false,
+      high: 0,
+      critical: 0,
+      total: 0,
+      secretFindings,
+      output: 'Security scan could not run because the E2B sandbox was not available.',
+    };
+  }
+
+  const result = await runE2bCommand({
+    name: 'Run dependency security scan',
+    sandbox: e2bContext.sandbox,
+    repositoryPath: e2bContext.repositoryPath,
+    command: 'npm audit --json --audit-level=high',
+  });
   const audit = parseNpmAudit(result.stdout);
   const success =
     audit.high === 0 && audit.critical === 0 && secretFindings.length === 0;
@@ -1590,9 +1400,9 @@ export const OBJECTIVE_CHECK_WEIGHTS = {
   'build-script': 10,
   'submitted-automated-tests': 12,
   'instructor-task-tests': 20,
-  'docker-isolation': 8,
+  'e2b-isolation': 8,
   'automated-tests-stage': 8,
-  'docker-execution-stage': 6,
+  'e2b-execution-stage': 6,
   'eslint-stage': 8,
   'security-scan-stage': 10,
   'automatic-validation-stage': 8,
@@ -1657,15 +1467,15 @@ export function scoreRepositoryAssessment({
       error: 'No passing automated test evidence was found.',
     },
     {
-      id: 'docker-execution-stage',
-      title: 'Repository was executed safely through Docker',
+      id: 'e2b-execution-stage',
+      title: 'Repository was executed safely through E2B',
       competency: 'deployment',
-      weight: OBJECTIVE_CHECK_WEIGHTS['docker-execution-stage'],
+      weight: OBJECTIVE_CHECK_WEIGHTS['e2b-execution-stage'],
       passed:
         testCases.some((check) => check.id === 'dependency-install' && check.passed) ||
         testCases.some((check) => check.id === 'build-script' && check.passed),
-      evidence: 'Docker-based dependency/build execution completed.',
-      error: 'Docker execution did not complete successfully.',
+      evidence: 'E2B sandbox dependency/build execution completed.',
+      error: 'E2B sandbox execution did not complete successfully.',
     },
     {
       id: 'eslint-stage',
@@ -1749,6 +1559,7 @@ export async function assessGithubRepository({
   user,
 }) {
   let localPath = '';
+  let e2bContext = null;
 
   try {
     // This path performs objective checks by cloning and executing the repo.
@@ -1764,6 +1575,7 @@ export async function assessGithubRepository({
 
     const cloned = await cloneGithubRepository(repositoryUrl);
     localPath = cloned.localPath;
+    e2bContext = await createE2bRepositoryContext(cloned.repository);
 
     // Reduce the competency/practical task to the text the analyzer needs for
     // rule-based requirement detection.
@@ -1774,9 +1586,9 @@ export async function assessGithubRepository({
       description: competency?.description || '',
     };
     const analysis = await analyzeRepository(localPath, task);
-    const testResult = await runRepositoryTests(localPath, analysis, practicalTask || {});
-    const eslintResult = await runEslint(localPath, analysis);
-    const securityScanResult = await runSecurityScan(localPath, analysis);
+    const testResult = await runRepositoryTests(localPath, analysis, practicalTask || {}, e2bContext);
+    const eslintResult = await runEslint(localPath, analysis, e2bContext);
+    const securityScanResult = await runSecurityScan(localPath, analysis, e2bContext);
     // Final scoring combines static requirement checks, executed tests, lint,
     // and security scan evidence into one explainable automatic result.
     const score = scoreRepositoryAssessment({
@@ -1826,7 +1638,7 @@ export async function assessGithubRepository({
       failedRequirements: score.failedRequirements,
       staticChecks: analysis.requirementChecks,
       commandResults: [
-        cloned.cloneResult,
+        e2bContext.cloneResult,
         ...testResult.commandResults,
       ],
       eslintResult,
@@ -1902,6 +1714,7 @@ export async function assessGithubRepository({
     return result;
   } finally {
     // Cloned submissions may contain untrusted code; always remove the temp copy.
+    await cleanupE2bSandbox(e2bContext?.sandbox);
     await cleanupTempFolder(localPath);
   }
 }

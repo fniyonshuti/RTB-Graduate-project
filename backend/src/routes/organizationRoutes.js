@@ -9,7 +9,7 @@ import {
 } from '../controllers/organizationController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/roleMiddleware.js';
-import { requireFields } from '../middleware/validateMiddleware.js';
+import { requireFields, validateOrganization } from '../middleware/validateMiddleware.js';
 
 const router = express.Router();
 
@@ -22,9 +22,9 @@ router.get('/', authorize('admin', 'org_admin'), list);
 router
   .route('/:id')
   .get(authorize('admin', 'org_admin'), getOne)
-  .put(authorize('admin'), update)
+  .put(authorize('admin'), validateOrganization, update)
   .delete(authorize('admin'), remove);
 
-router.post('/', authorize('admin'), requireFields('name'), create);
+router.post('/', authorize('admin'), requireFields('name'), validateOrganization, create);
 
 export default router;

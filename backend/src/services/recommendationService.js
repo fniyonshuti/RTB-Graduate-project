@@ -80,11 +80,12 @@ function normalizeLearningResource(resource) {
   if (typeof resource === "string") {
     const title = safeString(resource);
     if (!title) return null;
+    const directUrl = title.match(/https:\/\/[^\s),;]+/i)?.[0] || "";
     return {
       type: "other",
       title,
       provider: "Search",
-      url: buildSearchUrl(title),
+      url: directUrl || buildSearchUrl(title),
       searchQuery: title,
       skillArea: "General improvement",
       reason: "Suggested by Gemini as a helpful learning resource.",
@@ -114,6 +115,18 @@ function normalizeLearningResources(values = []) {
   return Array.isArray(values)
     ? values.map(normalizeLearningResource).filter(Boolean).slice(0, 6)
     : [];
+}
+
+function hasValidResourceLink(resource = {}) {
+  return /^https:\/\//i.test(safeString(resource.url));
+}
+
+function resourceSummaryHasLink(summary = "") {
+  return /https:\/\//i.test(safeString(summary));
+}
+
+function linkedLearningResources(values = []) {
+  return normalizeLearningResources(values).filter(hasValidResourceLink);
 }
 
 function learningResourceToSummary(resource) {
@@ -216,18 +229,20 @@ function buildPrompt(context) {
     "You are an evidence-based recommendation engine for an ICT TVET skills gap analysis system.",
     "Return only valid JSON. Do not wrap the JSON in markdown fences.",
     "Return a single JSON object with exactly these keys: message, actionItems, resources, learningResources, priority.",
-    "The message must be a concise learner-ready recommendation in plain language and must mention the gap level, final score, benchmark, and strongest improvement priority.",
+    "The message must be a concise learner-ready recommendation in plain language and must mention the gap level, final score, benchmark, strongest practical weakness, and at least one measured strength.",
+    "For weak or poor performance, clearly explain what practical skill evidence is weak, what evidence is strong, and why the recommendation will close the measured gap.",
     "actionItems must be an array of 3 to 6 short, measurable improvement actions that tell the learner exactly what to fix, practice, retest, or submit next.",
     "Each action item must be directly connected to the weakest score area, failed repository checks, hidden expected-output test result, theory score, assessor comment, or benchmark gap.",
-    "resources must be an array of 2 to 5 short resource summary strings that include a direct URL, except for No Gap where 1 to 3 enrichment resources are enough.",
+    "resources must be an array of 2 to 5 short resource summary strings and every resource summary must include a direct https URL.",
     "learningResources must be an array of 2 to 5 objects. Each object must include: type, title, provider, url, searchQuery, skillArea, reason. The url field is required and must be a valid https link.",
     "Resource type must be one of: video, course, documentation, practice, article, tool, other.",
     "Every learning resource must address a specific weak area, failed repository check, failed hidden test, theory weakness, security issue, or benchmark gap. Prefer beginner-friendly free resources with stable URLs; when unsure, use a search URL generated from a precise searchQuery and the configured RESOURCE_SEARCH_URL.",
+    "Do not return a recommendation without learning resources. The resources are required because the learner must know exactly where to learn and practice to close the gap.",
     "priority must be one of low, medium, or high.",
-    "Use the supplied RTB benchmark, final score, skill gap, gap meaning, weak areas, improvement priorities, repository evidence, repository summary, and automatic review note.",
+    "Use the supplied RTB benchmark, final score, skill gap, gap meaning, weak areas, strengths, practical weaknesses, improvement priorities, repository evidence, repository summary, and automatic review note.",
     "Keep the recommendation aligned to the selected competency and the evidence reviewed.",
     "If the hidden expected-output test failed or was not configured, include a practical action that improves objective proof before resubmission.",
-    "If GitHub/practical score is lower than theory score, focus first on implementation, tests, and repository evidence.",
+    "If GitHub/practical score is lower than theory score, focus first on implementation, tests, and repository evidence because the gap is mainly practical.",
     "If theory score is lower than practical score, focus first on concepts and applying those concepts in the code.",
     "If there is No Gap, recommend advanced practice, portfolio strengthening, and maintaining evidence quality instead of remediation.",
     "Do not invent facts, tools, scores, failures, or technologies that are not present in the context.",
@@ -254,20 +269,20 @@ function parseDraftResponse(rawText, prompt, context = {}) {
   try {
     const parsed = JSON.parse(cleanJsonText(trimmed));
     const actionItems = normalizeList(parsed.actionItems);
-    const fallbackLearningResources = normalizeLearningResources(
+    const fallbackLearningResources = linkedLearningResources(
       context.suggestedLearningResources,
     );
-    const learningResources = normalizeLearningResources(
+    const geminiLearningResources = linkedLearningResources(
       parsed.learningResources || parsed.resources,
     );
     const finalLearningResources =
-      learningResources.length > 0
-        ? learningResources
+      geminiLearningResources.length > 0
+        ? geminiLearningResources
         : fallbackLearningResources;
-    const resourceSummaries = normalizeResourceSummaries(parsed.resources);
-    const resources = resourceSummaries.length > 0
+    const resourceSummaries = normalizeResourceSummaries(parsed.resources).filter(resourceSummaryHasLink);
+    const resources = resourceSummaries.length >= 2
       ? resourceSummaries
-      : finalLearningResources.map(learningResourceToSummary);
+      : finalLearningResources.map(learningResourceToSummary).filter(resourceSummaryHasLink);
     const priority = ["low", "medium", "high"].includes(parsed.priority)
       ? parsed.priority
       : "low";
@@ -281,8 +296,8 @@ function parseDraftResponse(rawText, prompt, context = {}) {
       throw new Error("Gemini JSON must include evidence-based action items");
     }
 
-    if (context.gapLevel !== "No Gap" && finalLearningResources.length < 2) {
-      throw new Error("Gemini JSON must include practical learning resources for the measured gap");
+    if (finalLearningResources.length < 2 || resources.length < 2) {
+      throw new Error("Gemini recommendation must include at least two practical learning resource links for the measured performance gap");
     }
 
     return {
@@ -620,6 +635,61 @@ function extractRepositoryEvidenceSummary(repositorySummary = {}) {
   };
 }
 
+function buildMeasuredStrengths(scores = {}, repositoryEvidenceSummary = {}) {
+  const strengths = [];
+  const practicalScore = Number(scores.practicalTaskScore || 0);
+  const quizScore = Number(scores.quizScore || 0);
+
+  if (practicalScore >= 70) {
+    strengths.push(`Practical/GitHub evidence scored ${practicalScore}%, showing usable implementation evidence.`);
+  }
+
+  if (quizScore >= 70) {
+    strengths.push(`Theory evidence scored ${quizScore}%, showing acceptable conceptual understanding.`);
+  }
+
+  (repositoryEvidenceSummary.passedChecks || []).slice(0, 4).forEach((check) => {
+    strengths.push(`Passed practical check: ${check.title}.`);
+  });
+
+  if (repositoryEvidenceSummary.executableAssessment?.eslintPassed) {
+    strengths.push("Code quality evidence passed ESLint checks.");
+  }
+
+  if (repositoryEvidenceSummary.executableAssessment?.securityScanPassed) {
+    strengths.push("Security evidence did not show critical scan failures.");
+  }
+
+  return strengths.length > 0
+    ? strengths.slice(0, 6)
+    : ["The learner completed the required assessment submission and provided evidence for review."];
+}
+
+function buildPracticalWeaknesses(scores = {}, repositoryEvidenceSummary = {}) {
+  const weaknesses = [];
+  const practicalScore = Number(scores.practicalTaskScore || 0);
+
+  if (practicalScore < 70) {
+    weaknesses.push(`Practical/GitHub score is ${practicalScore}%, so implementation evidence is below the expected competency level.`);
+  }
+
+  if (repositoryEvidenceSummary.hiddenExpectedOutputTest?.passed === false) {
+    weaknesses.push("Hidden expected-output test failed, so the submitted code did not fully prove the practical task behavior.");
+  }
+
+  (repositoryEvidenceSummary.failedChecks || []).slice(0, 5).forEach((check) => {
+    weaknesses.push(`Failed practical checklist item: ${check.title}. ${check.advice || check.evidence || "Improve this requirement before resubmission."}`);
+  });
+
+  (repositoryEvidenceSummary.executableAssessment?.failedRequirements || []).slice(0, 5).forEach((requirement) => {
+    weaknesses.push(`Failed executable requirement: ${requirement.title || requirement.competency}. ${requirement.error || "Repository evidence did not satisfy this check."}`);
+  });
+
+  return weaknesses.length > 0
+    ? weaknesses.slice(0, 8)
+    : ["No major practical weakness was detected from the submitted repository evidence."];
+}
+
 function buildRepositorySummaryText(repositorySummary = {}) {
   // Keep the AI prompt compact by turning the repository analysis into a single
   // evidence summary instead of sending the full raw repository payload.
@@ -746,6 +816,8 @@ export function buildRecommendationContext({
     gapMeaning: explainGapLevelMeaning(assessment.gapLevel, assessment.skillGap),
     weakAreas: getWeakAssessmentAreas(assessment.scores),
     scoreImprovementPriorities,
+    strengths: buildMeasuredStrengths(assessment.scores, repositoryEvidenceSummary),
+    practicalWeaknesses: buildPracticalWeaknesses(assessment.scores, repositoryEvidenceSummary),
     suggestedLearningResources,
     assessorComment: assessorComment || assessment.assessorComment || "",
     assessmentScores: {
@@ -902,16 +974,25 @@ export async function upsertAssessmentRecommendation({
       : draft.actionItems?.length > 0
         ? draft.actionItems
         : [];
-  const approvedResources =
-    recommendation.resources?.length > 0
-      ? recommendation.resources
-      : draft.resources;
   const approvedLearningResources =
     recommendation.learningResources?.length > 0
-      ? normalizeLearningResources(recommendation.learningResources)
+      ? linkedLearningResources(recommendation.learningResources)
       : draft.learningResources?.length > 0
-        ? normalizeLearningResources(draft.learningResources)
-        : normalizeLearningResources(approvedResources);
+        ? linkedLearningResources(draft.learningResources)
+        : linkedLearningResources(recommendation.resources || draft.resources || []);
+  const resourceSummaries = normalizeResourceSummaries(
+    recommendation.resources?.length > 0 ? recommendation.resources : draft.resources,
+  ).filter(resourceSummaryHasLink);
+  const approvedResources = resourceSummaries.length >= 2
+    ? resourceSummaries
+    : approvedLearningResources.map(learningResourceToSummary).filter(resourceSummaryHasLink);
+
+  if (approvedLearningResources.length < 2 || approvedResources.length < 2) {
+    throw new AppError(
+      "Recommendation must include at least two learning resource links connected to the measured gap.",
+      400,
+    );
+  }
 
   return Recommendation.findOneAndUpdate(
     { assessment: assessment._id },
@@ -1014,3 +1095,4 @@ class RecommendationService {
 const recommendationService = new RecommendationService();
 
 export default recommendationService;
+

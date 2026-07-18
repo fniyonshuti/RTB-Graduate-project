@@ -178,12 +178,12 @@ The system provides the following core functionalities:
 
 1. User selects an RTB-aligned ICT competency.
 2. User submits GitHub practical evidence repository and theory answers.
-3. System reviews the GitHub repository and scores theory evidence.
-4. System calculates final competency score.
+3. System securely tests the GitHub repository in an isolated execution sandbox and separately scores theory answers.
+4. System combines practical and theory scores to calculate the final competency score.
 5. System compares the final score with the RTB benchmark.
 6. System calculates skill gap and classifies gap level.
-7. System generates a Gemini recommendation based on performance.
-8. System notifies the user.
+7. System generates a Gemini recommendation based on practical performance, theory performance, strengths, weak areas, and the measured gap.
+8. System notifies the user through in-app notification and email where configured.
 9. System generates a report for the assessed user.
 
 
@@ -252,21 +252,21 @@ The backend uses a layered Express architecture:
 
 ```text
 User / Frontend
-   ↓
+   ->
 server.js
-   ↓
+   ->
 app.js
-   ↓
+   ->
 routes
-   ↓
+   ->
 middleware
-   ↓
+   ->
 controllers
-   ↓
+   ->
 services
-   ↓
+   ->
 models
-   ↓
+   ->
 MongoDB Atlas
 ```
 
@@ -358,8 +358,8 @@ GITHUB_MAX_SAMPLED_FILES=6
 
 REPOSITORY_ANALYSIS_TIMEOUT_MS=120000
 TEMP_REPOSITORY_DIR=tmp/repositories
-REPOSITORY_DOCKER_IMAGE=node:20-alpine
-ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION=false
+E2B_API_KEY=your_e2b_api_key
+E2B_SANDBOX_TIMEOUT_MS=300000
 
 GEMINI_API_KEY=
 GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models
@@ -959,10 +959,10 @@ The system was tested in multiple environments.
 
 | Platform | Browser | Status |
 |-----------|----------|--------|
-| Windows 11 | Chrome | ✔ Passed |
-| Windows 11 | Microsoft Edge | ✔ Passed |
-| Android | Chrome | ✔ Passed |
-| Tablet | Chrome | ✔ Passed |
+| Windows 11 | Chrome | Passed |
+| Windows 11 | Microsoft Edge | Passed |
+| Android | Chrome | Passed |
+| Tablet | Chrome | Passed |
 
 ![responsive](docs/screenshots/responsive.png)
 
@@ -1092,7 +1092,8 @@ EMAIL_FROM=noreply@your-verified-domain.com
 EMAIL_FROM_NAME=Competra
 EMAIL_REPLY_TO=
 EXPOSE_PASSWORD_RESET_LINK_IN_RESPONSE=false
-ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION=false
+E2B_API_KEY=your_e2b_api_key
+E2B_SANDBOX_TIMEOUT_MS=300000
 ```
 
 ### Frontend Static Site
@@ -1289,11 +1290,12 @@ Future development will focus on:
 - Keep backend CORS open only if the API is intended to support multiple frontend clients; protect data with JWT authorization and role checks.
 - Restrict MongoDB Atlas network access.
 - Use HTTPS.
-- Keep `ENABLE_UNSAFE_LOCAL_REPOSITORY_EXECUTION=false` unless running inside a disposable sandbox.
+- Set `E2B_API_KEY` so repository code is executed only inside an E2B isolated sandbox.
 - Store environment variables securely.
 - Add cloud file storage if large uploads are required.
 - Monitor GitHub and Gemini API quota.
 - Run backend and frontend lint/tests before release.
+
 
 
 

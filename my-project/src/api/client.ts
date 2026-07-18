@@ -99,6 +99,14 @@ function buildHttpErrorMessage(path: string, response: Response, payload: ApiRes
   return `${message}.${requestId}`.trim()
 }
 
+export type RegisterResponse = {
+  user: User
+  token?: string
+  verificationRequired?: boolean
+  emailSent?: boolean
+  message?: string
+}
+
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
@@ -195,7 +203,19 @@ export const api = {
     email: string
     password: string
     institution?: string
-  }) => request<AuthPayload>('/auth/register', { method: 'POST', body }),
+  }) => request<RegisterResponse>('/auth/register', { method: 'POST', body }),
+
+  verifyEmail: (token: string) =>
+    request<{ user: User; message: string }>('/auth/verify-email', {
+      method: 'POST',
+      body: { token },
+    }),
+
+  resendVerificationEmail: (email: string) =>
+    request<{ message: string; emailSent?: boolean }>('/auth/resend-verification', {
+      method: 'POST',
+      body: { email },
+    }),
 
   me: (token: string) => request<User>('/auth/me', { token }),
 

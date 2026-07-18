@@ -17,6 +17,10 @@ export const protect = asyncHandler(async (req, res, next) => {
   const payload = verifyJwt(token);
   const user = await getActiveUserById(payload.sub);
 
+  if (user.authProvider !== 'google' && user.isEmailVerified === false) {
+    throw new AppError('Please verify your email address before continuing.', 403);
+  }
+
   req.user = user;
   next();
 });

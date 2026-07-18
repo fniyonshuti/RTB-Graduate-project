@@ -20,19 +20,98 @@ import {
 import { Alert, Button, TextField } from "../components/common";
 import { api } from "../api/client";
 import { useAuth } from "../context/useAuth";
+import { getPasswordPolicy, passwordPolicyMessage } from "../utils/passwordPolicy";
 
 function getInitialAuthState() {
   const params = new URLSearchParams(window.location.search);
-  const resetToken = params.get("resetToken") || params.get("token") || "";
+  const pathname = window.location.pathname;
+  const resetToken = params.get("resetToken") || (pathname.includes("verify-email") ? "" : params.get("token")) || "";
+  const verificationToken = params.get("verificationToken") || (pathname.includes("verify-email") ? params.get("token") : "") || "";
 
   return {
-    mode: resetToken ? ("reset" as const) : ("login" as const),
+    mode: verificationToken ? ("verify" as const) : resetToken ? ("reset" as const) : ("login" as const),
     resetToken,
-    showAuthPanel: Boolean(resetToken),
+    verificationToken,
+    showAuthPanel: Boolean(resetToken || verificationToken),
   };
 }
 
-type AuthMode = "login" | "register" | "forgot" | "reset";
+type AuthMode = "login" | "register" | "forgot" | "reset" | "verify";
+type PolicyType = "terms" | "privacy";
+
+const policyContent: Record<
+  PolicyType,
+  {
+    title: string;
+    intro: string;
+    sections: Array<{ heading: string; body: string }>;
+  }
+> = {
+  terms: {
+    title: "Terms & Conditions",
+    intro:
+      "These terms explain how learners, organizations, and administrators should use Competra responsibly for ICT competency assessment.",
+    sections: [
+      {
+        heading: "Purpose of the system",
+        body:
+          "Competra supports evidence-based skills gap analysis for TVET ICT learners by reviewing practical GitHub evidence, theory answers, RTB-aligned competencies, benchmarks, recommendations, notifications, and reports.",
+      },
+      {
+        heading: "Account responsibility",
+        body:
+          "Users must provide accurate registration details, keep login credentials private, and use only accounts assigned to their role. Organization and administrator accounts must not be shared with unauthorized people.",
+      },
+      {
+        heading: "Assessment evidence",
+        body:
+          "Submitted GitHub repositories, theory answers, and project evidence must belong to the learner or be work they are allowed to submit. Misleading, copied, or harmful submissions may be rejected or reviewed by an authorized administrator.",
+      },
+      {
+        heading: "System results",
+        body:
+          "Scores, skill gaps, and recommendations are generated from submitted evidence, benchmark data, checklist requirements, automated review, and available assessment information. Results should guide improvement and may be reviewed by authorized staff where needed.",
+      },
+      {
+        heading: "Acceptable use",
+        body:
+          "Users must not upload malicious code, attack the platform, misuse APIs, access another user's data, or attempt to bypass role-based access control. Violations may lead to account suspension.",
+      },
+    ],
+  },
+  privacy: {
+    title: "Privacy Policy",
+    intro:
+      "This policy explains what Competra collects and how the system uses data to provide secure assessment, reporting, and password recovery services.",
+    sections: [
+      {
+        heading: "Information collected",
+        body:
+          "The system may collect account details such as name, email, role, organization, profile information, assessment submissions, GitHub repository URLs, theory answers, scores, recommendations, notifications, and generated reports.",
+      },
+      {
+        heading: "How data is used",
+        body:
+          "Data is used to authenticate users, manage profiles, review assessment evidence, calculate competency scores, compare results with benchmarks, generate recommendations, send notifications, and support administrative reporting.",
+      },
+      {
+        heading: "Access control",
+        body:
+          "Personal assessment records are protected by role-based access. Learners access their own results, organization users are managed within their organization, and administrators access data required for approved system management.",
+      },
+      {
+        heading: "Email and password recovery",
+        body:
+          "For password reset, the system sends a secure expiring link to the account email address. Reset tokens are stored securely and cleared after use or expiry.",
+      },
+      {
+        heading: "Data protection",
+        body:
+          "Competra uses authentication, authorization, validation, secure password hashing, and controlled API access to reduce unauthorized access. Users should report suspicious activity immediately.",
+      },
+    ],
+  },
+};
 
 function getAuthContent(mode: AuthMode) {
   const content = {
@@ -96,6 +175,21 @@ function getAuthContent(mode: AuthMode) {
       ],
       actionLabel: "Reset password",
     },
+    verify: {
+      eyebrow: "Email verification",
+      title: "Verify your email",
+      description:
+        "The system is checking your secure verification link before allowing account access.",
+      brandTitle: "Confirm mailbox access",
+      brandDescription:
+        "Email verification protects assessment records and confirms that each account belongs to a real mailbox owner.",
+      highlights: [
+        "Single-use verification token",
+        "30-minute secure link",
+        "Sign in after verification",
+      ],
+      actionLabel: "Verify email",
+    },
   };
 
   return content[mode];
@@ -124,6 +218,30 @@ function GoogleIcon() {
   );
 }
 
+function PasswordStrengthPanel({ password }: { password: string }) {
+  const policy = getPasswordPolicy(password);
+  const tone = policy.strength.toLowerCase();
+
+  return (
+    <div className={`password-strength password-strength--${tone}`} aria-live="polite">
+      <div className="password-strength__header">
+        <span>Password strength</span>
+        <strong>{policy.strength}</strong>
+      </div>
+      <div className="password-strength__bar" aria-hidden="true">
+        <span />
+      </div>
+      <ul>
+        {policy.requirements.map((requirement) => (
+          <li key={requirement.key} className={requirement.passed ? "is-met" : ""}>
+            <CheckCircle2 size={14} />
+            {requirement.label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 type GoogleCredentialResponse = {
   credential?: string;
 };
@@ -144,6 +262,7 @@ type GoogleIdentityApi = {
           text: 'signin_with' | 'signup_with' | 'continue_with';
           shape: 'rectangular' | 'pill' | 'circle' | 'square';
           width?: number;
+          locale?: string;
         },
       ) => void;
       cancel: () => void;
@@ -209,15 +328,18 @@ export function AuthPages() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [resetToken, setResetToken] = useState(initialAuthState.resetToken);
+  const [verificationToken] = useState(initialAuthState.verificationToken);
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [activePolicy, setActivePolicy] = useState<PolicyType | null>(null);
   const [isHomeMenuOpen, setIsHomeMenuOpen] = useState(false);
   const authContent = getAuthContent(mode);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const emailVerificationStartedRef = useRef(false);
   const handleGoogleCredential = useCallback(
     async (response: GoogleCredentialResponse) => {
       setError('');
@@ -252,6 +374,30 @@ export function AuthPages() {
   useEffect(() => {
     latestGoogleCredentialHandler = handleGoogleCredential;
   }, [handleGoogleCredential]);
+  useEffect(() => {
+    if (mode !== "verify" || !verificationToken || emailVerificationStartedRef.current) return;
+
+    emailVerificationStartedRef.current = true;
+    setIsSubmitting(true);
+    setError("");
+    setMessage("");
+
+    api
+      .verifyEmail(verificationToken)
+      .then((result) => {
+        setMessage(result.message || "Email verified successfully. You can now sign in.");
+        setMode("login");
+        window.history.replaceState({}, document.title, "/");
+      })
+      .catch((caughtError) => {
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Email verification failed. Request a new verification email.",
+        );
+      })
+      .finally(() => setIsSubmitting(false));
+  }, [mode, verificationToken]);
 
   const [googleInitialized, setGoogleInitialized] = useState(googleIdentityInitialized);
 
@@ -290,9 +436,10 @@ export function AuthPages() {
       theme: 'outline',
       size: 'large',
       type: 'standard',
-      text: mode === 'register' ? 'signup_with' : 'signin_with',
+      text: 'continue_with',
       shape: 'rectangular',
       width: Math.max(buttonHost.clientWidth, 260),
+      locale: 'en',
     });
 
     return () => {
@@ -337,9 +484,14 @@ export function AuthPages() {
       return;
     }
 
+    if (mode === "register" && !getPasswordPolicy(password).isValid) {
+      setError(passwordPolicyMessage("Password"));
+      return;
+    }
+
     if (mode === "reset") {
-      if (newPassword.length < 6) {
-        setError("New password must be at least 6 characters.");
+      if (!getPasswordPolicy(newPassword).isValid) {
+        setError(passwordPolicyMessage("New password"));
         return;
       }
 
@@ -355,8 +507,11 @@ export function AuthPages() {
       if (mode === "login") {
         await login(email, password);
       } else if (mode === "register") {
-        await register({ name, email, password });
+        const result = await register({ name, email, password });
         setTermsAccepted(false);
+        setPassword("");
+        setMessage(result.message || "Account created. Please verify your email address before signing in.");
+        setMode("login");
       } else if (mode === "forgot") {
         const result = await api.forgotPassword(email);
         setMessage(
@@ -364,7 +519,7 @@ export function AuthPages() {
             ? `${result.message} Reset link for local testing: ${result.resetLink}`
             : result.message,
         );
-      } else {
+      } else if (mode === "reset") {
         await api.resetPassword(resetToken, newPassword);
         setMessage(
           "Password reset successfully. Sign in with your new password.",
@@ -390,6 +545,7 @@ export function AuthPages() {
     }
   }
 
+  
   return (
     <main className="auth-page">
       <header className="home-header">
@@ -566,6 +722,7 @@ export function AuthPages() {
                     {mode === "register" && <GraduationCap size={20} />}
                     {mode === "forgot" && <BellRing size={20} />}
                     {mode === "reset" && <ShieldCheck size={20} />}
+                    {mode === "verify" && <ShieldCheck size={20} />}
                   </div>
                   <div>
                     <strong>{authContent.actionLabel}</strong>
@@ -576,7 +733,9 @@ export function AuthPages() {
                           ? "After signup, complete your profile before taking an assessment."
                           : mode === "forgot"
                             ? "Check your inbox for the reset link after submitting."
-                            : "Choose a strong password, then sign in again."}
+                            : mode === "reset"
+                              ? "Choose a strong password, then sign in again."
+                              : "Your email verification link is being checked."}
                     </span>
                   </div>
                 </div>
@@ -597,7 +756,7 @@ export function AuthPages() {
                     </Alert>
                   </>
                 )}
-                {mode !== "reset" && (
+                {mode !== "reset" && mode !== "verify" && (
                   <TextField
                     autoComplete="email"
                     label="Email"
@@ -608,6 +767,7 @@ export function AuthPages() {
                     required
                   />
                 )}
+
                 {mode === "reset" && (
                   <TextField
                     autoComplete="one-time-code"
@@ -617,12 +777,27 @@ export function AuthPages() {
                     required
                   />
                 )}
-                {mode !== "forgot" && (
+                {mode !== "forgot" && mode !== "verify" && (
                   <TextField
                     autoComplete={
                       mode === "reset" ? "new-password" : "current-password"
                     }
                     label={mode === "reset" ? "New password" : "Password"}
+                    labelAction={
+                      mode === "login" ? (
+                        <button
+                          className="auth-inline-link"
+                          type="button"
+                          onClick={() => {
+                            setError("");
+                            setMessage("");
+                            setMode("forgot");
+                          }}
+                        >
+                          Forgot password?
+                        </button>
+                      ) : undefined
+                    }
                     placeholder={
                       mode === "reset"
                         ? "Create a new password"
@@ -637,6 +812,9 @@ export function AuthPages() {
                     }
                     required
                   />
+                )}
+                {(mode === "register" || mode === "reset") && (
+                  <PasswordStrengthPanel password={mode === "reset" ? newPassword : password} />
                 )}
                 {mode === "reset" && (
                   <TextField
@@ -661,13 +839,13 @@ export function AuthPages() {
                     />
                     <span>
                       I agree to the{" "}
-                      <button type="button">Terms & Conditions</button> and{" "}
-                      <button type="button">Privacy Policy</button>.
+                      <button type="button" onClick={() => setActivePolicy("terms")}>Terms & Conditions</button> and{" "}
+                      <button type="button" onClick={() => setActivePolicy("privacy")}>Privacy Policy</button>.
                     </span>
                   </label>
                 )}
                 <Button
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || mode === "verify"}
                   icon={
                     mode === "login" ? (
                       <LockKeyhole size={18} />
@@ -685,7 +863,9 @@ export function AuthPages() {
                         ? "Create account"
                         : mode === "forgot"
                           ? "Send reset link"
-                          : "Reset password"}
+                          : mode === "reset"
+                          ? "Reset password"
+                          : "Verifying email..."}
                 </Button>
                 {(mode === "login" || mode === "register") && (
                   <>
@@ -718,19 +898,7 @@ export function AuthPages() {
                     </div>
                   </>
                 )}
-                {mode === "login" && (
-                  <button
-                    className="text-link-button"
-                    type="button"
-                    onClick={() => {
-                      setError("");
-                      setMessage("");
-                      setMode("forgot");
-                    }}
-                  >
-                    Forgot password?
-                  </button>
-                )}
+
                 <p className="auth-switch">
                   {mode === "login"
                     ? "No account yet?"
@@ -752,6 +920,49 @@ export function AuthPages() {
             </section>
           </div>
         </section>
+      )}
+      {activePolicy && (
+        <div
+          className="policy-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="policy-modal-title"
+          onClick={() => setActivePolicy(null)}
+        >
+          <section
+            className="policy-modal__panel"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="policy-modal__header">
+              <div>
+                <span className="eyebrow">Competra policy</span>
+                <h2 id="policy-modal-title">{policyContent[activePolicy].title}</h2>
+              </div>
+              <button
+                aria-label="Close policy window"
+                className="policy-modal__close"
+                type="button"
+                onClick={() => setActivePolicy(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p className="policy-modal__intro">{policyContent[activePolicy].intro}</p>
+            <div className="policy-modal__body">
+              {policyContent[activePolicy].sections.map((section) => (
+                <article key={section.heading}>
+                  <h3>{section.heading}</h3>
+                  <p>{section.body}</p>
+                </article>
+              ))}
+            </div>
+            <div className="policy-modal__footer">
+              <button type="button" onClick={() => setActivePolicy(null)}>
+                I understand
+              </button>
+            </div>
+          </section>
+        </div>
       )}
 
       <section
@@ -813,9 +1024,9 @@ export function AuthPages() {
             <h2>From assessment to evidence-based action</h2>
             <p>
               The system follows an evidence-based workflow from competency
-              selection to GitHub repository review, theory scoring, skill gap
-              calculation, Gemini recommendations, notifications, and
-              generated reports.
+              selection to sandbox GitHub repository testing, theory scoring,
+              final score calculation, RTB benchmark comparison, Gemini
+              recommendations, notifications, and generated reports.
             </p>
           </div>
           <div className="workflow-checklist" aria-label="Workflow steps">
@@ -836,14 +1047,14 @@ export function AuthPages() {
               <span>
                 <BadgeCheck size={16} />
               </span>
-              System reviews the GitHub repository and scores theory evidence
+              System securely tests the GitHub repository in an isolated sandbox and scores theory answers
             </div>
             <div>
               <span>
                 <Sparkles size={16} />
               </span>
-              System calculates skill gap, classifies gap level, and generates
-              recommendations
+              System calculates the final score, compares it with the RTB
+              benchmark, classifies the gap, and generates Gemini recommendations
             </div>
             <div>
               <span>
@@ -972,3 +1183,4 @@ function BadgeLine() {
     </span>
   );
 }
+

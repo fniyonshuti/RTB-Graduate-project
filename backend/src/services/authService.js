@@ -1,13 +1,15 @@
 import User from '../models/User.js';
-import { PASSWORD_HASHING } from '../constants/password.js';
+import { PASSWORD_HASHING, checkPasswordPolicy, passwordPolicyMessage } from '../constants/password.js';
 import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import { OAuth2Client } from 'google-auth-library';
 import { AppError } from './errorService.js';
 import { ROLES } from '../constants/roles.js';
 import {
+  buildEmailVerificationUrl,
   buildPasswordResetUrl,
   exposePasswordResetLinkInResponse,
+  sendEmailVerificationEmail,
   sendPasswordResetEmail,
 } from './emailService.js';
 
@@ -70,14 +72,43 @@ export function verifyJwt(token) {
   return payload;
 }
 
-function hashResetToken(token) {
-  return crypto.createHash('sha256').update(token).digest('hex');
+export function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
 }
 
-function assertStrongPassword(password) {
-  if (!password || password.length < 6) {
-    throw new AppError('Password must be at least 6 characters', 400);
+export function assertStrongPassword(password, label = 'Password') {
+  const result = checkPasswordPolicy(password);
+  if (!result.isValid) {
+    throw new AppError(passwordPolicyMessage(label), 400, { requirements: result.requirements });
   }
+}
+
+export function createRawToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+export function verificationTokenExpiresAt(now = new Date()) {
+  const expiresInMinutes = Number(process.env.EMAIL_VERIFICATION_TOKEN_EXPIRES_MINUTES) || 30;
+  return new Date(now.getTime() + expiresInMinutes * 60 * 1000);
+}
+
+export function assertVerificationResendAllowed(user, now = new Date()) {
+  const cooldownSeconds = Number(process.env.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS) || 60;
+  if (!user?.emailVerificationLastSentAt) return;
+
+  const elapsedSeconds = (now.getTime() - new Date(user.emailVerificationLastSentAt).getTime()) / 1000;
+  if (elapsedSeconds < cooldownSeconds) {
+    throw new AppError(`Please wait ${Math.ceil(cooldownSeconds - elapsedSeconds)} seconds before requesting another verification email.`, 429);
+  }
+}
+
+export function validateStoredEmailVerificationToken(user, rawToken, now = new Date()) {
+  if (!user || user.isEmailVerified) throw new AppError('Email verification link is invalid or expired', 400);
+  if (user.emailVerificationUsedAt) throw new AppError('Email verification link has already been used', 400);
+  if (!user.emailVerificationTokenHash || !user.emailVerificationExpiresAt) throw new AppError('Email verification link is invalid or expired', 400);
+  if (new Date(user.emailVerificationExpiresAt) <= now) throw new AppError('Email verification link is invalid or expired', 400);
+  if (user.emailVerificationTokenHash !== hashToken(rawToken)) throw new AppError('Email verification link is invalid or expired', 400);
+  return true;
 }
 
 export function sanitizeUser(user) {
@@ -103,6 +134,7 @@ export function sanitizeUser(user) {
     isActive: user.isActive,
     mustChangePassword: user.mustChangePassword,
     authProvider: user.authProvider,
+    isEmailVerified: user.isEmailVerified !== false,
   };
 }
 
@@ -118,8 +150,9 @@ export async function getActiveUserById(userId) {
 
 export async function registerUser(payload) {
   const { name, email, password } = payload;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
 
-  if (!name || !email || !password) {
+  if (!name || !normalizedEmail || !password) {
     throw new AppError(
       'Name, email, and password are required for registration',
       400,
@@ -128,28 +161,48 @@ export async function registerUser(payload) {
 
   assertStrongPassword(password);
 
-  const existingUser = await User.findOne({ email });
+  const existingUser = await User.findOne({ email: normalizedEmail });
 
   if (existingUser) {
-    throw new AppError('Email is already registered', 409);
+    throw new AppError('Registration could not be completed with the provided details', 409);
   }
 
   const { passwordHash, passwordSalt } = hashPassword(password);
+  const verificationToken = createRawToken();
+  const verificationExpiresInMinutes = Number(process.env.EMAIL_VERIFICATION_TOKEN_EXPIRES_MINUTES) || 30;
 
   const user = await User.create({
     name,
-    email,
+    email: normalizedEmail,
     passwordHash,
     passwordSalt,
     role: ROLES.NORMAL_USER,
     institution: payload.institution,
+    isEmailVerified: false,
+    emailVerificationTokenHash: hashToken(verificationToken),
+    emailVerificationExpiresAt: verificationTokenExpiresAt(),
+    emailVerificationLastSentAt: new Date(),
   });
 
-  const token = signJwt({ sub: user._id.toString(), role: user.role });
+  const verificationLink = buildEmailVerificationUrl(verificationToken);
+
+  try {
+    await sendEmailVerificationEmail({
+      to: user.email,
+      name: user.name,
+      verificationLink,
+      expiresInMinutes: verificationExpiresInMinutes,
+    });
+  } catch (error) {
+    await User.findByIdAndDelete(user._id);
+    throw error;
+  }
 
   return {
     user: sanitizeUser(user),
-    token,
+    verificationRequired: true,
+    emailSent: true,
+    message: 'Account created. Please verify your email address before signing in.',
   };
 }
 
@@ -170,6 +223,10 @@ export async function loginUser(email, password) {
 
   if (!isPasswordValid) {
     throw new AppError('Invalid email or password', 401);
+  }
+
+    if (user.authProvider !== 'google' && user.isEmailVerified === false) {
+    throw new AppError('Please verify your email address before continuing.', 403);
   }
 
   if (
@@ -312,6 +369,8 @@ export async function loginWithGoogle(credential) {
         role: ROLES.NORMAL_USER,
         googleId: googleProfile.googleId,
         authProvider: 'google',
+        isEmailVerified: true,
+        emailVerifiedAt: new Date(),
         lastLoginAt: new Date(),
       });
     } else {
@@ -324,6 +383,8 @@ export async function loginWithGoogle(credential) {
 
       user.googleId = googleProfile.googleId;
       user.authProvider = 'google';
+      user.isEmailVerified = true;
+      user.emailVerifiedAt = user.emailVerifiedAt || new Date();
       user.lastLoginAt = new Date();
       await user.save();
     }
@@ -378,7 +439,7 @@ export async function requestPasswordReset(email) {
     Number(process.env.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES) || 15;
   const frontendUrl = process.env.FRONTEND_URL || '';
   const shouldExposeResetLink = exposePasswordResetLinkInResponse();
-  user.passwordResetTokenHash = hashResetToken(resetToken);
+  user.passwordResetTokenHash = hashToken(resetToken);
 
   if (!frontendUrl) {
     throw new AppError('FRONTEND_URL is required to generate password reset links', 500);
@@ -431,6 +492,61 @@ export async function requestPasswordReset(email) {
 
   };
 }
+export async function verifyEmailAddress(rawToken) {
+  const normalizedToken = String(rawToken || '').trim();
+  if (!normalizedToken) throw new AppError('Email verification token is required', 400);
+
+  const user = await User.findOne({
+    emailVerificationTokenHash: hashToken(normalizedToken),
+    isActive: true,
+  }).select('+emailVerificationTokenHash +emailVerificationExpiresAt +emailVerificationUsedAt');
+
+  validateStoredEmailVerificationToken(user, normalizedToken);
+
+  user.isEmailVerified = true;
+  user.emailVerifiedAt = new Date();
+  user.emailVerificationUsedAt = new Date();
+  user.emailVerificationTokenHash = undefined;
+  user.emailVerificationExpiresAt = undefined;
+  await user.save();
+
+  return {
+    user: sanitizeUser(user),
+    message: 'Email verified successfully. You can now sign in.',
+  };
+}
+
+export async function resendVerificationEmail(email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const safeResponse = {
+    message: 'If an account exists and needs verification, a verification email has been sent.',
+  };
+
+  const user = await User.findOne({ email: normalizedEmail, isActive: true })
+    .select('+emailVerificationTokenHash +emailVerificationExpiresAt +emailVerificationUsedAt +emailVerificationLastSentAt');
+
+  if (!user || user.isEmailVerified) return safeResponse;
+
+  assertVerificationResendAllowed(user);
+
+  const verificationToken = createRawToken();
+  const verificationExpiresInMinutes = Number(process.env.EMAIL_VERIFICATION_TOKEN_EXPIRES_MINUTES) || 30;
+  user.emailVerificationTokenHash = hashToken(verificationToken);
+  user.emailVerificationExpiresAt = verificationTokenExpiresAt();
+  user.emailVerificationUsedAt = undefined;
+  user.emailVerificationLastSentAt = new Date();
+  await user.save();
+
+  const verificationLink = buildEmailVerificationUrl(verificationToken);
+  await sendEmailVerificationEmail({
+    to: user.email,
+    name: user.name,
+    verificationLink,
+    expiresInMinutes: verificationExpiresInMinutes,
+  });
+
+  return { ...safeResponse, emailSent: true };
+}
 export async function resetPassword(resetToken, newPassword) {
   const normalizedToken = String(resetToken || '').trim();
 
@@ -441,7 +557,7 @@ export async function resetPassword(resetToken, newPassword) {
   assertStrongPassword(newPassword);
 
   const user = await User.findOne({
-    passwordResetTokenHash: hashResetToken(normalizedToken),
+    passwordResetTokenHash: hashToken(normalizedToken),
     passwordResetExpiresAt: { $gt: new Date() },
     $or: [
       { passwordResetUsedAt: { $exists: false } },
@@ -478,6 +594,8 @@ const authService = {
   loginWithGoogle,
   changePassword,
   requestPasswordReset,
+  verifyEmailAddress,
+  resendVerificationEmail,
   resetPassword,
 };
 

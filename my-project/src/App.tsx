@@ -4,6 +4,7 @@ import { AppLayout, canAccessView, type ViewKey } from './components/layout'
 import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './context/useAuth'
 import { AuthPages } from './pages/AuthPages'
+import { getPasswordPolicy, passwordPolicyMessage } from './utils/passwordPolicy'
 import { isLearnerRole } from './utils/roles'
 import './index.css'
 import {
@@ -145,11 +146,17 @@ function ForcePasswordChangePage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const passwordPolicy = getPasswordPolicy(newPassword)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
     setMessage('')
+
+    if (!passwordPolicy.isValid) {
+      setError(passwordPolicyMessage('New password'))
+      return
+    }
 
     if (newPassword !== confirmPassword) {
       setError('New password and confirmation do not match.')
@@ -191,6 +198,22 @@ function ForcePasswordChangePage() {
             onChange={(event) => setNewPassword(event.target.value)}
             required
           />
+          <div className={`password-strength password-strength--${passwordPolicy.strength.toLowerCase()}`} aria-live="polite">
+            <div className="password-strength__header">
+              <span>Password strength</span>
+              <strong>{passwordPolicy.strength}</strong>
+            </div>
+            <div className="password-strength__bar" aria-hidden="true">
+              <span />
+            </div>
+            <ul>
+              {passwordPolicy.requirements.map((requirement) => (
+                <li key={requirement.key} className={requirement.passed ? 'is-met' : ''}>
+                  {requirement.label}
+                </li>
+              ))}
+            </ul>
+          </div>
           <TextField
             label="Confirm new password"
             type="password"

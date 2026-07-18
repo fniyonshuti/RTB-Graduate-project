@@ -50,6 +50,16 @@ class AuthController {
     sendSuccess(res, result.message, result);
   });
 
+
+  verifyEmail = asyncHandler(async (req, res) => {
+    const result = await authService.verifyEmailAddress(req.body.token);
+    sendSuccess(res, result.message, result);
+  });
+
+  resendVerificationEmail = asyncHandler(async (req, res) => {
+    const result = await authService.resendVerificationEmail(req.body.email);
+    sendSuccess(res, result.message, result);
+  });
   resetPasswordWithToken = asyncHandler(async (req, res) => {
     const user = await authService.resetPassword(req.body.token, req.body.newPassword);
     sendSuccess(res, 'Password reset successfully', user);
@@ -64,5 +74,7 @@ export const googleLogin = authController.googleLogin;
 export const getMe = authController.getMe;
 export const changeMyPassword = authController.changeMyPassword;
 export const forgotPassword = authController.forgotPassword;
+export const verifyEmail = authController.verifyEmail;
+export const resendVerificationEmail = authController.resendVerificationEmail;
 export const resetPasswordWithToken = authController.resetPasswordWithToken;
 export default authController;

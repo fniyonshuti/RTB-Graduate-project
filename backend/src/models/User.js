@@ -51,6 +51,29 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerifiedAt: {
+      type: Date,
+    },
+    emailVerificationTokenHash: {
+      type: String,
+      select: false,
+    },
+    emailVerificationExpiresAt: {
+      type: Date,
+      select: false,
+    },
+    emailVerificationUsedAt: {
+      type: Date,
+      select: false,
+    },
+    emailVerificationLastSentAt: {
+      type: Date,
+      select: false,
+    },
     lastLoginAt: {
       type: Date,
     },
@@ -84,5 +107,6 @@ userSchema.index({ role: 1, isActive: 1 });
 userSchema.index({ googleId: 1 }, { sparse: true });
 userSchema.index({ organization: 1, role: 1, isActive: 1 });
 userSchema.index({ passwordResetTokenHash: 1 });
+userSchema.index({ emailVerificationTokenHash: 1 });
 
 export default mongoose.model('User', userSchema);

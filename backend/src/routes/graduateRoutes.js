@@ -9,6 +9,7 @@ import {
 } from '../controllers/graduateController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/roleMiddleware.js';
+import { validateGraduateProfile } from '../middleware/validateMiddleware.js';
 
 const router = express.Router();
 
@@ -17,7 +18,7 @@ router.use(protect);
 router
   .route('/me')
   .get(authorize('learner'), getMyProfile)
-  .put(authorize('learner'), upsertMyProfile)
+  .put(authorize('learner'), validateGraduateProfile, upsertMyProfile)
   .delete(authorize('learner'), deleteMyProfile);
 
 router.get('/', authorize('org_admin', 'admin'), listGraduateProfiles);

@@ -13,7 +13,12 @@ import {
 } from "../controllers/assessmentController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { authorize } from "../middleware/roleMiddleware.js";
-import { requireFields } from "../middleware/validateMiddleware.js";
+import {
+  requireFields,
+  validateAssessmentReview,
+  validateAssessmentSubmission,
+  validateRepositoryTaskReview,
+} from "../middleware/validateMiddleware.js";
 
 const router = express.Router();
 
@@ -26,18 +31,19 @@ router.post(
   "/repository-task-review",
   authorize("learner"),
   requireFields("competency", "githubRepositoryUrl"),
+  validateRepositoryTaskReview,
   reviewRepositoryTask,
 );
 
 router
   .route("/")
   .get(getAssessments)
-  .post(authorize("learner"), requireFields("competency"), createAssessment);
+  .post(authorize("learner"), requireFields("competency"), validateAssessmentSubmission, createAssessment);
 
 router
   .route("/:id")
   .get(getAssessment)
-  .put(authorize("learner", "admin", "org_admin"), updateAssessment)
+  .put(authorize("learner", "admin", "org_admin"), validateAssessmentSubmission, updateAssessment)
   .delete(authorize("learner", "admin", "org_admin"), deleteAssessment);
 router.put(
   "/:id/review",
@@ -46,6 +52,7 @@ router.put(
     "practicalTaskScore",
     "quizScore",
   ),
+  validateAssessmentReview,
   review,
 );
 
@@ -56,8 +63,8 @@ router.post(
     "practicalTaskScore",
     "quizScore",
   ),
+  validateAssessmentReview,
   previewReviewRecommendation,
 );
 
 export default router;
-

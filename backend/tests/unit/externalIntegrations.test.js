@@ -98,6 +98,9 @@ test('Gemini integration builds the recommendation request and parses JSON respo
     assert.match(body.contents[0].parts[0].text, /Web Application Development/);
     assert.match(body.contents[0].parts[0].text, /Hidden expected-output test failed/);
     assert.match(body.contents[0].parts[0].text, /url field is required/);
+    assert.match(body.contents[0].parts[0].text, /measured strength/);
+    assert.match(body.contents[0].parts[0].text, /practical skill evidence is weak/);
+    assert.match(body.contents[0].parts[0].text, /without learning resources/);
 
     assert.equal(result.provider, 'gemini');
     assert.equal(result.model, 'gemini-2.5-flash');
