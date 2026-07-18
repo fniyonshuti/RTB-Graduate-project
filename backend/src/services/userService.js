@@ -2,7 +2,7 @@ import User from "../models/User.js";
 import Organization from "../models/Organization.js";
 import { sanitizeUser } from "./authService.js";
 import { AppError } from "./errorService.js";
-import { hashPassword } from "./authService.js";
+import { assertStrongPassword, hashPassword } from "./authService.js";
 import dotenv from "dotenv";
 import {
   ROLES,
@@ -145,10 +145,7 @@ export async function createManagedUser(payload, actor) {
   if (!name || !email) {
     throw new AppError("Name and email are required", 400);
   }
-
-  if (!password || password.length < 6) {
-    throw new AppError("Password must be at least 6 characters", 400);
-  }
+  assertStrongPassword(password);
 
   const existing = await User.findOne({ email });
 
@@ -181,6 +178,8 @@ export async function createManagedUser(payload, actor) {
     institution: organization?.name || institution,
     mustChangePassword: true,
     temporaryPasswordExpiresAt,
+    isEmailVerified: true,
+    emailVerifiedAt: new Date(),
   });
 
   await user.populate("organization", MANAGED_USER_POPULATE);

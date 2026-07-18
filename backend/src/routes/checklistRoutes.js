@@ -8,7 +8,7 @@ import {
 } from "../controllers/checklistController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { authorize } from "../middleware/roleMiddleware.js";
-import { requireFields } from "../middleware/validateMiddleware.js";
+import { requireFields, validateChecklist } from "../middleware/validateMiddleware.js";
 
 const router = express.Router();
 
@@ -18,12 +18,12 @@ router.use(authorize("admin", "super_admin"));
 router
   .route("/")
   .get(listChecklists)
-  .post(requireFields("competency", "practicalTaskId", "items"), createChecklist);
+  .post(requireFields("competency", "practicalTaskId", "items"), validateChecklist, createChecklist);
 
 router
   .route("/:id")
   .get(getChecklist)
-  .put(updateChecklist)
+  .put(validateChecklist, updateChecklist)
   .delete(deleteChecklist);
 
 export default router;

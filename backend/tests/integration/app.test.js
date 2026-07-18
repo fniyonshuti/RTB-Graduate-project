@@ -194,6 +194,22 @@ describe("Express app integration", () => {
     }
   });
 
+
+  it("rejects invalid auth email input before service logic", async () => {
+    const { response, body } = await request("/api/auth/forgot-password", {
+      method: "POST",
+      headers: {
+        Origin: testFrontendOrigin,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: "not-an-email" }),
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(body.success, false);
+    assert.equal(body.message, "Email must be a valid email address");
+  });
+
   it("registers the repository checklist route", async () => {
     const { response, body } = await request("/api/checklists?activeOnly=false", {
       headers: {

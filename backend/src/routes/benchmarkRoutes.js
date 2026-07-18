@@ -8,7 +8,7 @@ import {
 } from '../controllers/benchmarkController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/roleMiddleware.js';
-import { requireFields } from '../middleware/validateMiddleware.js';
+import { requireFields, validateBenchmark } from '../middleware/validateMiddleware.js';
 
 const router = express.Router();
 
@@ -20,13 +20,14 @@ router
   .post(
     authorize('admin'),
     requireFields('competency', 'requiredScore'),
+    validateBenchmark,
     createBenchmark
   );
 
 router
   .route('/:id')
   .get(getBenchmark)
-  .put(authorize('admin'), updateBenchmark)
+  .put(authorize('admin'), validateBenchmark, updateBenchmark)
   .delete(authorize('admin'), deleteBenchmark);
 
 export default router;

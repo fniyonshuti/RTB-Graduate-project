@@ -90,8 +90,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: string
       institution?: string
     }) => {
-      const authPayload = await api.register(payload)
-      persistAuth(authPayload)
+      const registrationResult = await api.register(payload)
+      if (registrationResult.token) {
+        persistAuth({ user: registrationResult.user, token: registrationResult.token })
+      }
+      return registrationResult
     },
     [persistAuth],
   )

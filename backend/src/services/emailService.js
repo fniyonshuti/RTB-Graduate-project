@@ -61,6 +61,10 @@ export function buildPasswordResetUrl(rawToken) {
   return buildFrontendUrl(`/reset-password?token=${encodeURIComponent(rawToken)}`);
 }
 
+export function buildEmailVerificationUrl(rawToken) {
+  return buildFrontendUrl(/verify-email?token=);
+}
+
 export function buildAssessmentResultUrl(assessmentId) {
   return buildFrontendUrl(`/results/${encodeURIComponent(String(assessmentId))}`);
 }
@@ -131,6 +135,39 @@ export function buildPasswordResetEmail({ name, resetLink, expiresInMinutes }) {
   return { subject, text, html };
 }
 
+export function buildEmailVerificationEmail({ name, verificationLink, expiresInMinutes }) {
+  const safeName = escapeHtml(name || 'User');
+  const safeVerificationLink = escapeHtml(verificationLink);
+  const safeAppName = escapeHtml(appName());
+  const subject = `Verify your ${appName()} email address`;
+  const text = [
+    `Hello ${name || 'User'},`,
+    '',
+    `Welcome to ${appName()}. Verify your email address by opening the link below.`,
+    verificationLink,
+    '',
+    `This secure link expires in ${expiresInMinutes} minutes and can only be used once.`,
+    'If you did not create this account, you can safely ignore this email.',
+    '',
+    `Regards,`,
+    `The ${appName()} Team`,
+  ].join('\n');
+
+  const html = buildEmailShell({
+    title: `Verify your ${appName()} email`,
+    bodyHtml: `
+      <p style="margin:0 0 16px;">Hello ${safeName},</p>
+      <p style="margin:0 0 20px;">Welcome to ${safeAppName}. Select the button below to verify your email address before signing in.</p>
+      <p style="margin:0 0 22px;"><a href="${safeVerificationLink}" style="display:inline-block;background:#0077B6;color:#ffffff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:700;">Verify email</a></p>
+      <p style="margin:0 0 8px;color:#475569;font-size:14px;">If the button does not work, copy and paste this link into your browser:</p>
+      <p style="margin:0 0 20px;word-break:break-all;font-size:14px;"><a href="${safeVerificationLink}" style="color:#0077B6;">${safeVerificationLink}</a></p>
+      <p style="margin:0 0 12px;color:#64748b;font-size:14px;">This secure link expires in ${expiresInMinutes} minutes and can only be used once.</p>
+      <p style="margin:0;color:#64748b;font-size:14px;">If you did not create this account, you can safely ignore this email.</p>
+    `,
+  });
+
+  return { subject, text, html };
+}
 function formatPercent(value, fallback = 'Not available') {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? `${Math.round(numberValue * 100) / 100}%` : fallback;
@@ -335,6 +372,17 @@ async function sendEmail({ to, toName, subject, text, html, tag, resetLink }) {
   };
 }
 
+export async function sendEmailVerificationEmail({ to, name, verificationLink, expiresInMinutes }) {
+  const message = buildEmailVerificationEmail({ name, verificationLink, expiresInMinutes });
+  return sendEmail({
+    to,
+    toName: name,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+    tag: 'email-verification',
+  });
+}
 export async function sendPasswordResetEmail({ to, name, resetLink, expiresInMinutes }) {
   const message = buildPasswordResetEmail({ name, resetLink, expiresInMinutes });
   return sendEmail({
@@ -363,12 +411,15 @@ export async function sendAssessmentResultEmail(payload) {
 const emailService = {
   buildAssessmentResultEmail,
   buildAssessmentResultUrl,
+  buildEmailVerificationEmail,
+  buildEmailVerificationUrl,
   buildFrontendUrl,
   buildPasswordResetEmail,
   buildPasswordResetUrl,
   escapeHtml,
   exposePasswordResetLinkInResponse,
   sendAssessmentResultEmail,
+  sendEmailVerificationEmail,
   sendPasswordResetEmail,
 };
 

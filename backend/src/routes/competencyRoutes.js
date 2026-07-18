@@ -8,7 +8,7 @@ import {
 } from '../controllers/competencyController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/roleMiddleware.js';
-import { requireFields } from '../middleware/validateMiddleware.js';
+import { requireFields, validateCompetency } from '../middleware/validateMiddleware.js';
 
 const router = express.Router();
 
@@ -20,13 +20,14 @@ router
   .post(
     authorize('admin'),
     requireFields('title', 'code', 'category'),
+    validateCompetency,
     createCompetency
   );
 
 router
   .route('/:id')
   .get(getCompetency)
-  .put(authorize('admin'), updateCompetency)
+  .put(authorize('admin'), validateCompetency, updateCompetency)
   .delete(authorize('admin'), deleteCompetency);
 
 export default router;
