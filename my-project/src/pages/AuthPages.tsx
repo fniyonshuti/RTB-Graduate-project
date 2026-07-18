@@ -433,7 +433,7 @@ export function AuthPages() {
     buttonHost.innerHTML = '';
 
     window.google?.accounts?.id.renderButton(buttonHost, {
-      theme: 'filled_black',
+      theme: 'outline',
       size: 'large',
       type: 'standard',
       text: 'continue_with',
@@ -546,30 +546,6 @@ export function AuthPages() {
   }
 
   
-  async function handleResendVerification() {
-    setError("");
-    setMessage("");
-
-    if (!email.trim()) {
-      setError("Enter your email address first, then request a new verification link.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const result = await api.resendVerificationEmail(email);
-      setMessage(result.message || "If your account needs verification, a new email has been sent.");
-    } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Verification email could not be sent right now.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
   return (
     <main className="auth-page">
       <header className="home-header">
@@ -922,18 +898,7 @@ export function AuthPages() {
                     </div>
                   </>
                 )}
-                {mode === "login" && (
-                  <>
 
-                    <button
-                      className="text-link-button"
-                      type="button"
-                      onClick={handleResendVerification}
-                    >
-                      Resend verification email
-                    </button>
-                  </>
-                )}
                 <p className="auth-switch">
                   {mode === "login"
                     ? "No account yet?"

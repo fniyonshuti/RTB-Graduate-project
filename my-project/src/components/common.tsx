@@ -158,10 +158,8 @@ export function TextArea({
 }: { label: string } & React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <label className="grid gap-2.5">
-      <span className="flex items-center justify-between gap-3 text-sm font-black text-slate-700">
-        <span>{label}</span>
-        {labelAction}
-      </span>
+      <span className="text-sm font-black text-slate-700">{label}</span>
+
       <textarea
         className="min-h-32 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-[#0077B6] focus:ring-4 focus:ring-[#0077B6]/15"
         {...props}
@@ -180,10 +178,8 @@ export function SelectField({
 } & React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <label className="grid gap-2.5">
-      <span className="flex items-center justify-between gap-3 text-sm font-black text-slate-700">
-        <span>{label}</span>
-        {labelAction}
-      </span>
+      <span className="text-sm font-black text-slate-700">{label}</span>
+
       <select
         className="min-h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-950 shadow-sm outline-none transition hover:border-slate-400 focus:border-[#0077B6] focus:ring-4 focus:ring-[#0077B6]/15"
         {...props}
@@ -514,7 +510,4 @@ export {
   Eye,
   EyeOff,
 };
-
-
-
 
