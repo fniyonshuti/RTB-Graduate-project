@@ -77,6 +77,7 @@ function buildHttpErrorMessage(path: string, response: Response, payload: ApiRes
   }
 
   if (response.status === 403) {
+    if (/verify your email address/i.test(message)) return message.replace(/\.+$/, '')
     return `${message}. Your account may not have permission for this action.${requestId}`
   }
 
