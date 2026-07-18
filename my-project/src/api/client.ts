@@ -577,3 +577,4 @@ export const api = {
   deleteOrganization: (token: string, id: string) =>
     request<Organization>(`/organizations/${id}`, { method: 'DELETE', token }),
 }
+
