@@ -1,15 +1,29 @@
 import GraduateProfile from "../models/GraduateProfile.js";
+import User from "../models/User.js";
 import { AppError } from "./errorService.js";
 import { ROLES } from "../constants/roles.js";
 
-const PROFILE_USER_FIELDS = "name email institution role";
-const PROFILE_ADMIN_USER_FIELDS = "name email institution role isActive organization";
+const PROFILE_USER_FIELDS = "name email institution role organization profilePhotoUrl isEmailVerified termsAccepted privacyPolicyAccepted termsAcceptedAt privacyPolicyAcceptedAt createdAt";
+const PROFILE_ADMIN_USER_FIELDS = "name email institution role profilePhotoUrl isActive organization";
 
-export function getProfileByGraduateId(graduateId) {
-  return GraduateProfile.findOne({ user: graduateId }).populate(
+export async function getProfileByGraduateId(graduateId) {
+  const user = await User.findById(graduateId).populate('organization', 'name district type status');
+
+  if (!user) throw new AppError("User account was not found", 404);
+
+  const existingProfile = await GraduateProfile.findOne({ user: graduateId }).populate(
     "user",
     PROFILE_USER_FIELDS,
   );
+
+  if (existingProfile) return existingProfile;
+
+  return GraduateProfile.create({
+    user: graduateId,
+    registrationNumber: user.name,
+    institution: user.institution || user.organization?.name || '',
+    district: 'Kicukiro',
+  }).then((profile) => profile.populate("user", PROFILE_USER_FIELDS));
 }
 
 export function upsertProfileByGraduateId(graduateId, payload) {

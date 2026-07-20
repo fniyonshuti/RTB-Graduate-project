@@ -177,18 +177,18 @@ function getAuthContent(mode: AuthMode) {
     },
     verify: {
       eyebrow: "Email verification",
-      title: "Verify your email",
+      title: "Enter verification code",
       description:
-        "The system is checking your secure verification link before allowing account access.",
+        "Enter the 6-digit code sent to your email to activate your account and continue automatically.",
       brandTitle: "Confirm mailbox access",
       brandDescription:
         "Email verification protects assessment records and confirms that each account belongs to a real mailbox owner.",
       highlights: [
-        "Single-use verification token",
-        "30-minute secure link",
-        "Sign in after verification",
+        "Single-use verification code",
+        "30-minute secure expiry",
+        "Automatic sign-in after verification",
       ],
-      actionLabel: "Verify email",
+      actionLabel: "Verify and continue",
     },
   };
 
@@ -220,13 +220,14 @@ function GoogleIcon() {
 
 function PasswordStrengthPanel({ password }: { password: string }) {
   const policy = getPasswordPolicy(password);
-  const tone = policy.strength.toLowerCase();
+  const hasPassword = password.trim().length > 0;
+  const tone = hasPassword ? policy.strength.toLowerCase() : "empty";
 
   return (
     <div className={`password-strength password-strength--${tone}`} aria-live="polite">
       <div className="password-strength__header">
         <span>Password strength</span>
-        <strong>{policy.strength}</strong>
+        <strong>{hasPassword ? policy.strength : "Not started"}</strong>
       </div>
       <div className="password-strength__bar" aria-hidden="true">
         <span />
@@ -318,7 +319,7 @@ function loadGoogleIdentityScript(): Promise<void> {
   return googleIdentityScriptPromise;
 }
 export function AuthPages() {
-  const { googleLogin, login, register } = useAuth();
+  const { googleLogin, login, register, verifyEmailCode, verifyEmailToken } = useAuth();
   const [initialAuthState] = useState(getInitialAuthState);
   const [mode, setMode] = useState<AuthMode>(initialAuthState.mode);
   const [showAuthPanel, setShowAuthPanel] = useState(
@@ -329,6 +330,8 @@ export function AuthPages() {
   const [password, setPassword] = useState("");
   const [resetToken, setResetToken] = useState(initialAuthState.resetToken);
   const [verificationToken] = useState(initialAuthState.verificationToken);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [error, setError] = useState("");
@@ -357,7 +360,10 @@ export function AuthPages() {
 
       setIsSubmitting(true);
       try {
-        await googleLogin(response.credential);
+        await googleLogin(response.credential, {
+          termsAccepted: mode === 'register' ? true : undefined,
+          privacyPolicyAccepted: mode === 'register' ? true : undefined,
+        });
       } catch (caughtError) {
         setError(
           caughtError instanceof Error
@@ -382,11 +388,9 @@ export function AuthPages() {
     setError("");
     setMessage("");
 
-    api
-      .verifyEmail(verificationToken)
-      .then((result) => {
-        setMessage(result.message || "Email verified successfully. You can now sign in.");
-        setMode("login");
+    verifyEmailToken(verificationToken)
+      .then(() => {
+        setMessage("Email verified successfully.");
         window.history.replaceState({}, document.title, "/");
       })
       .catch((caughtError) => {
@@ -397,7 +401,7 @@ export function AuthPages() {
         );
       })
       .finally(() => setIsSubmitting(false));
-  }, [mode, verificationToken]);
+  }, [mode, verificationToken, verifyEmailToken]);
 
   const [googleInitialized, setGoogleInitialized] = useState(googleIdentityInitialized);
 
@@ -507,11 +511,20 @@ export function AuthPages() {
       if (mode === "login") {
         await login(email, password);
       } else if (mode === "register") {
-        const result = await register({ name, email, password });
+        const result = await register({
+          name,
+          email,
+          password,
+          termsAccepted: true,
+          privacyPolicyAccepted: true,
+        });
         setTermsAccepted(false);
-        setPassword("");
-        setMessage(result.message || "Account created. Please verify your email address before signing in.");
-        setMode("login");
+        setVerificationCode("");
+        setPendingVerificationEmail(email.trim().toLowerCase());
+        setMessage(result.message || "Account created. Enter the verification code sent to your email.");
+        setMode("verify");
+      } else if (mode === "verify") {
+        await verifyEmailCode(pendingVerificationEmail || email, verificationCode);
       } else if (mode === "forgot") {
         await api.forgotPassword(email);
         setMessage("Password reset link sent. Check your email.");
@@ -726,12 +739,14 @@ export function AuthPages() {
                       {mode === "login"
                         ? "Use the email and password created for your role."
                         : mode === "register"
-                          ? "After signup, complete your profile before taking an assessment."
+                          ? "After signup, verify the code sent to your email."
                           : mode === "forgot"
                             ? "Check your inbox for the reset link after submitting."
                             : mode === "reset"
                               ? "Choose a strong password, then sign in again."
-                              : "Your email verification link is being checked."}
+                              : verificationToken
+                                ? "Your email verification link is being checked."
+                                : "Enter the code from your email to continue."}
                     </span>
                   </div>
                 </div>
@@ -762,6 +777,33 @@ export function AuthPages() {
                     onChange={(event) => setEmail(event.target.value)}
                     required
                   />
+                )}
+
+                {mode === "verify" && !verificationToken && (
+                  <>
+                    <TextField
+                      autoComplete="email"
+                      label="Email"
+                      placeholder="name@example.com"
+                      type="email"
+                      value={pendingVerificationEmail || email}
+                      onChange={(event) => {
+                        setPendingVerificationEmail(event.target.value);
+                        setEmail(event.target.value);
+                      }}
+                      required
+                    />
+                    <TextField
+                      autoComplete="one-time-code"
+                      label="Verification code"
+                      placeholder="Enter 6-digit code"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={verificationCode}
+                      onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                      required
+                    />
+                  </>
                 )}
 
                 {mode === "reset" && (
@@ -841,7 +883,7 @@ export function AuthPages() {
                   </label>
                 )}
                 <Button
-                  disabled={isSubmitting || mode === "verify"}
+                  disabled={isSubmitting || (mode === "verify" && Boolean(verificationToken))}
                   icon={
                     mode === "login" ? (
                       <LockKeyhole size={18} />
@@ -861,7 +903,9 @@ export function AuthPages() {
                           ? "Send reset link"
                           : mode === "reset"
                           ? "Reset password"
-                          : "Verifying email..."}
+                          : verificationToken
+                            ? "Verifying email..."
+                            : "Verify and continue"}
                 </Button>
                 {(mode === "login" || mode === "register") && (
                   <>

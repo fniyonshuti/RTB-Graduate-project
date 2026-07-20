@@ -187,10 +187,13 @@ export const api = {
       body: { email, password },
     }),
 
-  googleLogin: (credential: string) =>
+  googleLogin: (
+    credential: string,
+    options: { termsAccepted?: boolean; privacyPolicyAccepted?: boolean } = {},
+  ) =>
     request<AuthPayload>('/auth/google', {
       method: 'POST',
-      body: { credential },
+      body: { credential, ...options },
     }),
   forgotPassword: (email: string) =>
     request<{
@@ -223,12 +226,20 @@ export const api = {
     email: string
     password: string
     institution?: string
+    termsAccepted?: boolean
+    privacyPolicyAccepted?: boolean
   }) => request<RegisterResponse>('/auth/register', { method: 'POST', body }),
 
   verifyEmail: (token: string) =>
-    request<{ user: User; message: string }>('/auth/verify-email', {
+    request<AuthPayload & { message?: string }>('/auth/verify-email', {
       method: 'POST',
       body: { token },
+    }),
+
+  verifyEmailCode: (email: string, code: string) =>
+    request<AuthPayload & { message?: string }>('/auth/verify-email', {
+      method: 'POST',
+      body: { email, code },
     }),
 
   resendVerificationEmail: (email: string) =>

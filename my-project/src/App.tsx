@@ -198,10 +198,10 @@ function ForcePasswordChangePage() {
             onChange={(event) => setNewPassword(event.target.value)}
             required
           />
-          <div className={`password-strength password-strength--${passwordPolicy.strength.toLowerCase()}`} aria-live="polite">
+          <div className={`password-strength password-strength--${newPassword.trim().length > 0 ? passwordPolicy.strength.toLowerCase() : 'empty'}`} aria-live="polite">
             <div className="password-strength__header">
               <span>Password strength</span>
-              <strong>{passwordPolicy.strength}</strong>
+              <strong>{newPassword.trim().length > 0 ? passwordPolicy.strength : 'Not started'}</strong>
             </div>
             <div className="password-strength__bar" aria-hidden="true">
               <span />

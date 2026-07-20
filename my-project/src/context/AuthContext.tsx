@@ -77,9 +77,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const googleLogin = useCallback(
-    async (credential: string) => {
-      const payload = await api.googleLogin(credential)
+    async (credential: string, options: { termsAccepted?: boolean; privacyPolicyAccepted?: boolean } = {}) => {
+      const payload = await api.googleLogin(credential, options)
       persistAuth(payload)
+    },
+    [persistAuth],
+  )
+
+  const verifyEmailCode = useCallback(
+    async (email: string, code: string) => {
+      const payload = await api.verifyEmailCode(email, code)
+      persistAuth({ user: payload.user, token: payload.token })
+    },
+    [persistAuth],
+  )
+
+  const verifyEmailToken = useCallback(
+    async (verificationToken: string) => {
+      const payload = await api.verifyEmail(verificationToken)
+      persistAuth({ user: payload.user, token: payload.token })
     },
     [persistAuth],
   )
@@ -89,6 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: string
       password: string
       institution?: string
+      termsAccepted?: boolean
+      privacyPolicyAccepted?: boolean
     }) => {
       const registrationResult = await api.register(payload)
       if (registrationResult.token) {
@@ -123,11 +141,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       login,
       googleLogin,
+      verifyEmailCode,
+      verifyEmailToken,
       changePassword,
       register,
       logout,
     }),
-    [changePassword, googleLogin, isLoading, login, logout, register, token, user],
+    [changePassword, googleLogin, isLoading, login, logout, register, token, user, verifyEmailCode, verifyEmailToken],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

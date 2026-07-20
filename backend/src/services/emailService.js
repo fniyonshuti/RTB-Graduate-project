@@ -141,33 +141,50 @@ export function buildPasswordResetEmail({ name, resetLink, expiresInMinutes }) {
   return { subject, text, html };
 }
 
-export function buildEmailVerificationEmail({ name, verificationLink, expiresInMinutes }) {
+export function buildEmailVerificationEmail({ name, verificationLink, verificationCode, expiresInMinutes }) {
   const safeName = escapeHtml(name || 'User');
-  const safeVerificationLink = escapeHtml(verificationLink);
+  const safeVerificationLink = escapeHtml(verificationLink || '');
+  const safeVerificationCode = escapeHtml(verificationCode || '');
   const safeAppName = escapeHtml(appName());
   const subject = `Verify your ${appName()} email address`;
+  const codeInstruction = verificationCode
+    ? `Use this verification code in ${appName()}: ${verificationCode}`
+    : `Verify your email address by opening the link below.`;
   const text = [
     `Hello ${name || 'User'},`,
     '',
-    `Welcome to ${appName()}. Verify your email address by opening the link below.`,
-    verificationLink,
+    `Welcome to ${appName()}.`,
+    codeInstruction,
+    verificationLink ? verificationLink : '',
     '',
-    `This secure link expires in ${expiresInMinutes} minutes and can only be used once.`,
+    `This secure verification expires in ${expiresInMinutes} minutes and can only be used once.`,
     'If you did not create this account, you can safely ignore this email.',
     '',
     `Regards,`,
     `The ${appName()} Team`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
+
+  const codeBlock = verificationCode
+    ? `<div style="margin:0 0 22px;padding:18px 20px;border:1px solid #bae6fd;background:#f0f9ff;border-radius:12px;text-align:center;">
+        <div style="font-size:13px;color:#475569;margin-bottom:8px;">Your verification code</div>
+        <div style="font-size:34px;letter-spacing:8px;font-weight:800;color:#023E8A;">${safeVerificationCode}</div>
+      </div>`
+    : '';
+
+  const linkBlock = verificationLink
+    ? `<p style="margin:0 0 22px;"><a href="${safeVerificationLink}" style="display:inline-block;background:#0077B6;color:#ffffff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:700;">Verify email</a></p>
+      <p style="margin:0 0 8px;color:#475569;font-size:14px;">If the button does not work, copy and paste this link into your browser:</p>
+      <p style="margin:0 0 20px;word-break:break-all;font-size:14px;"><a href="${safeVerificationLink}" style="color:#0077B6;">${safeVerificationLink}</a></p>`
+    : '';
 
   const html = buildEmailShell({
     title: `Verify your ${appName()} email`,
     bodyHtml: `
       <p style="margin:0 0 16px;">Hello ${safeName},</p>
-      <p style="margin:0 0 20px;">Welcome to ${safeAppName}. Select the button below to verify your email address before signing in.</p>
-      <p style="margin:0 0 22px;"><a href="${safeVerificationLink}" style="display:inline-block;background:#0077B6;color:#ffffff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:700;">Verify email</a></p>
-      <p style="margin:0 0 8px;color:#475569;font-size:14px;">If the button does not work, copy and paste this link into your browser:</p>
-      <p style="margin:0 0 20px;word-break:break-all;font-size:14px;"><a href="${safeVerificationLink}" style="color:#0077B6;">${safeVerificationLink}</a></p>
-      <p style="margin:0 0 12px;color:#64748b;font-size:14px;">This secure link expires in ${expiresInMinutes} minutes and can only be used once.</p>
+      <p style="margin:0 0 20px;">Welcome to ${safeAppName}. Enter the verification code below in the sign-up screen to activate your account.</p>
+      ${codeBlock}
+      ${linkBlock}
+      <p style="margin:0 0 12px;color:#64748b;font-size:14px;">This secure verification expires in ${expiresInMinutes} minutes and can only be used once.</p>
       <p style="margin:0;color:#64748b;font-size:14px;">If you did not create this account, you can safely ignore this email.</p>
     `,
   });
@@ -385,8 +402,8 @@ async function sendEmail({ to, toName, subject, text, html, tag, resetLink }) {
   };
 }
 
-export async function sendEmailVerificationEmail({ to, name, verificationLink, expiresInMinutes }) {
-  const message = buildEmailVerificationEmail({ name, verificationLink, expiresInMinutes });
+export async function sendEmailVerificationEmail({ to, name, verificationLink, verificationCode, expiresInMinutes }) {
+  const message = buildEmailVerificationEmail({ name, verificationLink, verificationCode, expiresInMinutes });
   return sendEmail({
     to,
     toName: name,

@@ -36,7 +36,7 @@ router.get('/google', (req, res) => {
 });
 router.post('/google', requireFields('credential'), validateGoogleLogin, googleLogin);
 router.post('/forgot-password', requireFields('email'), validateForgotPassword, forgotPassword);
-router.post('/verify-email', requireFields('token'), validateEmailVerificationToken, verifyEmail);
+router.post('/verify-email', validateEmailVerificationToken, verifyEmail);
 router.post('/resend-verification', requireFields('email'), validateResendVerificationEmail, resendVerificationEmail);
 router.post('/reset-password', requireFields('token', 'newPassword'), validateResetPassword, resetPasswordWithToken);
 router.get('/me', protect, getMe);

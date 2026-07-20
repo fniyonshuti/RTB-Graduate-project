@@ -65,6 +65,8 @@ test("register validation accepts strong passwords", () => {
     name: "Test User",
     email: "test@example.com",
     password: "StrongPass1!",
+    termsAccepted: true,
+    privacyPolicyAccepted: true,
   });
 
   assert.equal(error, undefined);

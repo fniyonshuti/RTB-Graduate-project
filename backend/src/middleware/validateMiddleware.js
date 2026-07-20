@@ -205,6 +205,11 @@ export function validateRegister(req, res, next) {
     assertStringField(req.body, "name", "Full name", { min: 2, max: 120 });
     assertEmailField(req.body, "email", "Email");
     assertPasswordField(req.body, "password", "Password");
+    assertBooleanField(req.body, "termsAccepted", "Terms acceptance");
+    assertBooleanField(req.body, "privacyPolicyAccepted", "Privacy policy acceptance");
+    if (req.body.termsAccepted !== true || req.body.privacyPolicyAccepted !== true) {
+      fail("Please accept the terms and privacy policy to continue.");
+    }
     return next();
   } catch (error) {
     return next(error);
@@ -224,6 +229,8 @@ export function validateLogin(req, res, next) {
 export function validateGoogleLogin(req, res, next) {
   try {
     assertStringField(req.body, "credential", "Google credential", { min: 20, max: 5000 });
+    assertBooleanField(req.body, "termsAccepted", "Terms acceptance", { required: false });
+    assertBooleanField(req.body, "privacyPolicyAccepted", "Privacy policy acceptance", { required: false });
     return next();
   } catch (error) {
     return next(error);
@@ -241,7 +248,15 @@ export function validateForgotPassword(req, res, next) {
 
 export function validateEmailVerificationToken(req, res, next) {
   try {
-    assertStringField(req.body, "token", "Verification token", { min: 20, max: 256 });
+    if (!isBlank(req.body.token)) {
+      assertStringField(req.body, "token", "Verification token", { min: 20, max: 256 });
+      return next();
+    }
+
+    assertEmailField(req.body, "email", "Email");
+    assertStringField(req.body, "code", "Verification code", { min: 6, max: 12 });
+    req.body.code = String(req.body.code).replace(/\D/g, "");
+    if (!/^\d{6}$/.test(req.body.code)) fail("Verification code must be 6 digits");
     return next();
   } catch (error) {
     return next(error);

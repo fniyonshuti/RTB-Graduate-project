@@ -9,13 +9,11 @@ import {
 } from "react";
 import {
   BookOpenCheck,
-  CalendarDays,
   CheckCircle2,
-  FileText,
-  IdCard,
+  Mail,
   MapPin,
-  Phone,
   School,
+  ShieldCheck,
   UserRound,
 } from "lucide-react";
 import { api } from "../api/client";
@@ -1039,6 +1037,7 @@ function GraduateProfileForm({
   initialProfile: GraduateProfile;
   token: string;
 }) {
+  const [savedProfile, setSavedProfile] = useState<GraduateProfile>(initialProfile);
   const [profile, setProfile] = useState<GraduateProfile>(initialProfile);
   const [message, setMessage] = useState("");
   const {
@@ -1049,21 +1048,28 @@ function GraduateProfileForm({
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const profileCompletion = [
-    profile.registrationNumber,
+  const accountUser = profile.user;
+  const displayName = profile.registrationNumber || accountUser?.name || "Assessment user";
+  const displayEmail = accountUser?.email || "Email not available";
+  const profilePhotoUrl = String(accountUser?.profilePhotoUrl || "").trim();
+  const displayProgram = profile.program || "ICT TVET graduate";
+  const displayInstitution = profile.institution || accountUser?.institution || "Organisation not selected";
+  const displayLocation = [profile.sector, profile.district || "Kicukiro"].filter(Boolean).join(", ");
+  const acceptedPolicies = Boolean(accountUser?.termsAccepted && accountUser?.privacyPolicyAccepted);
+  const acceptedAt = accountUser?.privacyPolicyAcceptedAt || accountUser?.termsAcceptedAt;
+  const completionFields = [
+    displayName,
+    displayEmail,
     profile.phone,
-    profile.gender,
     profile.district,
     profile.sector,
-    profile.institution,
+    displayInstitution !== "Organisation not selected" ? displayInstitution : "",
     profile.program,
     profile.graduationYear,
     profile.specialization,
-    profile.bio,
-  ].filter((value) => String(value || "").trim().length > 0).length;
-  const completionPercent = Math.round((profileCompletion / 10) * 100);
-  const displayProgram = profile.program || "ICT TVET graduate";
-  const displayInstitution = profile.institution || "Organisation not selected";
+  ];
+  const profileCompletion = completionFields.filter((value) => String(value || "").trim().length > 0).length;
+  const completionPercent = Math.round((profileCompletion / completionFields.length) * 100);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1073,6 +1079,7 @@ function GraduateProfileForm({
 
     try {
       const savedProfile = await api.saveProfile(token, profile);
+      setSavedProfile(savedProfile);
       setProfile(savedProfile);
       setMessage("Profile saved successfully.");
     } catch (caughtError) {
@@ -1086,29 +1093,39 @@ function GraduateProfileForm({
     }
   }
 
+  function handleCancel() {
+    setProfile(savedProfile);
+    setFormError("");
+    setMessage("Unsaved profile changes were cancelled.");
+  }
+
   return (
     <section className="page-stack profile-page">
       <PageHeader
         title="User Profile"
-        description="Manage the academic, contact, organisation, and program details used in competency assessments and reports."
+        description="Keep the account, organisation, and ICT program details used in Competra assessments and reports accurate."
       />
       {error && <Alert type="error">{error}</Alert>}
       {formError && <Alert type="error">{formError}</Alert>}
       {organizationLoadError && <Alert type="error">{organizationLoadError}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
 
-      <div className="profile-layout">
+      <div className="profile-layout profile-layout--balanced">
         <aside className="profile-summary-card" aria-label="Profile summary">
           <div className="profile-avatar-wrap">
             <div className="profile-avatar" aria-hidden="true">
-              <UserRound size={64} />
+              {profilePhotoUrl ? (
+                <img className="h-full w-full object-cover" src={profilePhotoUrl} alt="" referrerPolicy="no-referrer" />
+              ) : (
+                <UserRound size={58} />
+              )}
             </div>
-            <Badge tone="role">Graduate profile</Badge>
+            <Badge tone="role">Competra user</Badge>
           </div>
 
           <div className="profile-summary-copy">
-            <h2>{displayProgram}</h2>
-            <p>{displayInstitution}</p>
+            <h2>{displayName}</h2>
+            <p>{displayProgram}</p>
           </div>
 
           <div className="profile-progress-panel">
@@ -1117,150 +1134,138 @@ function GraduateProfileForm({
               <strong>{completionPercent}%</strong>
             </div>
             <ProgressBar value={completionPercent} />
-            <p>Complete your profile so assessment reports can identify your organisation, program, and ICT specialization clearly.</p>
+            <p>These details are used to identify your assessment reports and connect your results to the right organisation.</p>
           </div>
 
-          <div className="profile-quick-list">
-            <ProfileFact icon={<IdCard size={17} />} label="Full name" value={profile.registrationNumber} />
-            <ProfileFact icon={<Phone size={17} />} label="Phone" value={profile.phone} />
-            <ProfileFact icon={<MapPin size={17} />} label="Location" value={[profile.sector, profile.district || "Kicukiro"].filter(Boolean).join(", ")} />
-            <ProfileFact icon={<CalendarDays size={17} />} label="Graduation year" value={profile.graduationYear ? String(profile.graduationYear) : ""} />
+          <div className="profile-quick-list profile-quick-list--compact">
+            <ProfileFact icon={<Mail size={17} />} label="Registered email" value={displayEmail} />
+            <ProfileFact icon={<School size={17} />} label="Organisation" value={displayInstitution} />
+            <ProfileFact icon={<BookOpenCheck size={17} />} label="Program" value={displayProgram} />
+            <ProfileFact icon={<MapPin size={17} />} label="Location" value={displayLocation} />
+            <ProfileFact icon={<ShieldCheck size={17} />} label="Terms and privacy" value={acceptedPolicies ? `Accepted${acceptedAt ? ` on ${formatDate(acceptedAt)}` : ""}` : "Not recorded"} />
           </div>
         </aside>
 
-        <form className="profile-editor-card" onSubmit={handleSubmit}>
-          <div className="profile-editor-header">
-            <div>
-              <span>Edit profile details</span>
-              <h2>Academic and contact information</h2>
-              <p>These details appear in your assessment history, gap reports, and organisation review records.</p>
+        <form className="profile-editor-card profile-editor-card--clean" onSubmit={handleSubmit}>
+          <div className="profile-form-section">
+            <div className="profile-section-title">
+              <span>01</span>
+              <div>
+                <strong>Contact details</strong>
+                <p>Used when reports and notifications identify your assessment record.</p>
+              </div>
             </div>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Profile"}
-            </Button>
-          </div>
-
-          <div className="profile-detail-strip">
-            <ProfileDetail icon={<School size={18} />} label="Organisation" value={profile.institution} />
-            <ProfileDetail icon={<BookOpenCheck size={18} />} label="Program" value={profile.program} />
-            <ProfileDetail icon={<FileText size={18} />} label="Specialization" value={profile.specialization} />
-          </div>
-
-          <div className="profile-form-grid">
-            <TextField
-              label="Full name"
-              value={profile.registrationNumber || ""}
-              onChange={(event) =>
-                setProfile({ ...profile, registrationNumber: event.target.value })
-              }
-            />
-            <TextField
-              label="Phone"
-              value={profile.phone || ""}
-              onChange={(event) =>
-                setProfile({ ...profile, phone: event.target.value })
-              }
-            />
-            <SelectField
-              label="Gender"
-              value={profile.gender || ""}
-              onChange={(event) =>
-                setProfile({ ...profile, gender: event.target.value })
-              }
-            >
-              <option value="">Select gender</option>
-              <option value="Female">Female</option>
-              <option value="Male">Male</option>
-              <option value="Prefer not to say">Prefer not to say</option>
-            </SelectField>
-            <TextField
-              label="District"
-              value={profile.district || "Kicukiro"}
-              onChange={(event) =>
-                setProfile({ ...profile, district: event.target.value })
-              }
-            />
-            <TextField
-              label="Sector"
-              value={profile.sector || ""}
-              onChange={(event) =>
-                setProfile({ ...profile, sector: event.target.value })
-              }
-            />
-            <SelectField
-              label="Organisation"
-              value={profile.institution || ""}
-              disabled={isLoadingOrganizations}
-              onChange={(event) =>
-                setProfile({ ...profile, institution: event.target.value })
-              }
-            >
-              <option value="">
-                {isLoadingOrganizations
-                  ? "Loading organisations..."
-                  : "Select organisation"}
-              </option>
-              {organizations
-                .filter((organization) => organization.status !== "inactive")
-                .map((organization) => (
-                  <option key={organization._id} value={organization.name}>
-                    {organization.name}
-                  </option>
-                ))}
-              {profile.institution &&
-                !organizations.some(
-                  (organization) => organization.name === profile.institution,
-                ) && (
-                  <option value={profile.institution}>{profile.institution}</option>
-                )}
-            </SelectField>
-            <TextField
-              label="Program"
-              value={profile.program || ""}
-              onChange={(event) =>
-                setProfile({ ...profile, program: event.target.value })
-              }
-            />
-            <TextField
-              label="Graduation year"
-              type="number"
-              min="2000"
-              max="2100"
-              value={profile.graduationYear || ""}
-              onChange={(event) =>
-                setProfile({
-                  ...profile,
-                  graduationYear: event.target.value
-                    ? Number(event.target.value)
-                    : undefined,
-                })
-              }
-            />
-            <TextField
-              label="Specialization"
-              value={profile.specialization || ""}
-              onChange={(event) =>
-                setProfile({ ...profile, specialization: event.target.value })
-              }
-            />
-            <div className="full-span">
-              <TextArea
-                label="Bio"
-                rows={5}
-                value={profile.bio || ""}
-                placeholder="Briefly describe your ICT interests, practical experience, and career goal."
+            <div className="profile-form-grid">
+              <TextField
+                label="Full name"
+                value={profile.registrationNumber || accountUser?.name || ""}
                 onChange={(event) =>
-                  setProfile({ ...profile, bio: event.target.value })
+                  setProfile({ ...profile, registrationNumber: event.target.value })
+                }
+              />
+              <TextField label="Email" value={displayEmail} disabled readOnly />
+              <TextField
+                label="Phone"
+                value={profile.phone || ""}
+                onChange={(event) =>
+                  setProfile({ ...profile, phone: event.target.value })
+                }
+              />
+              <TextField
+                label="District"
+                value={profile.district || "Kicukiro"}
+                onChange={(event) =>
+                  setProfile({ ...profile, district: event.target.value })
+                }
+              />
+              <TextField
+                label="Sector"
+                value={profile.sector || ""}
+                onChange={(event) =>
+                  setProfile({ ...profile, sector: event.target.value })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="profile-form-section">
+            <div className="profile-section-title">
+              <span>02</span>
+              <div>
+                <strong>TVET academic details</strong>
+                <p>Used to group assessment reports by organisation, program, and specialization.</p>
+              </div>
+            </div>
+            <div className="profile-form-grid">
+              <SelectField
+                label="Organisation"
+                value={profile.institution || ""}
+                disabled={isLoadingOrganizations}
+                onChange={(event) =>
+                  setProfile({ ...profile, institution: event.target.value })
+                }
+              >
+                <option value="">
+                  {isLoadingOrganizations
+                    ? "Loading organisations..."
+                    : "Select organisation"}
+                </option>
+                {organizations
+                  .filter((organization) => organization.status !== "inactive")
+                  .map((organization) => (
+                    <option key={organization._id} value={organization.name}>
+                      {organization.name}
+                    </option>
+                  ))}
+                {profile.institution &&
+                  !organizations.some(
+                    (organization) => organization.name === profile.institution,
+                  ) && (
+                    <option value={profile.institution}>{profile.institution}</option>
+                  )}
+              </SelectField>
+              <TextField
+                label="Program"
+                value={profile.program || ""}
+                onChange={(event) =>
+                  setProfile({ ...profile, program: event.target.value })
+                }
+              />
+              <TextField
+                label="Graduation year"
+                type="number"
+                min="2000"
+                max="2100"
+                value={profile.graduationYear || ""}
+                onChange={(event) =>
+                  setProfile({
+                    ...profile,
+                    graduationYear: event.target.value
+                      ? Number(event.target.value)
+                      : undefined,
+                  })
+                }
+              />
+              <TextField
+                label="Specialization"
+                value={profile.specialization || ""}
+                onChange={(event) =>
+                  setProfile({ ...profile, specialization: event.target.value })
                 }
               />
             </div>
           </div>
 
           <div className="profile-save-bar">
-            <p>Review your details before saving. Accurate profile information improves report clarity.</p>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Changes"}
-            </Button>
+            <p>Save changes after confirming that the details match your assessment record.</p>
+            <div className="profile-action-row">
+              <Button type="button" variant="secondary" onClick={handleCancel} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
           </div>
         </form>
       </div>
@@ -1288,25 +1293,6 @@ function ProfileFact({
   );
 }
 
-function ProfileDetail({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value?: string;
-}) {
-  return (
-    <div className="profile-detail-card">
-      <span aria-hidden="true">{icon}</span>
-      <div>
-        <strong>{label}</strong>
-        <p>{value || "Not added yet"}</p>
-      </div>
-    </div>
-  );
-}
 export function SubmitAssessmentPage({ token }: { token: string }) {
   const { data: competencies, isLoading } = useAsyncData(
     () => api.competencies(token),

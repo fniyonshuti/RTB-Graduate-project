@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import GraduateProfile from '../models/GraduateProfile.js';
 import { PASSWORD_HASHING, checkPasswordPolicy, passwordPolicyMessage } from '../constants/password.js';
 import crypto from 'node:crypto';
 import dotenv from 'dotenv';
@@ -87,6 +88,16 @@ export function createRawToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+export function createEmailVerificationCode() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+export function hashEmailVerificationCode(email, code) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const normalizedCode = String(code || '').replace(/\D/g, '');
+  return hashToken(`${normalizedEmail}:${normalizedCode}`);
+}
+
 export function verificationTokenExpiresAt(now = new Date()) {
   const expiresInMinutes = Number(process.env.EMAIL_VERIFICATION_TOKEN_EXPIRES_MINUTES) || 30;
   return new Date(now.getTime() + expiresInMinutes * 60 * 1000);
@@ -103,11 +114,22 @@ export function assertVerificationResendAllowed(user, now = new Date()) {
 }
 
 export function validateStoredEmailVerificationToken(user, rawToken, now = new Date()) {
-  if (!user || user.isEmailVerified) throw new AppError('Email verification link is invalid or expired', 400);
-  if (user.emailVerificationUsedAt) throw new AppError('Email verification link has already been used', 400);
-  if (!user.emailVerificationTokenHash || !user.emailVerificationExpiresAt) throw new AppError('Email verification link is invalid or expired', 400);
-  if (new Date(user.emailVerificationExpiresAt) <= now) throw new AppError('Email verification link is invalid or expired', 400);
-  if (user.emailVerificationTokenHash !== hashToken(rawToken)) throw new AppError('Email verification link is invalid or expired', 400);
+  if (!user || user.isEmailVerified) throw new AppError('Email verification is invalid or expired', 400);
+  if (user.emailVerificationUsedAt) throw new AppError('Email verification has already been used', 400);
+  if (!user.emailVerificationTokenHash || !user.emailVerificationExpiresAt) throw new AppError('Email verification is invalid or expired', 400);
+  if (new Date(user.emailVerificationExpiresAt) <= now) throw new AppError('Email verification is invalid or expired', 400);
+  if (user.emailVerificationTokenHash !== hashToken(rawToken)) throw new AppError('Email verification is invalid or expired', 400);
+  return true;
+}
+
+export function validateStoredEmailVerificationCode(user, email, code, now = new Date()) {
+  if (!user || user.isEmailVerified) throw new AppError('Email verification is invalid or expired', 400);
+  if (user.emailVerificationUsedAt) throw new AppError('Email verification has already been used', 400);
+  if (!user.emailVerificationCodeHash || !user.emailVerificationExpiresAt) throw new AppError('Email verification is invalid or expired', 400);
+  if (new Date(user.emailVerificationExpiresAt) <= now) throw new AppError('Email verification is invalid or expired', 400);
+  if (user.emailVerificationCodeHash !== hashEmailVerificationCode(email, code)) {
+    throw new AppError('Verification code is incorrect or expired', 400);
+  }
   return true;
 }
 
@@ -131,10 +153,16 @@ export function sanitizeUser(user) {
     role: user.role,
     organization,
     institution: user.institution,
+    profilePhotoUrl: user.profilePhotoUrl,
     isActive: user.isActive,
     mustChangePassword: user.mustChangePassword,
     authProvider: user.authProvider,
     isEmailVerified: user.isEmailVerified !== false,
+    termsAccepted: Boolean(user.termsAccepted),
+    privacyPolicyAccepted: Boolean(user.privacyPolicyAccepted),
+    termsAcceptedAt: user.termsAcceptedAt,
+    privacyPolicyAcceptedAt: user.privacyPolicyAcceptedAt,
+    createdAt: user.createdAt,
   };
 }
 
@@ -161,6 +189,10 @@ export async function registerUser(payload) {
 
   assertStrongPassword(password);
 
+  if (payload.termsAccepted !== true || payload.privacyPolicyAccepted !== true) {
+    throw new AppError('Please accept the terms and privacy policy to continue.', 400);
+  }
+
   const existingUser = await User.findOne({ email: normalizedEmail });
 
   if (existingUser) {
@@ -179,6 +211,7 @@ export async function registerUser(payload) {
 
   const { passwordHash, passwordSalt } = hashPassword(password);
   const verificationToken = createRawToken();
+  const verificationCode = createEmailVerificationCode();
   const verificationExpiresInMinutes = Number(process.env.EMAIL_VERIFICATION_TOKEN_EXPIRES_MINUTES) || 30;
 
   const user = await User.create({
@@ -189,9 +222,21 @@ export async function registerUser(payload) {
     role: ROLES.NORMAL_USER,
     institution: payload.institution,
     isEmailVerified: false,
+    termsAccepted: true,
+    privacyPolicyAccepted: true,
+    termsAcceptedAt: new Date(),
+    privacyPolicyAcceptedAt: new Date(),
     emailVerificationTokenHash: hashToken(verificationToken),
+    emailVerificationCodeHash: hashEmailVerificationCode(normalizedEmail, verificationCode),
     emailVerificationExpiresAt: verificationTokenExpiresAt(),
     emailVerificationLastSentAt: new Date(),
+  });
+
+  await GraduateProfile.create({
+    user: user._id,
+    registrationNumber: user.name,
+    institution: payload.institution || '',
+    district: 'Kicukiro',
   });
 
   const verificationLink = buildEmailVerificationUrl(verificationToken);
@@ -201,9 +246,11 @@ export async function registerUser(payload) {
       to: user.email,
       name: user.name,
       verificationLink,
+      verificationCode,
       expiresInMinutes: verificationExpiresInMinutes,
     });
   } catch (error) {
+    await GraduateProfile.findOneAndDelete({ user: user._id });
     await User.findByIdAndDelete(user._id);
     throw error;
   }
@@ -212,7 +259,7 @@ export async function registerUser(payload) {
     user: sanitizeUser(user),
     verificationRequired: true,
     emailSent: true,
-    message: 'Account created. Please verify your email address before signing in.',
+    message: 'Account created. Enter the verification code sent to your email.',
   };
 }
 
@@ -311,6 +358,7 @@ async function verifyGoogleCredential(credential) {
     googleId: profile.sub,
     email: String(profile.email).toLowerCase(),
     name: profile.name || String(profile.email).split('@')[0],
+    profilePhotoUrl: profile.picture || '',
   };
 }
 
@@ -358,7 +406,7 @@ function normalizeGoogleAuthError(error) {
   );
 }
 
-export async function loginWithGoogle(credential) {
+export async function loginWithGoogle(credential, options = {}) {
   try {
     const googleProfile = await verifyGoogleCredential(credential);
     let user = await User.findOne({ email: googleProfile.email }).populate('organization', 'name district type status');
@@ -378,9 +426,14 @@ export async function loginWithGoogle(credential) {
         passwordSalt,
         role: ROLES.NORMAL_USER,
         googleId: googleProfile.googleId,
+        profilePhotoUrl: googleProfile.profilePhotoUrl,
         authProvider: 'google',
         isEmailVerified: true,
         emailVerifiedAt: new Date(),
+        termsAccepted: options.termsAccepted === true,
+        privacyPolicyAccepted: options.privacyPolicyAccepted === true,
+        termsAcceptedAt: options.termsAccepted === true ? new Date() : undefined,
+        privacyPolicyAcceptedAt: options.privacyPolicyAccepted === true ? new Date() : undefined,
         lastLoginAt: new Date(),
       });
     } else {
@@ -392,9 +445,18 @@ export async function loginWithGoogle(credential) {
       }
 
       user.googleId = googleProfile.googleId;
+      user.profilePhotoUrl = googleProfile.profilePhotoUrl || user.profilePhotoUrl;
       user.authProvider = 'google';
       user.isEmailVerified = true;
       user.emailVerifiedAt = user.emailVerifiedAt || new Date();
+      if (options.termsAccepted === true && !user.termsAccepted) {
+        user.termsAccepted = true;
+        user.termsAcceptedAt = new Date();
+      }
+      if (options.privacyPolicyAccepted === true && !user.privacyPolicyAccepted) {
+        user.privacyPolicyAccepted = true;
+        user.privacyPolicyAcceptedAt = new Date();
+      }
       user.lastLoginAt = new Date();
       await user.save();
     }
@@ -502,27 +564,48 @@ export async function requestPasswordReset(email) {
 
   };
 }
-export async function verifyEmailAddress(rawToken) {
-  const normalizedToken = String(rawToken || '').trim();
-  if (!normalizedToken) throw new AppError('Email verification token is required', 400);
+export async function verifyEmailAddress(input) {
+  const isCodeVerification = input && typeof input === 'object' && !Array.isArray(input);
+  const normalizedEmail = isCodeVerification ? String(input.email || '').trim().toLowerCase() : '';
+  const normalizedCode = isCodeVerification ? String(input.code || '').replace(/\D/g, '') : '';
+  const normalizedToken = isCodeVerification ? '' : String(input || '').trim();
 
-  const user = await User.findOne({
-    emailVerificationTokenHash: hashToken(normalizedToken),
-    isActive: true,
-  }).select('+emailVerificationTokenHash +emailVerificationExpiresAt +emailVerificationUsedAt');
+  if (isCodeVerification && (!normalizedEmail || normalizedCode.length !== 6)) {
+    throw new AppError('Enter the 6-digit verification code sent to your email', 400);
+  }
 
-  validateStoredEmailVerificationToken(user, normalizedToken);
+  if (!isCodeVerification && !normalizedToken) {
+    throw new AppError('Email verification token is required', 400);
+  }
+
+  const user = isCodeVerification
+    ? await User.findOne({ email: normalizedEmail, isActive: true })
+        .select('+emailVerificationCodeHash +emailVerificationExpiresAt +emailVerificationUsedAt')
+        .populate('organization', 'name district type status')
+    : await User.findOne({ emailVerificationTokenHash: hashToken(normalizedToken), isActive: true })
+        .select('+emailVerificationTokenHash +emailVerificationExpiresAt +emailVerificationUsedAt')
+        .populate('organization', 'name district type status');
+
+  if (isCodeVerification) {
+    validateStoredEmailVerificationCode(user, normalizedEmail, normalizedCode);
+  } else {
+    validateStoredEmailVerificationToken(user, normalizedToken);
+  }
 
   user.isEmailVerified = true;
   user.emailVerifiedAt = new Date();
   user.emailVerificationUsedAt = new Date();
   user.emailVerificationTokenHash = undefined;
+  user.emailVerificationCodeHash = undefined;
   user.emailVerificationExpiresAt = undefined;
   await user.save();
 
+  const token = signJwt({ sub: user._id.toString(), role: user.role });
+
   return {
     user: sanitizeUser(user),
-    message: 'Email verified successfully. You can now sign in.',
+    token,
+    message: 'Email verified successfully.',
   };
 }
 
@@ -542,8 +625,10 @@ export async function resendVerificationEmail(email, options = {}) {
   }
 
   const verificationToken = createRawToken();
+  const verificationCode = createEmailVerificationCode();
   const verificationExpiresInMinutes = Number(process.env.EMAIL_VERIFICATION_TOKEN_EXPIRES_MINUTES) || 30;
   user.emailVerificationTokenHash = hashToken(verificationToken);
+  user.emailVerificationCodeHash = hashEmailVerificationCode(user.email, verificationCode);
   user.emailVerificationExpiresAt = verificationTokenExpiresAt();
   user.emailVerificationUsedAt = undefined;
   user.emailVerificationLastSentAt = new Date();
@@ -554,6 +639,7 @@ export async function resendVerificationEmail(email, options = {}) {
     to: user.email,
     name: user.name,
     verificationLink,
+    verificationCode,
     expiresInMinutes: verificationExpiresInMinutes,
   });
 

@@ -34,6 +34,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    profilePhotoUrl: {
+      type: String,
+      trim: true,
+    },
     authProvider: {
       type: String,
       enum: ['local', 'google'],
@@ -55,10 +59,28 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    termsAccepted: {
+      type: Boolean,
+      default: false,
+    },
+    privacyPolicyAccepted: {
+      type: Boolean,
+      default: false,
+    },
+    termsAcceptedAt: {
+      type: Date,
+    },
+    privacyPolicyAcceptedAt: {
+      type: Date,
+    },
     emailVerifiedAt: {
       type: Date,
     },
     emailVerificationTokenHash: {
+      type: String,
+      select: false,
+    },
+    emailVerificationCodeHash: {
       type: String,
       select: false,
     },
@@ -108,5 +130,6 @@ userSchema.index({ googleId: 1 }, { sparse: true });
 userSchema.index({ organization: 1, role: 1, isActive: 1 });
 userSchema.index({ passwordResetTokenHash: 1 });
 userSchema.index({ emailVerificationTokenHash: 1 });
+userSchema.index({ emailVerificationCodeHash: 1 });
 
 export default mongoose.model('User', userSchema);
