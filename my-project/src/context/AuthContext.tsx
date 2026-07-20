@@ -77,8 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const googleLogin = useCallback(
-    async (credential: string) => {
-      const payload = await api.googleLogin(credential)
+    async (credential: string, options: { termsAccepted?: boolean; privacyPolicyAccepted?: boolean } = {}) => {
+      const payload = await api.googleLogin(credential, options)
       persistAuth(payload)
     },
     [persistAuth],
@@ -105,6 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: string
       password: string
       institution?: string
+      termsAccepted?: boolean
+      privacyPolicyAccepted?: boolean
     }) => {
       const registrationResult = await api.register(payload)
       if (registrationResult.token) {

@@ -34,6 +34,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    profilePhotoUrl: {
+      type: String,
+      trim: true,
+    },
     authProvider: {
       type: String,
       enum: ['local', 'google'],
@@ -54,6 +58,20 @@ const userSchema = new mongoose.Schema(
     isEmailVerified: {
       type: Boolean,
       default: false,
+    },
+    termsAccepted: {
+      type: Boolean,
+      default: false,
+    },
+    privacyPolicyAccepted: {
+      type: Boolean,
+      default: false,
+    },
+    termsAcceptedAt: {
+      type: Date,
+    },
+    privacyPolicyAcceptedAt: {
+      type: Date,
     },
     emailVerifiedAt: {
       type: Date,

@@ -75,11 +75,12 @@ export function AppLayout({
   children: ReactNode
   currentView: ViewKey
   onNavigate: (view: ViewKey) => void
-  user: { name: string; email?: string; role: Role; institution?: string }
+  user: { name: string; email?: string; role: Role; institution?: string; profilePhotoUrl?: string }
   onLogout: () => void
 }) {
   const visibleItems = navItems.filter((item) => item.roles.includes(user.role))
   const canUpdateProfile = visibleItems.some((item) => item.key === 'profile')
+  const profilePhotoUrl = String(user.profilePhotoUrl || '').trim()
   const initials = user.name
     .split(' ')
     .filter(Boolean)
@@ -141,16 +142,24 @@ export function AppLayout({
             <div className="group relative flex justify-end">
               <button
                 aria-label="Open account menu"
-                className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-[#0077B6] font-black text-white shadow-md shadow-[#0077B6]/10 ring-4 ring-white transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-[#0077B6]/15"
+                className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-[#0077B6] font-black text-white shadow-md shadow-[#0077B6]/10 ring-4 ring-white transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-[#0077B6]/15"
                 type="button"
               >
-                {initials || <UserRound size={20} />}
+                {profilePhotoUrl ? (
+                  <img className="h-full w-full object-cover" src={profilePhotoUrl} alt={`${user.name} profile`} referrerPolicy="no-referrer" />
+                ) : (
+                  initials || <UserRound size={20} />
+                )}
               </button>
 
               <div className="invisible absolute right-0 top-full z-30 mt-3 w-80 translate-y-2 rounded-lg border border-slate-200 bg-white p-3 opacity-0 shadow-2xl shadow-slate-900/15 transition duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 max-[720px]:right-0 max-[720px]:w-[min(20rem,calc(100vw-2rem))]">
                 <div className="flex items-start gap-3 rounded-lg bg-gradient-to-br from-slate-50 to-[#0077B6]/10 p-3">
-                  <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#0077B6] font-black text-white">
-                    {initials}
+                  <div className="flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-[#0077B6] font-black text-white">
+                    {profilePhotoUrl ? (
+                      <img className="h-full w-full object-cover" src={profilePhotoUrl} alt={`${user.name} profile`} referrerPolicy="no-referrer" />
+                    ) : (
+                      initials
+                    )}
                   </div>
                   <div className="min-w-0">
                     <strong className="block truncate text-slate-950">{user.name}</strong>

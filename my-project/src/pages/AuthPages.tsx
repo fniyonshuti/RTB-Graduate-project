@@ -220,13 +220,14 @@ function GoogleIcon() {
 
 function PasswordStrengthPanel({ password }: { password: string }) {
   const policy = getPasswordPolicy(password);
-  const tone = policy.strength.toLowerCase();
+  const hasPassword = password.trim().length > 0;
+  const tone = hasPassword ? policy.strength.toLowerCase() : "empty";
 
   return (
     <div className={`password-strength password-strength--${tone}`} aria-live="polite">
       <div className="password-strength__header">
         <span>Password strength</span>
-        <strong>{policy.strength}</strong>
+        <strong>{hasPassword ? policy.strength : "Not started"}</strong>
       </div>
       <div className="password-strength__bar" aria-hidden="true">
         <span />
@@ -359,7 +360,10 @@ export function AuthPages() {
 
       setIsSubmitting(true);
       try {
-        await googleLogin(response.credential);
+        await googleLogin(response.credential, {
+          termsAccepted: mode === 'register' ? true : undefined,
+          privacyPolicyAccepted: mode === 'register' ? true : undefined,
+        });
       } catch (caughtError) {
         setError(
           caughtError instanceof Error
@@ -507,7 +511,13 @@ export function AuthPages() {
       if (mode === "login") {
         await login(email, password);
       } else if (mode === "register") {
-        const result = await register({ name, email, password });
+        const result = await register({
+          name,
+          email,
+          password,
+          termsAccepted: true,
+          privacyPolicyAccepted: true,
+        });
         setTermsAccepted(false);
         setVerificationCode("");
         setPendingVerificationEmail(email.trim().toLowerCase());

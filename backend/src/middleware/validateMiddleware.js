@@ -205,6 +205,11 @@ export function validateRegister(req, res, next) {
     assertStringField(req.body, "name", "Full name", { min: 2, max: 120 });
     assertEmailField(req.body, "email", "Email");
     assertPasswordField(req.body, "password", "Password");
+    assertBooleanField(req.body, "termsAccepted", "Terms acceptance");
+    assertBooleanField(req.body, "privacyPolicyAccepted", "Privacy policy acceptance");
+    if (req.body.termsAccepted !== true || req.body.privacyPolicyAccepted !== true) {
+      fail("Please accept the terms and privacy policy to continue.");
+    }
     return next();
   } catch (error) {
     return next(error);
@@ -224,6 +229,8 @@ export function validateLogin(req, res, next) {
 export function validateGoogleLogin(req, res, next) {
   try {
     assertStringField(req.body, "credential", "Google credential", { min: 20, max: 5000 });
+    assertBooleanField(req.body, "termsAccepted", "Terms acceptance", { required: false });
+    assertBooleanField(req.body, "privacyPolicyAccepted", "Privacy policy acceptance", { required: false });
     return next();
   } catch (error) {
     return next(error);

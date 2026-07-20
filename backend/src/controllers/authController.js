@@ -14,7 +14,7 @@ class AuthController {
   });
   googleLogin = asyncHandler(async (req, res) => {
     try {
-      const result = await loginWithGoogleUser(req.body.credential);
+      const result = await loginWithGoogleUser(req.body.credential, req.body);
       sendSuccess(res, 'Google sign-in completed successfully', result);
     } catch (error) {
       if (error instanceof AppError) throw error;

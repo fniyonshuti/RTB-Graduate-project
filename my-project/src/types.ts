@@ -40,10 +40,16 @@ export type User = {
   role: Role
   organization?: Organization | string
   institution?: string
+  profilePhotoUrl?: string
   isActive?: boolean
   mustChangePassword?: boolean
   authProvider?: 'local' | 'google'
   isEmailVerified?: boolean
+  termsAccepted?: boolean
+  privacyPolicyAccepted?: boolean
+  termsAcceptedAt?: string
+  privacyPolicyAcceptedAt?: string
+  createdAt?: string
 }
 
 export type ApiResponse<T> = {
@@ -130,6 +136,7 @@ export type Benchmark = {
 
 export type GraduateProfile = {
   _id?: string
+  user?: User
   registrationNumber?: string
   phone?: string
   gender?: string

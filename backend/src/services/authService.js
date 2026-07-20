@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import GraduateProfile from '../models/GraduateProfile.js';
 import { PASSWORD_HASHING, checkPasswordPolicy, passwordPolicyMessage } from '../constants/password.js';
 import crypto from 'node:crypto';
 import dotenv from 'dotenv';
@@ -152,10 +153,16 @@ export function sanitizeUser(user) {
     role: user.role,
     organization,
     institution: user.institution,
+    profilePhotoUrl: user.profilePhotoUrl,
     isActive: user.isActive,
     mustChangePassword: user.mustChangePassword,
     authProvider: user.authProvider,
     isEmailVerified: user.isEmailVerified !== false,
+    termsAccepted: Boolean(user.termsAccepted),
+    privacyPolicyAccepted: Boolean(user.privacyPolicyAccepted),
+    termsAcceptedAt: user.termsAcceptedAt,
+    privacyPolicyAcceptedAt: user.privacyPolicyAcceptedAt,
+    createdAt: user.createdAt,
   };
 }
 
@@ -181,6 +188,10 @@ export async function registerUser(payload) {
   }
 
   assertStrongPassword(password);
+
+  if (payload.termsAccepted !== true || payload.privacyPolicyAccepted !== true) {
+    throw new AppError('Please accept the terms and privacy policy to continue.', 400);
+  }
 
   const existingUser = await User.findOne({ email: normalizedEmail });
 
@@ -211,10 +222,21 @@ export async function registerUser(payload) {
     role: ROLES.NORMAL_USER,
     institution: payload.institution,
     isEmailVerified: false,
+    termsAccepted: true,
+    privacyPolicyAccepted: true,
+    termsAcceptedAt: new Date(),
+    privacyPolicyAcceptedAt: new Date(),
     emailVerificationTokenHash: hashToken(verificationToken),
     emailVerificationCodeHash: hashEmailVerificationCode(normalizedEmail, verificationCode),
     emailVerificationExpiresAt: verificationTokenExpiresAt(),
     emailVerificationLastSentAt: new Date(),
+  });
+
+  await GraduateProfile.create({
+    user: user._id,
+    registrationNumber: user.name,
+    institution: payload.institution || '',
+    district: 'Kicukiro',
   });
 
   const verificationLink = buildEmailVerificationUrl(verificationToken);
@@ -228,6 +250,7 @@ export async function registerUser(payload) {
       expiresInMinutes: verificationExpiresInMinutes,
     });
   } catch (error) {
+    await GraduateProfile.findOneAndDelete({ user: user._id });
     await User.findByIdAndDelete(user._id);
     throw error;
   }
@@ -335,6 +358,7 @@ async function verifyGoogleCredential(credential) {
     googleId: profile.sub,
     email: String(profile.email).toLowerCase(),
     name: profile.name || String(profile.email).split('@')[0],
+    profilePhotoUrl: profile.picture || '',
   };
 }
 
@@ -382,7 +406,7 @@ function normalizeGoogleAuthError(error) {
   );
 }
 
-export async function loginWithGoogle(credential) {
+export async function loginWithGoogle(credential, options = {}) {
   try {
     const googleProfile = await verifyGoogleCredential(credential);
     let user = await User.findOne({ email: googleProfile.email }).populate('organization', 'name district type status');
@@ -402,9 +426,14 @@ export async function loginWithGoogle(credential) {
         passwordSalt,
         role: ROLES.NORMAL_USER,
         googleId: googleProfile.googleId,
+        profilePhotoUrl: googleProfile.profilePhotoUrl,
         authProvider: 'google',
         isEmailVerified: true,
         emailVerifiedAt: new Date(),
+        termsAccepted: options.termsAccepted === true,
+        privacyPolicyAccepted: options.privacyPolicyAccepted === true,
+        termsAcceptedAt: options.termsAccepted === true ? new Date() : undefined,
+        privacyPolicyAcceptedAt: options.privacyPolicyAccepted === true ? new Date() : undefined,
         lastLoginAt: new Date(),
       });
     } else {
@@ -416,9 +445,18 @@ export async function loginWithGoogle(credential) {
       }
 
       user.googleId = googleProfile.googleId;
+      user.profilePhotoUrl = googleProfile.profilePhotoUrl || user.profilePhotoUrl;
       user.authProvider = 'google';
       user.isEmailVerified = true;
       user.emailVerifiedAt = user.emailVerifiedAt || new Date();
+      if (options.termsAccepted === true && !user.termsAccepted) {
+        user.termsAccepted = true;
+        user.termsAcceptedAt = new Date();
+      }
+      if (options.privacyPolicyAccepted === true && !user.privacyPolicyAccepted) {
+        user.privacyPolicyAccepted = true;
+        user.privacyPolicyAcceptedAt = new Date();
+      }
       user.lastLoginAt = new Date();
       await user.save();
     }
