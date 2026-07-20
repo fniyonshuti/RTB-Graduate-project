@@ -2518,3 +2518,214 @@
   font-weight: 700;
 }
 
+/* ── Legal Policy Document Upload ─────────────────────────────── */
+
+.policy-upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.policy-upload-label {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0;
+}
+
+.policy-upload-hint {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.policy-file-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.6rem;
+  border: 2px dashed #cbd5e1;
+  border-radius: 0.75rem;
+  padding: 1.5rem 1rem;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+  text-align: center;
+}
+
+.policy-file-drop:hover {
+  border-color: #0077b6;
+  background: #eff9ff;
+  color: #0077b6;
+}
+
+.policy-file-attached {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.625rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%);
+  flex-wrap: wrap;
+}
+
+.policy-file-info {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: #1e40af;
+  min-width: 0;
+}
+
+.policy-file-info svg {
+  flex-shrink: 0;
+  color: #3b82f6;
+}
+
+.policy-file-info div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.policy-file-info strong {
+  font-size: 0.88rem;
+  color: #1e3a5f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 28ch;
+}
+
+.policy-file-size {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.policy-file-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #fca5a5;
+  background: #fff1f2;
+  color: #dc2626;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.policy-file-remove:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #ef4444;
+}
+
+/* Document link inside admin table */
+.policy-doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: #0077b6;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  max-width: 18ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s;
+}
+
+.policy-doc-link:hover {
+  color: #005f8e;
+}
+
+/* ── Policy modal document download card ───────────────────────── */
+
+.policy-doc-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 0.875rem;
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff 0%, #e0f2fe 100%);
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.policy-doc-card__info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #1e40af;
+  min-width: 0;
+}
+
+.policy-doc-card__info svg {
+  flex-shrink: 0;
+  color: #3b82f6;
+}
+
+.policy-doc-card__info div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.policy-doc-card__info strong {
+  font-size: 0.92rem;
+  color: #1e3a5f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 24ch;
+}
+
+.policy-doc-card__size {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.policy-doc-card__btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 0.6rem;
+  border: none;
+  background: linear-gradient(135deg, #0077b6 0%, #005f8e 100%);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: opacity 0.15s, transform 0.1s;
+  box-shadow: 0 2px 8px rgba(0,119,182,0.3);
+}
+
+.policy-doc-card__btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.policy-doc-card__btn:active {
+  transform: translateY(0);
+}

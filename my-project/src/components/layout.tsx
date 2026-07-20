@@ -35,6 +35,7 @@ type ViewKey =
   | 'checklists'
   | 'benchmarks'
   | 'recommendations'
+  | 'legal-policies'
 
 type NavItem = {
   key: ViewKey
@@ -56,6 +57,7 @@ const navItems: NavItem[] = [
   { key: 'competencies', label: 'Competencies', icon: Settings, roles: ['admin', 'super_admin'] },
   { key: 'checklists', label: 'Review Checklists', icon: ClipboardList, roles: ['admin', 'super_admin'] },
   { key: 'benchmarks', label: 'RTB Benchmarks', icon: BarChart3, roles: ['admin', 'super_admin'] },
+  { key: 'legal-policies', label: 'Legal Policies', icon: FileText, roles: ['super_admin'] },
   { key: 'reports', label: 'Reports', icon: FileText, roles: ['normal_user', 'organization_user'] },
   { key: 'notifications', label: 'Notifications', icon: Bell, roles: ['normal_user', 'organization_user'] },
   { key: 'notifications', label: 'Manage Notifications', icon: Bell, roles: ['admin', 'super_admin'] },

@@ -13,6 +13,7 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import repositoryAssessmentRoutes from './routes/repositoryAssessmentRoutes.js';
 import organizationRoutes from './routes/organizationRoutes.js';
+import legalPolicyRoutes from './routes/legalPolicyRoutes.js';
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 import {
   createRateLimiter,
@@ -73,6 +74,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/repository-assessments', repositoryAssessmentRoutes);
 app.use('/api/organizations', organizationRoutes);
+app.use('/api/legal-policies', legalPolicyRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

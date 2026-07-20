@@ -10,11 +10,14 @@ import {
 import {
   BookOpenCheck,
   CheckCircle2,
+  FileText,
   Mail,
   MapPin,
   School,
   ShieldCheck,
+  Upload,
   UserRound,
+  X,
 } from "lucide-react";
 import { api } from "../api/client";
 import { getPasswordPolicy, passwordPolicyMessage } from "../utils/passwordPolicy";
@@ -58,6 +61,7 @@ import type {
   Organization,
   Recommendation,
   LearningResource,
+  LegalPolicy,
   RepositoryTaskReview,
   Report,
   RepositoryChecklist,
@@ -6750,6 +6754,389 @@ export function CompetenciesPage({ token }: { token: string }) {
                     </tr>
                   );
                     })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+
+export function LegalPoliciesPage({ token }: { token: string }) {
+  const { data, isLoading, error, refresh } = useAsyncData(
+    () => api.legalPolicies(token),
+    [] as LegalPolicy[],
+  );
+  type DocumentFile = { name: string; type?: string; size?: number; dataUrl: string } | null;
+  const [form, setForm] = useState<{
+    type: "terms" | "privacy";
+    title: string;
+    version: string;
+    content: string;
+    documentFile: DocumentFile;
+  }>({
+    type: "terms",
+    title: "",
+    version: "",
+    content: "",
+    documentFile: null,
+  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [formError, setFormError] = useState("");
+  const [fileError, setFileError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const filteredPolicies = useMemo(
+    () =>
+      data.filter((policy) => {
+        const matchesStatus = statusFilter === "all" || policy.status === statusFilter;
+        return matchesStatus && matchesSearchTerm(search, policy.type, policy.title, policy.version, policy.status, policy.content);
+      }),
+    [data, search, statusFilter],
+  );
+
+  function resetForm() {
+    setForm({ type: "terms", title: "", version: "", content: "", documentFile: null });
+    setEditingId(null);
+    setFileError("");
+  }
+
+  function startEdit(policy: LegalPolicy) {
+    setEditingId(policy._id);
+    setForm({
+      type: policy.type,
+      title: policy.title,
+      version: policy.version,
+      content: policy.content,
+      documentFile: policy.documentFile ?? null,
+    });
+    setFormError("");
+    setFileError("");
+    setMessage("");
+  }
+
+  async function handleFileUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    setFileError("");
+
+    const maxSize = 5 * 1024 * 1024; // 5 MB
+    if (file.size > maxSize) {
+      setFileError(`"${file.name}" exceeds the 5 MB limit. Please choose a smaller file.`);
+      return;
+    }
+
+    const isText = file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".md");
+
+    try {
+      // Always read as DataURL for storage
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsDataURL(file);
+      });
+
+      // If text/markdown, also read as text to auto-fill content
+      if (isText) {
+        const text = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+          reader.readAsText(file);
+        });
+        setForm((prev) => ({
+          ...prev,
+          content: text,
+          documentFile: { name: file.name, type: file.type, size: file.size, dataUrl },
+        }));
+      } else {
+        setForm((prev) => ({
+          ...prev,
+          documentFile: { name: file.name, type: file.type, size: file.size, dataUrl },
+        }));
+      }
+    } catch {
+      setFileError(`Could not read "${file.name}". Please try again.`);
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError("");
+    setMessage("");
+
+    if (!form.title.trim() || !form.version.trim() || form.content.trim().length < 20) {
+      setFormError("Complete the title, version, and policy content before saving.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      if (editingId) {
+        await api.updateLegalPolicy(token, editingId, form);
+        setMessage("Policy draft updated.");
+      } else {
+        await api.createLegalPolicy(token, form);
+        setMessage("Policy draft created.");
+      }
+      resetForm();
+      await refresh();
+    } catch (caughtError) {
+      setFormError(caughtError instanceof Error ? caughtError.message : "Policy could not be saved.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handlePublish(policy: LegalPolicy) {
+    if (!window.confirm(`Publish ${policy.title} version ${policy.version}?`)) return;
+
+    setBusyId(policy._id);
+    setFormError("");
+    setMessage("");
+    try {
+      await api.publishLegalPolicy(token, policy._id);
+      setMessage("Policy published.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(caughtError instanceof Error ? caughtError.message : "Policy could not be published.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleArchive(policy: LegalPolicy) {
+    if (!window.confirm(`Archive ${policy.title} version ${policy.version}?`)) return;
+
+    setBusyId(policy._id);
+    setFormError("");
+    setMessage("");
+    try {
+      await api.deleteLegalPolicy(token, policy._id);
+      setMessage("Policy archived.");
+      await refresh();
+    } catch (caughtError) {
+      setFormError(caughtError instanceof Error ? caughtError.message : "Policy could not be archived.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (isLoading) return <LoadingState message="Loading legal policies..." />;
+
+  return (
+    <section className="page-stack">
+      <PageHeader
+        title="Terms and Privacy Management"
+        description="Create, update, and publish the legal documents users must accept during registration. Only Super Admins can manage this page."
+        onRefresh={refresh}
+      />
+      {error && <Alert type="error">{error}</Alert>}
+      {formError && <Alert type="error">{formError}</Alert>}
+      {message && <Alert type="success">{message}</Alert>}
+
+      <Card title={editingId ? "Edit policy draft" : "Create policy draft"} icon={<ShieldCheck size={20} />}>
+        <form className="form-grid" onSubmit={handleSubmit}>
+          <SelectField
+            label="Policy type"
+            value={form.type}
+            onChange={(event) => setForm({ ...form, type: event.target.value as "terms" | "privacy" })}
+            disabled={isSaving}
+          >
+            <option value="terms">Terms and Conditions</option>
+            <option value="privacy">Privacy Policy</option>
+          </SelectField>
+          <TextField
+            label="Title"
+            value={form.title}
+            onChange={(event) => setForm({ ...form, title: event.target.value })}
+            placeholder="Example: Competra Terms and Conditions"
+            disabled={isSaving}
+            required
+          />
+          <TextField
+            label="Version"
+            value={form.version}
+            onChange={(event) => setForm({ ...form, version: event.target.value })}
+            placeholder="Example: 1.0"
+            disabled={isSaving}
+            required
+          />
+          <div className="full-span">
+            <TextArea
+              label="Policy content"
+              rows={10}
+              value={form.content}
+              onChange={(event) => setForm({ ...form, content: event.target.value })}
+              placeholder="Write the complete policy content, or upload a .txt / .md file above to auto-fill this field."
+              disabled={isSaving}
+              required
+            />
+          </div>
+          <div className="full-span">
+            <div className="policy-upload-section">
+              <p className="policy-upload-label">Attach document <span className="policy-upload-hint">(optional — PDF, DOCX, TXT, MD · max 5 MB)</span></p>
+              {fileError && <Alert type="error">{fileError}</Alert>}
+              {form.documentFile ? (
+                <div className="policy-file-attached">
+                  <div className="policy-file-info">
+                    <FileText size={20} />
+                    <div>
+                      <strong>{form.documentFile.name}</strong>
+                      {form.documentFile.size !== undefined && (
+                        <span className="policy-file-size">{Math.round(form.documentFile.size / 1024)} KB</span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="policy-file-remove"
+                    aria-label="Remove attached file"
+                    disabled={isSaving}
+                    onClick={() => setForm((prev) => ({ ...prev, documentFile: null }))}
+                  >
+                    <X size={16} />
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <label className="policy-file-drop" aria-label="Upload policy document">
+                  <Upload size={22} />
+                  <span>Click to browse or drag and drop a file here</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+                    disabled={isSaving}
+                    onChange={(event) => void handleFileUpload(event.target.files)}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+          <div className="full-span form-actions">
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "Saving..." : editingId ? "Update Draft" : "Create Draft"}
+            </Button>
+            <Button type="button" variant="secondary" disabled={isSaving} onClick={resetForm}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card title="Policy versions" icon={<FileText size={20} />}>
+        {data.length === 0 ? (
+          <EmptyState message="No terms or privacy policy versions have been created yet." />
+        ) : (
+          <>
+            <ListToolbar
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search title, version, type, or status..."
+              totalCount={data.length}
+              filteredCount={filteredPolicies.length}
+            >
+              <SelectField label="Status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="all">All statuses</option>
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+                <option value="archived">Archived</option>
+              </SelectField>
+            </ListToolbar>
+            {filteredPolicies.length === 0 ? (
+              <EmptyState message="No policies match your search or filter." />
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Title</th>
+                      <th>Version</th>
+                      <th>Status</th>
+                      <th>Document</th>
+                      <th>Published</th>
+                      <th className="w-56">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPolicies.map((policy) => (
+                      <tr key={policy._id}>
+                        <td>{policy.type === "terms" ? "Terms" : "Privacy"}</td>
+                        <td>{policy.title}</td>
+                        <td>{policy.version}</td>
+                        <td>
+                          <Badge tone={policy.status === "published" ? "success" : policy.status === "draft" ? "warning" : "neutral"}>
+                            {optionLabel(policy.status)}
+                          </Badge>
+                        </td>
+                        <td>
+                          {policy.documentFile?.dataUrl ? (
+                            <button
+                              type="button"
+                              className="policy-doc-link"
+                              title={policy.documentFile.name}
+                              onClick={() => {
+                                const docFile = policy.documentFile!;
+                                const [meta, base64] = docFile.dataUrl.split(",");
+                                const mime = meta.match(/:(.*?);/)?.[1] ?? "application/octet-stream";
+                                const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+                                const blob = new Blob([bytes], { type: mime });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = docFile.name;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              }}
+                            >
+                              <FileText size={14} />
+                              {policy.documentFile.name}
+                            </button>
+                          ) : (
+                            <span className="text-muted">—</span>
+                          )}
+                        </td>
+                        <td>{policy.publishedAt ? formatDate(policy.publishedAt) : "Not published"}</td>
+                        <td>
+                          <div className="table-action-row">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={policy.status === "published" || busyId === policy._id}
+                              onClick={() => startEdit(policy)}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              disabled={policy.status === "published" || busyId === policy._id}
+                              onClick={() => void handlePublish(policy)}
+                            >
+                              Publish
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="danger"
+                              disabled={busyId === policy._id}
+                              onClick={() => void handleArchive(policy)}
+                            >
+                              Archive
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

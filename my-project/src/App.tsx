@@ -18,6 +18,7 @@ import {
   NotificationsPage,
   OrganizationsPage,
   RecommendationsPage,
+  LegalPoliciesPage,
   ReportsPage,
   SubmitAssessmentPage,
   UsersPage,
@@ -121,6 +122,10 @@ function AppContent() {
 
     if (currentView === 'benchmarks') {
       return <BenchmarksPage token={token} />
+    }
+
+    if (currentView === 'legal-policies') {
+      return <LegalPoliciesPage token={token} />
     }
 
     return <DashboardPage onNavigate={setCurrentView} role={user.role} token={token} />

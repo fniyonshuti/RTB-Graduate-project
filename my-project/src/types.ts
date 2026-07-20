@@ -49,6 +49,10 @@ export type User = {
   privacyPolicyAccepted?: boolean
   termsAcceptedAt?: string
   privacyPolicyAcceptedAt?: string
+  termsPolicy?: string
+  privacyPolicy?: string
+  termsPolicyVersion?: string
+  privacyPolicyVersion?: string
   createdAt?: string
 }
 
@@ -437,3 +441,30 @@ export type NotificationItem = {
 }
 
 export type DashboardData = Record<string, unknown>
+
+export type LegalPolicy = {
+  _id: string
+  type: 'terms' | 'privacy'
+  title: string
+  version: string
+  content: string
+  documentFile?: {
+    name: string
+    type?: string
+    size?: number
+    dataUrl: string
+  } | null
+  status: 'draft' | 'published' | 'archived'
+  isActive?: boolean
+  publishedAt?: string
+  createdAt?: string
+  updatedAt?: string
+  createdBy?: User
+  updatedBy?: User
+}
+
+export type LegalPolicyBundle = {
+  terms: LegalPolicy | null
+  privacy: LegalPolicy | null
+  isReady: boolean
+}

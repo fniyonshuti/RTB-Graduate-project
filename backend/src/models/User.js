@@ -73,6 +73,22 @@ const userSchema = new mongoose.Schema(
     privacyPolicyAcceptedAt: {
       type: Date,
     },
+    termsPolicy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'LegalPolicy',
+    },
+    privacyPolicy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'LegalPolicy',
+    },
+    termsPolicyVersion: {
+      type: String,
+      trim: true,
+    },
+    privacyPolicyVersion: {
+      type: String,
+      trim: true,
+    },
     emailVerifiedAt: {
       type: Date,
     },
