@@ -83,6 +83,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     [persistAuth],
   )
+
+  const verifyEmailCode = useCallback(
+    async (email: string, code: string) => {
+      const payload = await api.verifyEmailCode(email, code)
+      persistAuth({ user: payload.user, token: payload.token })
+    },
+    [persistAuth],
+  )
+
+  const verifyEmailToken = useCallback(
+    async (verificationToken: string) => {
+      const payload = await api.verifyEmail(verificationToken)
+      persistAuth({ user: payload.user, token: payload.token })
+    },
+    [persistAuth],
+  )
   const register = useCallback(
     async (payload: {
       name: string
@@ -123,11 +139,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       login,
       googleLogin,
+      verifyEmailCode,
+      verifyEmailToken,
       changePassword,
       register,
       logout,
     }),
-    [changePassword, googleLogin, isLoading, login, logout, register, token, user],
+    [changePassword, googleLogin, isLoading, login, logout, register, token, user, verifyEmailCode, verifyEmailToken],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

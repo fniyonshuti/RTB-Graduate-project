@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import authService, {
   assertStrongPassword,
   assertVerificationResendAllowed,
+  hashEmailVerificationCode,
   hashToken,
+  validateStoredEmailVerificationCode,
   validateStoredEmailVerificationToken,
 } from '../../src/services/authService.js';
 import {
@@ -241,6 +243,27 @@ test('email verification token validation handles success, wrong, expired, and r
   );
 });
 
+test('email verification code validation handles success, wrong, expired, and reused codes', () => {
+  const email = 'learner@example.com';
+  const code = '123456';
+  const validUser = {
+    isEmailVerified: false,
+    emailVerificationCodeHash: hashEmailVerificationCode(email, code),
+    emailVerificationExpiresAt: new Date(Date.now() + 30_000),
+  };
+
+  assert.equal(validateStoredEmailVerificationCode(validUser, email, code), true);
+  assert.throws(() => validateStoredEmailVerificationCode(validUser, email, '654321'), /incorrect or expired/);
+  assert.throws(
+    () => validateStoredEmailVerificationCode({ ...validUser, emailVerificationExpiresAt: new Date(Date.now() - 1000) }, email, code),
+    /invalid or expired/,
+  );
+  assert.throws(
+    () => validateStoredEmailVerificationCode({ ...validUser, emailVerificationUsedAt: new Date() }, email, code),
+    /already been used/,
+  );
+});
+
 test('email verification resend is rate limited', () => {
   const now = new Date('2026-07-18T10:00:00.000Z');
   assert.doesNotThrow(() => assertVerificationResendAllowed({ emailVerificationLastSentAt: new Date('2026-07-18T09:58:00.000Z') }, now));
@@ -279,6 +302,7 @@ test('Brevo email verification sends the correct email payload', async () => {
       to: 'learner@example.com',
       name: 'Learner User',
       verificationLink: 'https://competra.example/verify-email?token=abc',
+      verificationCode: '123456',
       expiresInMinutes: 30,
     });
 
@@ -287,8 +311,10 @@ test('Brevo email verification sends the correct email payload', async () => {
     assert.deepEqual(body.to, [{ email: 'learner@example.com', name: 'Learner User' }]);
     assert.deepEqual(body.tags, ['email-verification']);
     assert.match(body.subject, /Verify your Competra email address/);
+    assert.match(body.textContent, /123456/);
     assert.match(body.textContent, /verify-email\?token=abc/);
-    assert.match(body.htmlContent, /Verify email/);
+    assert.match(body.htmlContent, /Your verification code/);
+    assert.match(body.htmlContent, /123456/);
   } finally {
     global.fetch = originalFetch;
     Object.entries(originalEnv).forEach(([key, value]) => {

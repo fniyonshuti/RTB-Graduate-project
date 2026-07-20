@@ -241,7 +241,15 @@ export function validateForgotPassword(req, res, next) {
 
 export function validateEmailVerificationToken(req, res, next) {
   try {
-    assertStringField(req.body, "token", "Verification token", { min: 20, max: 256 });
+    if (!isBlank(req.body.token)) {
+      assertStringField(req.body, "token", "Verification token", { min: 20, max: 256 });
+      return next();
+    }
+
+    assertEmailField(req.body, "email", "Email");
+    assertStringField(req.body, "code", "Verification code", { min: 6, max: 12 });
+    req.body.code = String(req.body.code).replace(/\D/g, "");
+    if (!/^\d{6}$/.test(req.body.code)) fail("Verification code must be 6 digits");
     return next();
   } catch (error) {
     return next(error);

@@ -62,6 +62,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       select: false,
     },
+    emailVerificationCodeHash: {
+      type: String,
+      select: false,
+    },
     emailVerificationExpiresAt: {
       type: Date,
       select: false,
@@ -108,5 +112,6 @@ userSchema.index({ googleId: 1 }, { sparse: true });
 userSchema.index({ organization: 1, role: 1, isActive: 1 });
 userSchema.index({ passwordResetTokenHash: 1 });
 userSchema.index({ emailVerificationTokenHash: 1 });
+userSchema.index({ emailVerificationCodeHash: 1 });
 
 export default mongoose.model('User', userSchema);

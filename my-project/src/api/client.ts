@@ -226,9 +226,15 @@ export const api = {
   }) => request<RegisterResponse>('/auth/register', { method: 'POST', body }),
 
   verifyEmail: (token: string) =>
-    request<{ user: User; message: string }>('/auth/verify-email', {
+    request<AuthPayload & { message?: string }>('/auth/verify-email', {
       method: 'POST',
       body: { token },
+    }),
+
+  verifyEmailCode: (email: string, code: string) =>
+    request<AuthPayload & { message?: string }>('/auth/verify-email', {
+      method: 'POST',
+      body: { email, code },
     }),
 
   resendVerificationEmail: (email: string) =>

@@ -52,7 +52,7 @@ class AuthController {
 
 
   verifyEmail = asyncHandler(async (req, res) => {
-    const result = await authService.verifyEmailAddress(req.body.token);
+    const result = await authService.verifyEmailAddress(req.body.token ? req.body.token : req.body);
     sendSuccess(res, result.message, result);
   });
 
