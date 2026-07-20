@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { OAuth2Client } from 'google-auth-library';
 import { AppError } from './errorService.js';
 import { ROLES } from '../constants/roles.js';
+import { getCurrentLegalPolicies } from './legalPolicyService.js';
 import {
   buildEmailVerificationUrl,
   buildPasswordResetUrl,
@@ -162,10 +163,27 @@ export function sanitizeUser(user) {
     privacyPolicyAccepted: Boolean(user.privacyPolicyAccepted),
     termsAcceptedAt: user.termsAcceptedAt,
     privacyPolicyAcceptedAt: user.privacyPolicyAcceptedAt,
+    termsPolicy: user.termsPolicy,
+    privacyPolicy: user.privacyPolicy,
+    termsPolicyVersion: user.termsPolicyVersion,
+    privacyPolicyVersion: user.privacyPolicyVersion,
     createdAt: user.createdAt,
   };
 }
 
+async function requireCurrentPolicyAcceptance(payload) {
+  if (payload.termsAccepted !== true || payload.privacyPolicyAccepted !== true) {
+    throw new AppError('Please accept the terms and privacy policy to continue.', 400);
+  }
+
+  const currentPolicies = await getCurrentLegalPolicies();
+
+  if (!currentPolicies.isReady) {
+    throw new AppError('Terms and privacy policy are not available yet.', 503);
+  }
+
+  return currentPolicies;
+}
 export async function getActiveUserById(userId) {
   const user = await User.findById(userId).populate('organization', 'name district type status');
 
@@ -189,9 +207,7 @@ export async function registerUser(payload) {
 
   assertStrongPassword(password);
 
-  if (payload.termsAccepted !== true || payload.privacyPolicyAccepted !== true) {
-    throw new AppError('Please accept the terms and privacy policy to continue.', 400);
-  }
+  const currentPolicies = await requireCurrentPolicyAcceptance(payload);
 
   const existingUser = await User.findOne({ email: normalizedEmail });
 
@@ -226,6 +242,10 @@ export async function registerUser(payload) {
     privacyPolicyAccepted: true,
     termsAcceptedAt: new Date(),
     privacyPolicyAcceptedAt: new Date(),
+    termsPolicy: currentPolicies.terms._id,
+    privacyPolicy: currentPolicies.privacy._id,
+    termsPolicyVersion: currentPolicies.terms.version,
+    privacyPolicyVersion: currentPolicies.privacy.version,
     emailVerificationTokenHash: hashToken(verificationToken),
     emailVerificationCodeHash: hashEmailVerificationCode(normalizedEmail, verificationCode),
     emailVerificationExpiresAt: verificationTokenExpiresAt(),
@@ -410,6 +430,8 @@ export async function loginWithGoogle(credential, options = {}) {
   try {
     const googleProfile = await verifyGoogleCredential(credential);
     let user = await User.findOne({ email: googleProfile.email }).populate('organization', 'name district type status');
+    const shouldAcceptPolicies = options.termsAccepted === true && options.privacyPolicyAccepted === true;
+    const currentPolicies = shouldAcceptPolicies ? await requireCurrentPolicyAcceptance(options) : null;
 
     if (user && !user.isActive) {
       throw new AppError('User account is not available', 401);
@@ -430,10 +452,14 @@ export async function loginWithGoogle(credential, options = {}) {
         authProvider: 'google',
         isEmailVerified: true,
         emailVerifiedAt: new Date(),
-        termsAccepted: options.termsAccepted === true,
-        privacyPolicyAccepted: options.privacyPolicyAccepted === true,
-        termsAcceptedAt: options.termsAccepted === true ? new Date() : undefined,
-        privacyPolicyAcceptedAt: options.privacyPolicyAccepted === true ? new Date() : undefined,
+        termsAccepted: shouldAcceptPolicies,
+        privacyPolicyAccepted: shouldAcceptPolicies,
+        termsAcceptedAt: shouldAcceptPolicies ? new Date() : undefined,
+        privacyPolicyAcceptedAt: shouldAcceptPolicies ? new Date() : undefined,
+        termsPolicy: currentPolicies?.terms?._id,
+        privacyPolicy: currentPolicies?.privacy?._id,
+        termsPolicyVersion: currentPolicies?.terms?.version,
+        privacyPolicyVersion: currentPolicies?.privacy?.version,
         lastLoginAt: new Date(),
       });
     } else {
@@ -449,13 +475,17 @@ export async function loginWithGoogle(credential, options = {}) {
       user.authProvider = 'google';
       user.isEmailVerified = true;
       user.emailVerifiedAt = user.emailVerifiedAt || new Date();
-      if (options.termsAccepted === true && !user.termsAccepted) {
+      if (shouldAcceptPolicies && !user.termsAccepted) {
         user.termsAccepted = true;
         user.termsAcceptedAt = new Date();
+        user.termsPolicy = currentPolicies.terms._id;
+        user.termsPolicyVersion = currentPolicies.terms.version;
       }
-      if (options.privacyPolicyAccepted === true && !user.privacyPolicyAccepted) {
+      if (shouldAcceptPolicies && !user.privacyPolicyAccepted) {
         user.privacyPolicyAccepted = true;
         user.privacyPolicyAcceptedAt = new Date();
+        user.privacyPolicy = currentPolicies.privacy._id;
+        user.privacyPolicyVersion = currentPolicies.privacy.version;
       }
       user.lastLoginAt = new Date();
       await user.save();

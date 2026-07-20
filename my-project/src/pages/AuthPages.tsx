@@ -21,6 +21,7 @@ import { Alert, Button, TextField } from "../components/common";
 import { api } from "../api/client";
 import { useAuth } from "../context/useAuth";
 import { getPasswordPolicy, passwordPolicyMessage } from "../utils/passwordPolicy";
+import type { LegalPolicyBundle } from "../types";
 
 function getInitialAuthState() {
   const params = new URLSearchParams(window.location.search);
@@ -38,80 +39,6 @@ function getInitialAuthState() {
 
 type AuthMode = "login" | "register" | "forgot" | "reset" | "verify";
 type PolicyType = "terms" | "privacy";
-
-const policyContent: Record<
-  PolicyType,
-  {
-    title: string;
-    intro: string;
-    sections: Array<{ heading: string; body: string }>;
-  }
-> = {
-  terms: {
-    title: "Terms & Conditions",
-    intro:
-      "These terms explain how learners, organizations, and administrators should use Competra responsibly for ICT competency assessment.",
-    sections: [
-      {
-        heading: "Purpose of the system",
-        body:
-          "Competra supports evidence-based skills gap analysis for TVET ICT learners by reviewing practical GitHub evidence, theory answers, RTB-aligned competencies, benchmarks, recommendations, notifications, and reports.",
-      },
-      {
-        heading: "Account responsibility",
-        body:
-          "Users must provide accurate registration details, keep login credentials private, and use only accounts assigned to their role. Organization and administrator accounts must not be shared with unauthorized people.",
-      },
-      {
-        heading: "Assessment evidence",
-        body:
-          "Submitted GitHub repositories, theory answers, and project evidence must belong to the learner or be work they are allowed to submit. Misleading, copied, or harmful submissions may be rejected or reviewed by an authorized administrator.",
-      },
-      {
-        heading: "System results",
-        body:
-          "Scores, skill gaps, and recommendations are generated from submitted evidence, benchmark data, checklist requirements, automated review, and available assessment information. Results should guide improvement and may be reviewed by authorized staff where needed.",
-      },
-      {
-        heading: "Acceptable use",
-        body:
-          "Users must not upload malicious code, attack the platform, misuse APIs, access another user's data, or attempt to bypass role-based access control. Violations may lead to account suspension.",
-      },
-    ],
-  },
-  privacy: {
-    title: "Privacy Policy",
-    intro:
-      "This policy explains what Competra collects and how the system uses data to provide secure assessment, reporting, and password recovery services.",
-    sections: [
-      {
-        heading: "Information collected",
-        body:
-          "The system may collect account details such as name, email, role, organization, profile information, assessment submissions, GitHub repository URLs, theory answers, scores, recommendations, notifications, and generated reports.",
-      },
-      {
-        heading: "How data is used",
-        body:
-          "Data is used to authenticate users, manage profiles, review assessment evidence, calculate competency scores, compare results with benchmarks, generate recommendations, send notifications, and support administrative reporting.",
-      },
-      {
-        heading: "Access control",
-        body:
-          "Personal assessment records are protected by role-based access. Learners access their own results, organization users are managed within their organization, and administrators access data required for approved system management.",
-      },
-      {
-        heading: "Email and password recovery",
-        body:
-          "For password reset, the system sends a secure expiring link to the account email address. Reset tokens are stored securely and cleared after use or expiry.",
-      },
-      {
-        heading: "Data protection",
-        body:
-          "Competra uses authentication, authorization, validation, secure password hashing, and controlled API access to reduce unauthorized access. Users should report suspicious activity immediately.",
-      },
-    ],
-  },
-};
 
 function getAuthContent(mode: AuthMode) {
   const content = {
@@ -339,6 +266,8 @@ export function AuthPages() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [activePolicy, setActivePolicy] = useState<PolicyType | null>(null);
+  const [legalPolicies, setLegalPolicies] = useState<LegalPolicyBundle | null>(null);
+  const [policyError, setPolicyError] = useState("");
   const [isHomeMenuOpen, setIsHomeMenuOpen] = useState(false);
   const authContent = getAuthContent(mode);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
@@ -350,6 +279,11 @@ export function AuthPages() {
 
       if (mode === 'register' && !termsAccepted) {
         setError('Please agree to the terms and privacy policy before using Google.');
+        return;
+      }
+
+      if (mode === 'register' && !legalPolicies?.isReady) {
+        setError(policyError || 'Terms and privacy policy are not available yet.');
         return;
       }
 
@@ -374,8 +308,29 @@ export function AuthPages() {
         setIsSubmitting(false);
       }
     },
-    [googleLogin, mode, termsAccepted],
+    [googleLogin, legalPolicies?.isReady, mode, policyError, termsAccepted],
   );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    api.currentLegalPolicies()
+      .then((policies) => {
+        if (isMounted) setLegalPolicies(policies);
+      })
+      .catch((caughtError) => {
+        if (!isMounted) return;
+        setPolicyError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Terms and privacy policy could not be loaded.",
+        );
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     latestGoogleCredentialHandler = handleGoogleCredential;
@@ -485,6 +440,11 @@ export function AuthPages() {
 
     if (mode === "register" && !termsAccepted) {
       setError("Please agree to the terms and privacy policy to continue.");
+      return;
+    }
+
+    if (mode === "register" && !legalPolicies?.isReady) {
+      setError(policyError || "Terms and privacy policy are not available yet.");
       return;
     }
 
@@ -961,7 +921,10 @@ export function AuthPages() {
           </div>
         </section>
       )}
-      {activePolicy && (
+      {activePolicy && (() => {
+        const policy = legalPolicies?.[activePolicy];
+
+        return (
         <div
           className="policy-modal"
           role="dialog"
@@ -976,7 +939,7 @@ export function AuthPages() {
             <div className="policy-modal__header">
               <div>
                 <span className="eyebrow">Competra policy</span>
-                <h2 id="policy-modal-title">{policyContent[activePolicy].title}</h2>
+                <h2 id="policy-modal-title">{policy?.title || (activePolicy === "terms" ? "Terms & Conditions" : "Privacy Policy")}</h2>
               </div>
               <button
                 aria-label="Close policy window"
@@ -987,14 +950,52 @@ export function AuthPages() {
                 <X size={20} />
               </button>
             </div>
-            <p className="policy-modal__intro">{policyContent[activePolicy].intro}</p>
+            {policy?.version && <p className="policy-modal__intro">Current version: {policy.version}</p>}
             <div className="policy-modal__body">
-              {policyContent[activePolicy].sections.map((section) => (
-                <article key={section.heading}>
-                  <h3>{section.heading}</h3>
-                  <p>{section.body}</p>
+              {policy ? (
+                <>
+                  {policy.documentFile?.dataUrl && (
+                    <div className="policy-doc-card">
+                      <div className="policy-doc-card__info">
+                        <FileText size={28} />
+                        <div>
+                          <strong>{policy.documentFile.name}</strong>
+                          {policy.documentFile.size !== undefined && (
+                            <span className="policy-doc-card__size">
+                              {policy.documentFile.size < 1024 * 1024
+                                ? `${Math.round(policy.documentFile.size / 1024)} KB`
+                                : `${(policy.documentFile.size / (1024 * 1024)).toFixed(1)} MB`}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="policy-doc-card__btn"
+                        onClick={() => {
+                          const docFile = policy.documentFile!;
+                          const [meta, base64] = docFile.dataUrl.split(",");
+                          const mime = meta.match(/:(.*?);/)?.[1] ?? "application/octet-stream";
+                          const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+                          const blob = new Blob([bytes], { type: mime });
+                          const url = URL.createObjectURL(blob);
+                          window.open(url, "_blank");
+                          setTimeout(() => URL.revokeObjectURL(url), 10000);
+                        }}
+                      >
+                        View / Download Document
+                      </button>
+                    </div>
+                  )}
+                  <article>
+                    <p>{policy.content}</p>
+                  </article>
+                </>
+              ) : (
+                <article>
+                  <p>{policyError || "This policy has not been published yet."}</p>
                 </article>
-              ))}
+              )}
             </div>
             <div className="policy-modal__footer">
               <button type="button" onClick={() => setActivePolicy(null)}>
@@ -1003,7 +1004,7 @@ export function AuthPages() {
             </div>
           </section>
         </div>
-      )}
+      )})()}
 
       <section
         className="home-section home-section--light scroll-reveal"

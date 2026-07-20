@@ -10,6 +10,8 @@ import type {
   Organization,
   Recommendation,
   LearningResource,
+  LegalPolicy,
+  LegalPolicyBundle,
   RepositoryAssessmentResult,
   Report,
   RepositoryChecklist,
@@ -252,6 +254,29 @@ export const api = {
 
   publicOrganizations: () =>
     request<Organization[]>('/organizations/public'),
+
+  currentLegalPolicies: () =>
+    request<LegalPolicyBundle>('/legal-policies/current'),
+
+  legalPolicies: (token: string) =>
+    request<LegalPolicy[]>('/legal-policies', { token }),
+
+  createLegalPolicy: (
+    token: string,
+    body: { type: 'terms' | 'privacy'; title: string; version: string; content: string; documentFile?: { name: string; type?: string; size?: number; dataUrl: string } | null },
+  ) => request<LegalPolicy>('/legal-policies', { method: 'POST', token, body }),
+
+  updateLegalPolicy: (
+    token: string,
+    id: string,
+    body: Partial<{ type: 'terms' | 'privacy'; title: string; version: string; content: string; isActive: boolean; documentFile: { name: string; type?: string; size?: number; dataUrl: string } | null }>,
+  ) => request<LegalPolicy>(`/legal-policies/${id}`, { method: 'PUT', token, body }),
+
+  publishLegalPolicy: (token: string, id: string) =>
+    request<LegalPolicy>(`/legal-policies/${id}/publish`, { method: 'PATCH', token }),
+
+  deleteLegalPolicy: (token: string, id: string) =>
+    request<LegalPolicy>(`/legal-policies/${id}`, { method: 'DELETE', token }),
 
   dashboard: (token: string) => request<DashboardData>('/dashboard', { token }),
 
