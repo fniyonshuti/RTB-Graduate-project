@@ -791,7 +791,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={roleDistributionData}
               dataKey="value"
               nameKey="name"
-              colors={["#0077B6", "#10b981", "#1f2937", "#0077B6", "#34d399", "#0077B6", "#6ee7b7"]}
+              colors={["#0077B6", "#10b981", "#1f2937", "#7c3aed", "#34d399", "#f59e0b", "#6ee7b7"]}
             />
           )}
         </Card>
