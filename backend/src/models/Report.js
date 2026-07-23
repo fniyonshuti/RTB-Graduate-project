@@ -74,6 +74,12 @@ const reportSchema = new mongoose.Schema(
         label: String,
         score: Number,
         explanation: String,
+        confidence: String,
+        commandEvidence: {
+          command: String,
+          exitCode: Number,
+          output: String,
+        },
       },
     ],
     finalConclusion: {

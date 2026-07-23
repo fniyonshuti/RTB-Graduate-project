@@ -24,9 +24,15 @@ import {
   UsersPage,
 } from './pages/MainPages'
 
+function getLinkedResultId() {
+  const match = window.location.pathname.match(/^\/results\/([^/]+)/)
+  return match ? decodeURIComponent(match[1]) : ''
+}
+
 function AppContent() {
   const { user, token, isAuthenticated, isLoading, logout } = useAuth()
   const [currentView, setCurrentView] = useState<ViewKey>('dashboard')
+  const linkedResultId = getLinkedResultId()
 
   useEffect(() => {
     const path = window.location.pathname
@@ -85,7 +91,7 @@ function AppContent() {
     }
 
     if (currentView === 'results') {
-      return <GapResultsPage token={token} />
+      return <GapResultsPage linkedResultId={linkedResultId} token={token} />
     }
 
     if (currentView === 'recommendations') {

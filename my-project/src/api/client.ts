@@ -283,6 +283,9 @@ export const api = {
   competencies: (token: string) =>
     request<Competency[]>('/competencies?activeOnly=true', { token }),
 
+  allCompetencies: (token: string) =>
+    request<Competency[]>('/competencies?activeOnly=false', { token }),
+
   competency: (token: string, id: string) =>
     request<Competency>(`/competencies/${id}`, { token }),
 
@@ -292,6 +295,8 @@ export const api = {
   updateCompetency: (token: string, id: string, body: Record<string, unknown>) =>
     request<Competency>(`/competencies/${id}`, { method: 'PUT', token, body }),
 
+  activateCompetency: (token: string, id: string) =>
+    request<Competency>(`/competencies/${id}/activate`, { method: 'PATCH', token }),
   deleteCompetency: (token: string, id: string) =>
     request<Competency>(`/competencies/${id}`, { method: 'DELETE', token }),
 

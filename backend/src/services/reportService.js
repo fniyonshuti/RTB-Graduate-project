@@ -52,6 +52,8 @@ export async function generateGraduateReport(graduateId, generatedBy) {
       explanation: item.passed
         ? item.evidence || 'Requirement passed.'
         : item.advice || item.evidence || 'Requirement needs improvement.',
+      confidence: item.confidence || 'estimated',
+      commandEvidence: item.commandEvidence || null,
     })) || [];
 
   const report = await Report.create({
