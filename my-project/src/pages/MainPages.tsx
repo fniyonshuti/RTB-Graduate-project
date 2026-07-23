@@ -1447,6 +1447,8 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const [viewingExpectedEvidence, setViewingExpectedEvidence] = useState<Competency | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [isSubmittingAssessment, setIsSubmittingAssessment] = useState(false);
+  const isSubmittingAssessmentRef = useRef(false);
   const assessmentCategoryOptions = useMemo(
     () => uniqueFilterOptions(competencies.map((item) => item.category)),
     [competencies],
@@ -1568,6 +1570,10 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSubmittingAssessmentRef.current) return;
+    isSubmittingAssessmentRef.current = true;
+    setIsSubmittingAssessment(true);
     setMessage("");
     setError("");
 
@@ -1603,6 +1609,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
           ? caughtError.message
           : "Submission failed",
       );
+    } finally {
+      isSubmittingAssessmentRef.current = false;
+      setIsSubmittingAssessment(false);
     }
   }
 
@@ -2218,8 +2227,8 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 <Button variant="secondary" onClick={() => setCurrentStep(2)}>
                   Back
                 </Button>
-                <Button disabled={!canSubmit} type="submit">
-                  Submit for Review
+                <Button disabled={!canSubmit || isSubmittingAssessment} type="submit">
+                  {isSubmittingAssessment ? "Submitting..." : "Submit for Review"}
                 </Button>
               </div>
             </Card>
@@ -4421,6 +4430,8 @@ function AdminNotificationsPage({ token }: { token: string }) {
     recipientId: "",
   });
   const [message, setMessage] = useState("");
+  const [formError, setFormError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const [notificationSearch, setNotificationSearch] = useState("");
   const [notificationStatusFilter, setNotificationStatusFilter] = useState("all");
   const [notificationTypeFilter, setNotificationTypeFilter] = useState("all");
@@ -4459,23 +4470,44 @@ function AdminNotificationsPage({ token }: { token: string }) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSaving) return;
+
     setMessage("");
-    await api.createNotification(token, {
-      title: form.title,
-      message: form.message,
-      type: form.type,
-      role: form.recipientId ? undefined : form.role,
-      recipientId: form.recipientId || undefined,
-    });
-    setMessage("Notification sent successfully.");
-    setForm({
-      title: "",
-      message: "",
-      type: "system",
-      role: "all",
-      recipientId: "",
-    });
-    await refresh();
+    setFormError("");
+
+    if (!form.title.trim() || !form.message.trim()) {
+      setFormError("Title and message are required.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await api.createNotification(token, {
+        title: form.title,
+        message: form.message,
+        type: form.type,
+        role: form.recipientId ? undefined : form.role,
+        recipientId: form.recipientId || undefined,
+      });
+      setMessage("Notification sent successfully.");
+      setForm({
+        title: "",
+        message: "",
+        type: "system",
+        role: "all",
+        recipientId: "",
+      });
+      await refresh();
+    } catch (caughtError) {
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to send notification",
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   if (isLoading)
@@ -4489,6 +4521,7 @@ function AdminNotificationsPage({ token }: { token: string }) {
         title="Manage Notifications"
       />
       {error && <Alert type="error">{error}</Alert>}
+      {formError && <Alert type="error">{formError}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
 
       <div className="status-summary-grid">
@@ -4567,7 +4600,9 @@ function AdminNotificationsPage({ token }: { token: string }) {
               }
             />
           </div>
-          <Button type="submit">Send Notification</Button>
+          <Button type="submit" disabled={isSaving}>
+            {isSaving ? "Sending..." : "Send Notification"}
+          </Button>
         </form>
       </Card>
 
@@ -5967,8 +6002,8 @@ function ChecklistBuilderModal({
       subtitle="Add measurable requirements and assign a fair weight. The total weight must be exactly 100%."
       onClose={onClose}
     >
-      <div className="checklist-upload-panel">
-        <div className="checklist-upload-panel__text">
+      <div className="doc-upload-panel">
+        <div className="doc-upload-panel__text">
           <strong>Upload a checklist file</strong>
           <span>
             Import a CSV with columns Requirement, Category, Scored From, Weight,
@@ -5976,7 +6011,7 @@ function ChecklistBuilderModal({
             automatically.
           </span>
         </div>
-        <div className="checklist-upload-panel__actions">
+        <div className="doc-upload-panel__actions">
           <Button
             type="button"
             variant="secondary"
@@ -5986,7 +6021,7 @@ function ChecklistBuilderModal({
           >
             Download CSV template
           </Button>
-          <label className="policy-file-drop checklist-upload-drop">
+          <label className="policy-file-drop doc-upload-drop">
             <Upload size={18} />
             <span>{isUploading ? "Importing..." : "Click to upload CSV"}</span>
             <input
@@ -5998,8 +6033,8 @@ function ChecklistBuilderModal({
             />
           </label>
         </div>
-        {uploadError && <p className="checklist-upload-error">{uploadError}</p>}
-        {uploadNotice && <p className="checklist-upload-notice">{uploadNotice}</p>}
+        {uploadError && <p className="doc-upload-error">{uploadError}</p>}
+        {uploadNotice && <p className="doc-upload-notice">{uploadNotice}</p>}
       </div>
 
       <div className="checklist-builder-toolbar">
@@ -6577,6 +6612,156 @@ function theoryQuestionDraftFromQuestion(question: TheoryQuestion): CompetencyTh
   };
 }
 
+const COMPETENCY_EXECUTION_INTERFACES = [
+  "instructor_tests",
+  "stdin_stdout",
+  "rest_api",
+  "cli",
+  "frontend",
+];
+
+type CompetencyDocumentPracticalTask = {
+  title?: string;
+  instructions?: string;
+  deliverables?: string;
+  testCommand?: string;
+  testFilePath?: string;
+  testFileContent?: string;
+  allowedLanguages?: string[] | string;
+  executionInterface?: string;
+  requiredApiRoutes?: string[] | string;
+  publicTestCases?: Array<{ input?: string; expectedOutput?: string }> | string;
+};
+
+type CompetencyDocumentTheoryQuestion = {
+  question?: string;
+  type?: string;
+  options?: string[] | string;
+  correctAnswer?: string;
+  expectedAnswer?: string;
+  points?: number;
+};
+
+type CompetencyDocumentPayload = {
+  title?: string;
+  category?: string;
+  description?: string;
+  expectedEvidence?: string;
+  practicalTasks?: CompetencyDocumentPracticalTask[];
+  theoryQuestions?: CompetencyDocumentTheoryQuestion[];
+};
+
+function joinDocumentList(value: string[] | string | undefined, separator: string): string {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item ?? "").trim()).filter(Boolean).join(separator);
+  }
+  return String(value || "").trim();
+}
+
+function practicalTaskDraftFromDocument(
+  task: CompetencyDocumentPracticalTask,
+): CompetencyPracticalTaskDraft {
+  const base = createPracticalTaskDraft();
+  const publicTestCasesText = Array.isArray(task.publicTestCases)
+    ? task.publicTestCases
+        .map((testCase) => `${testCase.input || ""} => ${testCase.expectedOutput || ""}`)
+        .filter((line) => line.trim() && line.trim() !== "=>")
+        .join("\n")
+    : String(task.publicTestCases || "").trim();
+
+  return {
+    ...base,
+    title: String(task.title || "").trim(),
+    instructions: String(task.instructions || "").trim(),
+    deliverables: String(task.deliverables || "").trim(),
+    testCommand: String(task.testCommand || "").trim(),
+    testFilePath: String(task.testFilePath || "").trim(),
+    testFileContent: String(task.testFileContent || ""),
+    allowedLanguages: joinDocumentList(task.allowedLanguages, ", ") || base.allowedLanguages,
+    executionInterface: COMPETENCY_EXECUTION_INTERFACES.includes(String(task.executionInterface || ""))
+      ? String(task.executionInterface)
+      : base.executionInterface,
+    requiredApiRoutes: joinDocumentList(task.requiredApiRoutes, "\n"),
+    publicTestCasesText,
+  };
+}
+
+function theoryQuestionDraftFromDocument(
+  question: CompetencyDocumentTheoryQuestion,
+): CompetencyTheoryQuestionDraft {
+  const base = createTheoryQuestionDraft();
+  const type = question.type === "short_answer" ? "short_answer" : "multiple_choice";
+  const points = Number(question.points);
+
+  return {
+    ...base,
+    question: String(question.question || "").trim(),
+    type,
+    options: joinDocumentList(question.options, "\n"),
+    correctAnswer: String(question.correctAnswer || "").trim(),
+    expectedAnswer: String(question.expectedAnswer || "").trim(),
+    points: points > 0 ? points : 1,
+  };
+}
+
+// Accepts the JSON shape produced by "Download JSON template" below. Practical tasks and
+// theory questions are optional and normalized independently, so a document can seed just
+// the top-level fields (title/category/description) if that's all it has.
+function parseCompetencyDocument(text: string) {
+  const parsed = JSON.parse(text) as CompetencyDocumentPayload;
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("the document must be a JSON object, not an array or plain text");
+  }
+
+  return {
+    title: String(parsed.title || "").trim(),
+    category: String(parsed.category || "").trim(),
+    description: String(parsed.description || "").trim(),
+    expectedEvidence: String(parsed.expectedEvidence || "").trim(),
+    practicalTasks: (parsed.practicalTasks || [])
+      .filter((task) => task && String(task.title || "").trim())
+      .map(practicalTaskDraftFromDocument),
+    theoryQuestions: (parsed.theoryQuestions || [])
+      .filter((question) => question && String(question.question || "").trim())
+      .map(theoryQuestionDraftFromDocument),
+  };
+}
+
+const COMPETENCY_DOCUMENT_TEMPLATE = JSON.stringify(
+  {
+    title: "REST API Development",
+    category: "Backend Development",
+    description: "Ability to design, build, and test RESTful APIs.",
+    expectedEvidence: "A GitHub repository with working REST endpoints and passing tests.",
+    practicalTasks: [
+      {
+        title: "Build a REST API for a todo list",
+        instructions: "Implement CRUD endpoints for todo items using Express and MongoDB.",
+        deliverables: "GitHub repository link with a README explaining setup.",
+        testCommand: "npm test -- --runInBand tests/instructor-task.test.js",
+        testFilePath: "tests/instructor-task.test.js",
+        testFileContent: "// Add Jest/Supertest instructor tests here",
+        allowedLanguages: ["javascript", "typescript"],
+        executionInterface: "instructor_tests",
+        requiredApiRoutes: ["GET /todos", "POST /todos"],
+        publicTestCases: [{ input: "GET /todos", expectedOutput: "200 []" }],
+      },
+    ],
+    theoryQuestions: [
+      {
+        question: "Which HTTP method fully replaces a resource?",
+        type: "multiple_choice",
+        options: ["GET", "POST", "PUT", "PATCH"],
+        correctAnswer: "PUT",
+        points: 1,
+      },
+    ],
+  },
+  null,
+  2,
+);
+
 export function CompetenciesPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.allCompetencies(token),
@@ -6621,6 +6806,9 @@ export function CompetenciesPage({ token }: { token: string }) {
   });
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [viewingCompetency, setViewingCompetency] = useState<Competency | null>(null);
+  const [docUploadError, setDocUploadError] = useState("");
+  const [docUploadNotice, setDocUploadNotice] = useState("");
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const [competencySearch, setCompetencySearch] = useState("");
   const [competencyCategoryFilter, setCompetencyCategoryFilter] = useState("all");
   const competencyCategoryOptions = useMemo(
@@ -6661,6 +6849,57 @@ export function CompetenciesPage({ token }: { token: string }) {
     }
 
     setForm((currentForm) => updater(currentForm));
+  }
+
+  async function handleCompetencyDocumentUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const maxSize = 2 * 1024 * 1024;
+
+    setDocUploadError("");
+    setDocUploadNotice("");
+
+    if (file.size > maxSize) {
+      setDocUploadError(`"${file.name}" exceeds the 2 MB limit. Please choose a smaller file.`);
+      return;
+    }
+
+    setIsUploadingDoc(true);
+    try {
+      const text = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsText(file);
+      });
+
+      const parsed = parseCompetencyDocument(text);
+
+      if (!parsed.title && !parsed.category) {
+        setDocUploadError(
+          `"${file.name}" didn't contain a title or category. Check it matches the downloaded template format.`,
+        );
+        return;
+      }
+
+      updateActiveCompetencyForm((currentForm) => ({
+        ...currentForm,
+        ...parsed,
+        code: currentForm.code,
+      }));
+      setFormError("");
+      setDocUploadNotice(
+        `Imported "${parsed.title || "competency"}" from "${file.name}" - ${parsed.practicalTasks.length} practical task(s) and ${parsed.theoryQuestions.length} theory question(s) filled in. Review the fields below before saving.`,
+      );
+    } catch (caughtError) {
+      setDocUploadError(
+        caughtError instanceof Error
+          ? `Could not read "${file.name}": ${caughtError.message}`
+          : `Could not read "${file.name}". Check it is valid JSON.`,
+      );
+    } finally {
+      setIsUploadingDoc(false);
+    }
   }
 
   function addPracticalTaskRow() {
@@ -7011,6 +7250,44 @@ export function CompetenciesPage({ token }: { token: string }) {
           className="form-grid"
           onSubmit={editingCompetencyId ? handleUpdateCompetency : handleCreate}
         >
+          <div className="full-span doc-upload-panel">
+            <div className="doc-upload-panel__text">
+              <strong>Upload a competency document</strong>
+              <span>
+                Import a JSON file with the competency's title, category, description,
+                practical tasks, and theory questions - the fields below will be filled in
+                automatically instead of typing everything by hand.
+              </span>
+            </div>
+            <div className="doc-upload-panel__actions">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  downloadTextFile(
+                    "competency-template.json",
+                    COMPETENCY_DOCUMENT_TEMPLATE,
+                    "application/json",
+                  )
+                }
+              >
+                Download JSON template
+              </Button>
+              <label className="policy-file-drop doc-upload-drop">
+                <Upload size={18} />
+                <span>{isUploadingDoc ? "Importing..." : "Click to upload document"}</span>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  disabled={isUploadingDoc || isSaving}
+                  onChange={(event) => void handleCompetencyDocumentUpload(event.target.files)}
+                  style={{ display: "none" }}
+                />
+              </label>
+            </div>
+            {docUploadError && <p className="doc-upload-error">{docUploadError}</p>}
+            {docUploadNotice && <p className="doc-upload-notice">{docUploadNotice}</p>}
+          </div>
           <div>
             <TextField
               label="Code"

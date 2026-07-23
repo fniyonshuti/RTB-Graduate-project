@@ -130,6 +130,10 @@ type RequestOptions = {
   token?: string | null
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function request<T>(path: string, options: RequestOptions = {}) {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -144,16 +148,28 @@ async function request<T>(path: string, options: RequestOptions = {}) {
 
   const baseUrl = apiBaseUrl()
 
-  try {
-    response = await fetch(`${baseUrl}${path}`, {
-      method: options.method || 'GET',
-      headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
-    })
-  } catch (error) {
-    connectionErrors.push(
-      `${baseUrl}: ${error instanceof Error ? error.message : 'network error'}`,
-    )
+  // A backend host that's asleep (e.g. a free-tier instance waking from an idle
+  // spin-down) can refuse the very first connection outright. One short retry
+  // absorbs that instead of surfacing "cannot connect" for something that was
+  // just cold, not actually broken.
+  const maxAttempts = 2
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      response = await fetch(`${baseUrl}${path}`, {
+        method: options.method || 'GET',
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      })
+      break
+    } catch (error) {
+      connectionErrors.push(
+        `${baseUrl}: ${error instanceof Error ? error.message : 'network error'}`,
+      )
+      if (attempt < maxAttempts) {
+        await delay(3000)
+      }
+    }
   }
 
   if (!response) {
@@ -171,7 +187,7 @@ async function request<T>(path: string, options: RequestOptions = {}) {
       details: [error instanceof Error ? error.message : 'Invalid JSON response'],
       response,
     })
-    throw new Error('The server returned an unexpected response. Please try again.')
+    throw new Error('The server returned an unexpected response. Please try again.', { cause: error })
   }
 
   if (!response.ok) {
