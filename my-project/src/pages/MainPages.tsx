@@ -5737,6 +5737,8 @@ function ChecklistBuilderModal({
       currentRows.map((row, rowIndex) => {
         if (rowIndex !== index) return row;
 
+        const merged = { ...row, ...changes };
+
         if (changes.weight !== undefined) {
           const currentWeight = Number(row.weight || 0);
           const otherRowsWeight = checklistWeight(currentRows) - currentWeight;
@@ -5747,22 +5749,20 @@ function ChecklistBuilderModal({
           );
 
           return {
-            ...row,
-            ...changes,
+            ...merged,
             weight: safeWeight,
             maxScore: safeWeight,
-            category: row.category || "general",
-            validationType: row.validationType || "implementation_review",
-            feedbackWhenFailed: row.feedbackWhenFailed || "",
+            category: merged.category || "general",
+            validationType: merged.validationType || "implementation_review",
+            feedbackWhenFailed: merged.feedbackWhenFailed || "",
           };
         }
 
         return {
-          ...row,
-          ...changes,
-          category: row.category || "general",
-          validationType: row.validationType || "implementation_review",
-          feedbackWhenFailed: row.feedbackWhenFailed || "",
+          ...merged,
+          category: merged.category || "general",
+          validationType: merged.validationType || "implementation_review",
+          feedbackWhenFailed: merged.feedbackWhenFailed || "",
         };
       }),
     );
