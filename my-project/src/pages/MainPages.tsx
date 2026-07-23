@@ -54,7 +54,9 @@ import type {
   Assessment,
   Benchmark,
   Competency,
+  PracticalTask,
   PracticalTaskChecklistItem,
+  TheoryQuestion,
   DashboardData,
   GraduateProfile,
   NotificationItem,
@@ -66,6 +68,7 @@ import type {
   Report,
   RepositoryChecklist,
   Role,
+  SubmissionContract,
   User,
 } from "../types";
 import { formatDate, formatPercent, readableStatus } from "../utils/gapLevels";
@@ -111,6 +114,14 @@ function uniqueFilterOptions(values: Array<string | undefined | null>) {
   return Array.from(
     new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]),
   ).sort((a, b) => a.localeCompare(b));
+}
+
+function sortByLatestDate<T>(items: T[], getDate: (item: T) => string | undefined | null) {
+  return [...items].sort((first, second) => {
+    const firstTime = new Date(getDate(first) || 0).getTime();
+    const secondTime = new Date(getDate(second) || 0).getTime();
+    return secondTime - firstTime;
+  });
 }
 
 function optionLabel(value: string) {
@@ -354,12 +365,19 @@ function RepositoryChecklistTable({ checklist }: { checklist: RepositoryChecklis
 
   return (
     <div className="repository-checklist-result" aria-label="Repository checklist result">
+      <p className="checklist-confidence-legend">
+        <Badge tone="success">Verified</Badge> results come from an actual tool (tests,
+        ESLint, security scan). <Badge tone="warning">Estimated</Badge> results are the
+        system's best-effort guess from matching your code against the requirement, not
+        a proven result.
+      </p>
       <table>
         <thead>
           <tr>
             <th>Competency requirement</th>
             <th>Score</th>
             <th>Result</th>
+            <th>Confidence</th>
           </tr>
         </thead>
         <tbody>
@@ -368,6 +386,18 @@ function RepositoryChecklistTable({ checklist }: { checklist: RepositoryChecklis
               <td>
                 <strong>{item.label}</strong>
                 {item.advice && <span>{item.advice}</span>}
+                {item.commandEvidence && (
+                  <details className="checklist-command-evidence">
+                    <summary>View defense proof (exact command + output)</summary>
+                    <p className="checklist-command-evidence__command">
+                      $ {item.commandEvidence.command}
+                      {item.commandEvidence.exitCode !== null && item.commandEvidence.exitCode !== undefined
+                        ? ` (exit code ${item.commandEvidence.exitCode})`
+                        : ""}
+                    </p>
+                    <pre className="checklist-command-evidence__output">{item.commandEvidence.output}</pre>
+                  </details>
+                )}
               </td>
               <td>
                 <strong>
@@ -380,6 +410,11 @@ function RepositoryChecklistTable({ checklist }: { checklist: RepositoryChecklis
                   {item.passed ? "Passed" : "Failed"}
                 </Badge>
               </td>
+              <td>
+                <Badge tone={item.confidence === "estimated" ? "warning" : "success"}>
+                  {item.confidence === "estimated" ? "Estimated" : "Verified"}
+                </Badge>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -387,10 +422,87 @@ function RepositoryChecklistTable({ checklist }: { checklist: RepositoryChecklis
           <tr>
             <td>Total repository score</td>
             <td>{totalEarned.toFixed(2)} / {totalWeight.toFixed(2)}</td>
-            <td>{formatPercent(totalWeight > 0 ? (totalEarned / totalWeight) * 100 : 0)}</td>
+            <td colSpan={2}>{formatPercent(totalWeight > 0 ? (totalEarned / totalWeight) * 100 : 0)}</td>
           </tr>
         </tfoot>
       </table>
+    </div>
+  );
+}
+
+function downloadTextFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Everything a learner needs to know before submitting: which language(s) are
+// accepted, how the sandbox will run the code, which endpoints/tests it checks,
+// and a ready-to-copy manifest so the competra.json format never has to be guessed.
+function SubmissionContractPanel({ contract }: { contract: SubmissionContract }) {
+  const manifestJson = JSON.stringify(contract.manifestTemplate, null, 2);
+
+  return (
+    <div className="submission-contract-panel" aria-label="Submission requirements">
+      <p className="submission-contract-panel__title">Submission requirements</p>
+      <div className="submission-contract-panel__row">
+        <strong>Allowed language(s):</strong>
+        <span>{contract.allowedLanguages.length > 0 ? contract.allowedLanguages.join(", ") : "Any supported language"}</span>
+      </div>
+      <div className="submission-contract-panel__row">
+        <strong>How the system will run your code:</strong>
+        <span>{contract.executionInterface.replace(/_/g, " ")}</span>
+      </div>
+      <div className="submission-contract-panel__row">
+        <strong>File the grader looks for:</strong>
+        <span>
+          <code>{contract.manifestFileName}</code> at your repository root, describing how to run your code.
+        </span>
+      </div>
+      {contract.requiredApiRoutes.length > 0 && (
+        <div className="submission-contract-panel__row">
+          <strong>Required API endpoint(s):</strong>
+          <ul>
+            {contract.requiredApiRoutes.map((route) => (
+              <li key={`${route.method}-${route.path}`}>
+                <code>{route.method} {route.path}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {contract.publicTestCases.length > 0 && (
+        <div className="submission-contract-panel__row">
+          <strong>Sample input/output your program must satisfy:</strong>
+          <ul>
+            {contract.publicTestCases.map((testCase, index) => (
+              <li key={testCase.id || index}>
+                {testCase.title ? <em>{testCase.title}: </em> : null}
+                input <code>{testCase.input || "(none)"}</code> {"->"} expected output{" "}
+                <code>{testCase.expectedOutput || "(none)"}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {contract.hiddenTestCaseCount > 0 && (
+        <p className="submission-contract-panel__hint">
+          Plus {contract.hiddenTestCaseCount} hidden test case(s) not shown here, to keep grading fair.
+        </p>
+      )}
+      <Button
+        variant="secondary"
+        type="button"
+        onClick={() => downloadTextFile(contract.manifestFileName, manifestJson)}
+      >
+        Download {contract.manifestFileName} starter template
+      </Button>
     </div>
   );
 }
@@ -412,6 +524,8 @@ function AdminChecklistPreviewTable({ value }: { value: string }) {
         <thead>
           <tr>
             <th>Requirement</th>
+            <th>Category</th>
+            <th>Scored from</th>
             <th>Weight</th>
           </tr>
         </thead>
@@ -420,6 +534,13 @@ function AdminChecklistPreviewTable({ value }: { value: string }) {
             <tr key={item.key}>
               <td>
                 <strong>{item.title}</strong>
+                {item.description && <span className="checklist-preview-description">{item.description}</span>}
+              </td>
+              <td>{item.category}</td>
+              <td>
+                <Badge tone={CHECKLIST_VERIFIED_VALIDATION_TYPES.has(item.validationType || "") ? "success" : "warning"}>
+                  {CHECKLIST_VALIDATION_TYPE_LABELS[item.validationType || "implementation_review"] || item.validationType}
+                </Badge>
               </td>
               <td>{item.weight}%</td>
             </tr>
@@ -1323,6 +1444,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   } | null>(null);
   const [isReviewingRepository, setIsReviewingRepository] = useState(false);
   const [isRepositoryResultOpen, setIsRepositoryResultOpen] = useState(false);
+  const [viewingExpectedEvidence, setViewingExpectedEvidence] = useState<Competency | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const assessmentCategoryOptions = useMemo(
@@ -1354,13 +1476,21 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const selectedCompetency = competencies.find(
     (item) => item._id === competency,
   );
-  const displayedAssessmentCompetencies =
-    selectedCompetency &&
-    !filteredAssessmentCompetencies.some((item) =>
-      item._id === selectedCompetency._id,
-    )
-      ? [selectedCompetency, ...filteredAssessmentCompetencies]
-      : filteredAssessmentCompetencies;
+  const displayedAssessmentCompetencies = useMemo(() => {
+    const visibleCompetencies =
+      selectedCompetency &&
+      !filteredAssessmentCompetencies.some((item) =>
+        item._id === selectedCompetency._id,
+      )
+        ? [selectedCompetency, ...filteredAssessmentCompetencies]
+        : filteredAssessmentCompetencies;
+
+    return [...visibleCompetencies].sort((first, second) => {
+      const firstCreatedAt = new Date((first as Competency & { createdAt?: string }).createdAt || 0).getTime();
+      const secondCreatedAt = new Date((second as Competency & { createdAt?: string }).createdAt || 0).getTime();
+      return secondCreatedAt - firstCreatedAt;
+    });
+  }, [filteredAssessmentCompetencies, selectedCompetency]);
   const availableTasks = selectedCompetency?.practicalTasks || [];
   const selectedTask =
     availableTasks.find((task) => task._id === practicalTaskId) ||
@@ -1618,7 +1748,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                           <th>Category</th>
                           <th>Code</th>
                           <th>Title</th>
-                          <th>Assessment content</th>
+                          <th>Expected Evidence</th>
                           <th>Action</th>
                         </tr>
                       </thead>
@@ -1626,8 +1756,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                         {displayedAssessmentCompetencies.map((item) => {
                           const createdAt = (item as Competency & { createdAt?: string }).createdAt;
                           const isSelected = competency === item._id;
-                          const practicalCount = item.practicalTasks?.length || 0;
-                          const theoryCount = item.theoryQuestions?.length || 0;
 
                           return (
                             <tr
@@ -1650,7 +1778,13 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                                 </div>
                               </td>
                               <td>
-                                {practicalCount} GitHub task(s), {theoryCount} theory question(s)
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => setViewingExpectedEvidence(item)}
+                                >
+                                  View
+                                </Button>
                               </td>
                               <td>
                                 <Button
@@ -1673,6 +1807,22 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                   </div>
                 )}
 
+                {viewingExpectedEvidence && (
+                  <DetailModal
+                    title={`${viewingExpectedEvidence.code} - ${viewingExpectedEvidence.title}`}
+                    subtitle="Expected evidence for this competency"
+                    onClose={() => setViewingExpectedEvidence(null)}
+                  >
+                    <div className="competency-detail-view">
+                      <h4>Expected evidence</h4>
+                      <ReadMoreText
+                        text={viewingExpectedEvidence.expectedEvidence}
+                        emptyText="Expected evidence will be confirmed from the practical task instructions."
+                        limit={600}
+                      />
+                    </div>
+                  </DetailModal>
+                )}
                 {selectedCompetency && (
                   <div className="competency-summary selected-competency-summary">
                     <div className="selected-competency-title">
@@ -1724,6 +1874,16 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 <strong>30%</strong> Quiz / theory
               </span>
             </div>
+            <p className="form-help">
+              Your practical score comes from the repository checklist: some
+              requirements are verified by an actual tool (tests, ESLint, security
+              scan) and some are the system's best-effort estimate from your code -
+              the repository review result shows which is which. Your theory score is
+              calculated after you submit, so the practical score you see before
+              submitting is not your final result. The combined score is then
+              compared against the RTB benchmark for this competency to calculate
+              your skill gap.
+            </p>
           </Card>
         </aside>
 
@@ -1802,6 +1962,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                             <strong>Required deliverables</strong>
                             <ReadMoreText text={selectedTask.deliverables} limit={180} />
                           </div>
+                        )}
+                        {selectedTask.submissionContract && (
+                          <SubmissionContractPanel contract={selectedTask.submissionContract} />
                         )}
                       </div>
                     )}
@@ -1909,6 +2072,15 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                         <p>{answeredTheoryCount}/{theoryQuestions.length} answered</p>
                       </div>
                     </div>
+                    {theoryQuestions.length > 0 && (
+                      <p className="assessment-simple-helper">
+                        Multiple-choice questions are graded by exact match, so pick the
+                        single best answer. Short-answer questions are graded
+                        automatically by matching the key terms in your answer against
+                        what the question expects - answer in full sentences and cover
+                        the specific concepts asked, not just a single keyword.
+                      </p>
+                    )}
 
                     <div className="question-list theory-question-list">
                       {theoryQuestions.length === 0 ? (
@@ -1947,17 +2119,24 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                                 ))}
                               </div>
                             ) : (
-                              <TextArea
-                                label="Your answer"
-                                rows={3}
-                                value={theoryAnswers[question._id] || ""}
-                                onChange={(event) =>
-                                  setTheoryAnswers({
-                                    ...theoryAnswers,
-                                    [question._id]: event.target.value,
-                                  })
-                                }
-                              />
+                              <>
+                                <TextArea
+                                  label="Your answer"
+                                  rows={3}
+                                  value={theoryAnswers[question._id] || ""}
+                                  onChange={(event) =>
+                                    setTheoryAnswers({
+                                      ...theoryAnswers,
+                                      [question._id]: event.target.value,
+                                    })
+                                  }
+                                />
+                                <small className="form-help">
+                                  Cover the key terms and concepts the question is
+                                  asking about - the system matches your wording against
+                                  the expected answer.
+                                </small>
+                              </>
                             )}
                           </div>
                         ))
@@ -1991,6 +2170,12 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
 
           {currentStep === 3 && (
             <Card title="Review before submission">
+              <p className="assessment-simple-helper">
+                The repository score below is provisional - it is the same automatic
+                engine that will run again at submission. Your theory score (30% of the
+                final result) is only calculated after you submit, so the final result
+                may differ from what you see here.
+              </p>
               <div className="review-summary">
                 <ReviewLine
                   label="Competency"
@@ -2009,7 +2194,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                   value={githubRepositoryUrl || "Not provided"}
                 />
                 <ReviewLine
-                  label="Automatic repository task score"
+                  label="Provisional repository task score"
                   value={
                     activeRepositoryTaskReview
                       ? `${formatPercent(activeRepositoryTaskReview.score)} (${activeRepositoryTaskReview.passedCount}/${activeRepositoryTaskReview.checklist.length} checks passed)`
@@ -2026,7 +2211,7 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 />
                 <ReviewLine
                   label="Theory answers"
-                  value={`${answeredTheoryCount}/${theoryQuestions.length} answered`}
+                  value={`${answeredTheoryCount}/${theoryQuestions.length} answered (scored after submission)`}
                 />
               </div>
               <div className="button-row">
@@ -2120,7 +2305,7 @@ export function AssessmentsPage({ token, role }: PageProps) {
     (item) => item.status === "returned",
   ).length;
   const normalizedSearch = assessmentSearch.trim().toLowerCase();
-  const filteredAssessments = data.filter((assessment) => {
+  const filteredAssessments = sortByLatestDate(data.filter((assessment) => {
     const matchesStatus =
       statusFilter === "all" || assessment.status === statusFilter;
     const matchesSearch =
@@ -2135,7 +2320,7 @@ export function AssessmentsPage({ token, role }: PageProps) {
         .some((value) => value.toLowerCase().includes(normalizedSearch));
 
     return matchesStatus && matchesSearch;
-  });
+  }), (assessment) => assessment.reviewedAt || assessment.createdAt);
   const queueStatusOptions = [
     { label: "Submitted", value: "submitted", count: submittedCount },
     { label: "Reviewed", value: "reviewed", count: reviewedCount },
@@ -3191,7 +3376,7 @@ function ReviewAssessmentPanel({
   );
 }
 
-export function GapResultsPage({ token }: { token: string }) {
+export function GapResultsPage({ token, linkedResultId = "" }: { token: string; linkedResultId?: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.results(token),
     [] as Assessment[],
@@ -3209,7 +3394,7 @@ export function GapResultsPage({ token }: { token: string }) {
   );
   const filteredGapResults = useMemo(
     () =>
-      data.filter((assessment) => {
+      sortByLatestDate(data.filter((assessment) => {
         const recommendation = recommendations.find(
           (item) => item.competency._id === assessment.competency._id,
         );
@@ -3227,7 +3412,7 @@ export function GapResultsPage({ token }: { token: string }) {
             recommendation?.message,
           )
         );
-      }),
+      }), (assessment) => assessment.reviewedAt || assessment.createdAt),
     [data, gapLevelFilter, gapSearch, recommendations],
   );
   const paginatedGapResults = useMemo(
@@ -3240,6 +3425,8 @@ export function GapResultsPage({ token }: { token: string }) {
   }, [gapLevelFilter, gapSearch]);
 
   if (isLoading) return <LoadingState message="Loading gap results..." />;
+
+  const linkedResultExists = linkedResultId ? data.some((assessment) => assessment._id === linkedResultId) : false;
 
   const averageScore = data.length
     ? data.reduce(
@@ -3264,6 +3451,12 @@ export function GapResultsPage({ token }: { token: string }) {
         onRefresh={refresh}
       />
       {error && <Alert type="error">{error}</Alert>}
+      {linkedResultId && linkedResultExists && (
+        <Alert type="info">Opened from email. The matching result is highlighted below.</Alert>
+      )}
+      {linkedResultId && !linkedResultExists && data.length > 0 && (
+        <Alert type="error">This result was not found for your account.</Alert>
+      )}
       {data.length === 0 ? (
         <EmptyState message="No reviewed results yet." />
       ) : (
@@ -3328,7 +3521,7 @@ export function GapResultsPage({ token }: { token: string }) {
                 </thead>
                 <tbody>
                   {paginatedGapResults.items.map((assessment) => (
-                    <tr key={assessment._id}>
+                    <tr className={assessment._id === linkedResultId ? "linked-result-row" : ""} key={assessment._id}>
                       <td className="table-code-cell">{assessment.competency.code || "N/A"}</td>
                       <td>{assessment.competency.title}</td>
                       <td>{formatPercent(assessment.scores.finalScore)}</td>
@@ -3374,7 +3567,7 @@ export function RecommendationsPage({ token }: { token: string }) {
   );
   const filteredRecommendations = useMemo(
     () =>
-      data.filter((recommendation) => {
+      sortByLatestDate(data.filter((recommendation) => {
         const matchesPriority =
           recommendationPriorityFilter === "all" ||
           recommendation.priority === recommendationPriorityFilter;
@@ -3392,7 +3585,7 @@ export function RecommendationsPage({ token }: { token: string }) {
             recommendation.priority,
           )
         );
-      }),
+      }), (recommendation) => recommendation.approvedAt),
     [data, recommendationPriorityFilter, recommendationSearch],
   );
   const paginatedRecommendations = useMemo(
@@ -3605,7 +3798,7 @@ export function ReportsPage({ token, role }: PageProps) {
   );
   const filteredReports = useMemo(
     () =>
-      data.filter((report) => {
+      sortByLatestDate(data.filter((report) => {
         const matchesGap =
           reportGapFilter === "all" || report.overallGapLevel === reportGapFilter;
         return (
@@ -3621,7 +3814,7 @@ export function ReportsPage({ token, role }: PageProps) {
             report.weaknesses,
           )
         );
-      }),
+      }), (report) => report.createdAt),
     [data, reportGapFilter, reportSearch],
   );
   const paginatedReports = useMemo(
@@ -3937,6 +4130,26 @@ function buildReportHtml(report: Report) {
     })
     .join("");
 
+  const rubricRows = (report.rubricBreakdown || [])
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.label || "")}</td>
+          <td>${escapeHtml(String(item.score ?? ""))}</td>
+          <td>${escapeHtml(item.confidence === "estimated" ? "Estimated" : "Verified")}</td>
+          <td>
+            ${escapeHtml(item.explanation || "")}
+            ${
+              item.commandEvidence
+                ? `<br /><code>$ ${escapeHtml(item.commandEvidence.command)}</code><pre>${escapeHtml(item.commandEvidence.output || "")}</pre>`
+                : ""
+            }
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+
   const assessmentRows = assessments
     .map((assessment) => {
       const recommendation = recommendationFor(assessment);
@@ -3969,6 +4182,8 @@ function buildReportHtml(report: Report) {
       th, td { border: 1px solid #dbe2ea; padding: 10px; text-align: left; vertical-align: top; }
       th { background: #f1f5f9; }
       .pill { display: inline-block; background: #e8f5f2; border-radius: 999px; padding: 4px 10px; margin-right: 6px; }
+      pre { background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; font-size: 12px; }
+      code { font-family: "Courier New", monospace; }
     </style>
   </head>
   <body>
@@ -4022,6 +4237,18 @@ function buildReportHtml(report: Report) {
       </thead>
       <tbody>${assessmentRows || '<tr><td colspan="8">No assessment results found.</td></tr>'}</tbody>
     </table>
+    <h2>Rubric Breakdown (Defense Evidence)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Requirement</th>
+          <th>Score</th>
+          <th>Confidence</th>
+          <th>Evidence</th>
+        </tr>
+      </thead>
+      <tbody>${rubricRows || '<tr><td colspan="4">No rubric breakdown available.</td></tr>'}</tbody>
+    </table>
   </body>
 </html>`;
 }
@@ -4048,7 +4275,7 @@ function GraduateNotificationsPage({ token }: { token: string }) {
   );
   const filteredNotifications = useMemo(
     () =>
-      data.filter((notification) => {
+      sortByLatestDate(data.filter((notification) => {
         const matchesStatus =
           notificationStatusFilter === "all" ||
           (notificationStatusFilter === "unread" && !notification.isRead) ||
@@ -4066,7 +4293,7 @@ function GraduateNotificationsPage({ token }: { token: string }) {
             notification.createdAt,
           )
         );
-      }),
+      }), (notification) => notification.createdAt),
     [data, notificationSearch, notificationStatusFilter, notificationTypeFilter],
   );
   const unreadCount = data.filter(
@@ -4203,7 +4430,7 @@ function AdminNotificationsPage({ token }: { token: string }) {
   );
   const filteredNotifications = useMemo(
     () =>
-      data.filter((notification) => {
+      sortByLatestDate(data.filter((notification) => {
         const matchesStatus =
           notificationStatusFilter === "all" ||
           (notificationStatusFilter === "unread" && !notification.isRead) ||
@@ -4223,7 +4450,7 @@ function AdminNotificationsPage({ token }: { token: string }) {
             notification.createdAt,
           )
         );
-      }),
+      }), (notification) => notification.createdAt),
     [data, notificationSearch, notificationStatusFilter, notificationTypeFilter],
   );
   const unreadCount = data.filter(
@@ -5381,15 +5608,52 @@ const CHECKLIST_VALIDATION_TYPES = [
   "manual_review",
 ];
 
+const CHECKLIST_VALIDATION_TYPE_LABELS: Record<string, string> = {
+  eslint: "ESLint scan",
+  security_scan: "Security scan",
+  hidden_test: "Hidden instructor test",
+  automated_test: "Automated test",
+  repository_scan: "Repository keyword scan",
+  implementation_review: "Code review (estimate)",
+  manual_review: "Manual review (estimate)",
+};
+
+// Mirrors the backend's checklistItemConfidence() in assessmentService.js: these
+// validation types are backed by real tool/test output, the rest are heuristic
+// estimates from static code/keyword matching.
+const CHECKLIST_VERIFIED_VALIDATION_TYPES = new Set([
+  "eslint",
+  "security_scan",
+  "hidden_test",
+  "automated_test",
+  "repository_scan",
+]);
+
+const CHECKLIST_VALIDATION_TYPE_HELP: Record<string, string> = {
+  eslint: "Verified: scored from the ESLint code-quality scan result.",
+  security_scan: "Verified: scored from the dependency/secret security scan result.",
+  hidden_test:
+    "Verified: scored from the hidden instructor test pass rate. Requires instructor tests to be configured on the practical task.",
+  automated_test: "Verified: scored from the automated/instructor test pass rate.",
+  repository_scan: "Verified: scored from a keyword match between the task description and the repository.",
+  implementation_review:
+    "Estimated: matched against repository code and evidence by keyword. Least precise - use only when no automated signal applies.",
+  manual_review: "Estimated: best-effort automatic estimate. Not confirmed by a human administrator.",
+};
+
 function parseChecklistRows(value: string) {
   return value
     .split("\n")
     .map((line, index) => {
       const parts = line.split("|").map((part) => part.trim());
-      const [title, category = "general", validationType = "implementation_review"] = parts;
-      const usesLegacyFormat = parts.length >= 6;
-      const weightValue = usesLegacyFormat ? parts[4] : parts[3];
-      const feedbackWhenFailed = usesLegacyFormat ? parts[5] || "" : parts[4] || "";
+      const [
+        title,
+        category = "general",
+        validationType = "implementation_review",
+        weightValue,
+        description = "",
+        feedbackWhenFailed = "",
+      ] = parts;
       const weight = Math.min(Math.max(Number(weightValue) || 10, 1), 100);
 
       if (!title) return null;
@@ -5397,6 +5661,7 @@ function parseChecklistRows(value: string) {
       return {
         key: `checklist-${index + 1}`,
         title,
+        description,
         category: CHECKLIST_CATEGORIES.includes(category) ? category : "general",
         validationType: CHECKLIST_VALIDATION_TYPES.includes(validationType)
           ? validationType
@@ -5418,6 +5683,7 @@ function serializeChecklistRows(rows: PracticalTaskChecklistItem[]) {
         item.category || "general",
         item.validationType || "implementation_review",
         item.weight || 10,
+        item.description || "",
         item.feedbackWhenFailed || "",
       ].join(" | "),
     )
@@ -5428,6 +5694,7 @@ function createChecklistBuilderRow(index: number): PracticalTaskChecklistItem {
   return {
     key: `checklist-${Date.now()}-${index}`,
     title: "",
+    description: "",
     category: "general",
     validationType: "implementation_review",
     maxScore: 10,
@@ -5530,12 +5797,13 @@ function ChecklistBuilderModal({
         return {
           ...row,
           title: String(row.title || "").trim(),
-          category: "general" as PracticalTaskChecklistItem["category"],
-          validationType: "implementation_review" as PracticalTaskChecklistItem["validationType"],
+          description: String(row.description || "").trim(),
+          category: row.category || "general",
+          validationType: row.validationType || "implementation_review",
           maxScore: weight,
           weight,
           successThreshold: 70,
-          feedbackWhenFailed: "",
+          feedbackWhenFailed: row.feedbackWhenFailed || "",
         };
       });
 
@@ -5563,11 +5831,21 @@ function ChecklistBuilderModal({
         </Button>
       </div>
 
+      <p className="form-help">
+        "Scored from" decides how each requirement is evidenced. Pick a verified type
+        (ESLint scan, security scan, hidden/automated test, repository keyword scan)
+        whenever a matching automatic signal exists - those are proven by tool output.
+        Only fall back to the estimate types (code review, manual review) when no
+        automated signal applies to the requirement.
+      </p>
+
       <div className="checklist-builder-table">
         <table>
           <thead>
             <tr>
               <th>Requirement</th>
+              <th>Category</th>
+              <th>Scored from</th>
               <th>Weight</th>
               <th>Action</th>
             </tr>
@@ -5576,6 +5854,7 @@ function ChecklistBuilderModal({
             {draftRows.map((row, index) => {
               const rowWeight = Number(row.weight || 0);
               const maxWeightForRow = Math.max(1, 100 - (totalWeight - rowWeight));
+              const validationType = row.validationType || "implementation_review";
 
               return (
                 <tr key={row.key || index}>
@@ -5587,6 +5866,53 @@ function ChecklistBuilderModal({
                       onChange={(event) => updateRow(index, { title: event.target.value })}
                       placeholder="Example: Hidden task tests pass"
                     />
+                    <textarea
+                      aria-label="Checklist requirement description"
+                      className="table-form-control checklist-description-input"
+                      value={row.description || ""}
+                      onChange={(event) => updateRow(index, { description: event.target.value })}
+                      placeholder="Optional: explain this requirement to graduates (shown with their result)"
+                      rows={2}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      aria-label="Checklist category"
+                      className="table-form-control"
+                      value={row.category || "general"}
+                      onChange={(event) =>
+                        updateRow(index, {
+                          category: event.target.value as PracticalTaskChecklistItem["category"],
+                        })
+                      }
+                    >
+                      {CHECKLIST_CATEGORIES.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      aria-label="Checklist validation type"
+                      className="table-form-control"
+                      value={validationType}
+                      onChange={(event) =>
+                        updateRow(index, {
+                          validationType: event.target.value as PracticalTaskChecklistItem["validationType"],
+                        })
+                      }
+                    >
+                      {CHECKLIST_VALIDATION_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {CHECKLIST_VALIDATION_TYPE_LABELS[type] || type}
+                        </option>
+                      ))}
+                    </select>
+                    <small className="checklist-validation-help">
+                      {CHECKLIST_VALIDATION_TYPE_HELP[validationType]}
+                    </small>
                   </td>
                   <td>
                     <input
@@ -5984,10 +6310,105 @@ export function RepositoryChecklistsPage({ token }: { token: string }) {
   );
 }
 
+type CompetencyPracticalTaskDraft = {
+  key: string;
+  title: string;
+  instructions: string;
+  deliverables: string;
+  testCommand: string;
+  testFilePath: string;
+  testFileContent: string;
+  allowedLanguages: string;
+  executionInterface: string;
+  requiredApiRoutes: string;
+  publicTestCasesText: string;
+};
+
+type CompetencyTheoryQuestionDraft = {
+  key: string;
+  question: string;
+  type: "multiple_choice" | "short_answer";
+  options: string;
+  correctAnswer: string;
+  expectedAnswer: string;
+  points: number;
+};
+
+function createPracticalTaskDraft(): CompetencyPracticalTaskDraft {
+  return {
+    key: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: "",
+    instructions: "",
+    deliverables: "",
+    testCommand: "",
+    testFilePath: "",
+    testFileContent: "",
+    allowedLanguages: "javascript, typescript, python",
+    executionInterface: "instructor_tests",
+    requiredApiRoutes: "",
+    publicTestCasesText: "",
+  };
+}
+
+function createTheoryQuestionDraft(): CompetencyTheoryQuestionDraft {
+  return {
+    key: `question-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    question: "",
+    type: "multiple_choice",
+    options: "",
+    correctAnswer: "",
+    expectedAnswer: "",
+    points: 1,
+  };
+}
+
+function practicalTaskDraftFromTask(task: PracticalTask): CompetencyPracticalTaskDraft {
+  return {
+    key: task._id || createPracticalTaskDraft().key,
+    title: task.title || "",
+    instructions: task.instructions || "",
+    deliverables: task.deliverables || "",
+    testCommand: task.automatedTestCommand || "",
+    testFilePath: task.automatedTestFiles?.[0]?.path || "",
+    testFileContent: task.automatedTestFiles?.[0]?.content || "",
+    allowedLanguages: (task.allowedLanguages || []).join(", "),
+    executionInterface: task.executionInterface || "instructor_tests",
+    requiredApiRoutes: (task.requiredApiRoutes || []).join("\n"),
+    publicTestCasesText: (task.submissionContract?.publicTestCases || [])
+      .map((testCase) => `${testCase.input || ""} => ${testCase.expectedOutput || ""}`)
+      .join("\n"),
+  };
+}
+
+function theoryQuestionDraftFromQuestion(question: TheoryQuestion): CompetencyTheoryQuestionDraft {
+  return {
+    key: question._id || createTheoryQuestionDraft().key,
+    question: question.question || "",
+    type: question.type || "multiple_choice",
+    options: question.options?.join("\n") || "",
+    correctAnswer: question.correctAnswer || "",
+    expectedAnswer: question.expectedAnswer || "",
+    points: question.points || 1,
+  };
+}
+
 export function CompetenciesPage({ token }: { token: string }) {
   const { data, isLoading, error, refresh } = useAsyncData(
-    () => api.competencies(token),
+    () => api.allCompetencies(token),
     [] as Competency[],
+  );
+  const { data: benchmarksForCompetencies } = useAsyncData(
+    () => api.benchmarks(token),
+    [] as Benchmark[],
+  );
+  const competencyIdsWithActiveBenchmark = useMemo(
+    () =>
+      new Set(
+        benchmarksForCompetencies
+          .filter((benchmark) => benchmark.isActive !== false)
+          .map((benchmark) => benchmark.competency?._id),
+      ),
+    [benchmarksForCompetencies],
   );
   const [form, setForm] = useState({
     code: "",
@@ -5995,15 +6416,8 @@ export function CompetenciesPage({ token }: { token: string }) {
     category: "",
     description: "",
     expectedEvidence: "",
-    practicalTaskTitle: "",
-    practicalTaskInstructions: "",
-    practicalTaskDeliverables: "",
-    practicalTaskTestCommand: "",
-    practicalTaskTestFilePath: "",
-    practicalTaskTestFileContent: "",
-    theoryQuestion: "",
-    theoryOptions: "",
-    theoryCorrectAnswer: "",
+    practicalTasks: [] as CompetencyPracticalTaskDraft[],
+    theoryQuestions: [] as CompetencyTheoryQuestionDraft[],
   });
   const [message, setMessage] = useState("");
   const [formError, setFormError] = useState("");
@@ -6017,17 +6431,11 @@ export function CompetenciesPage({ token }: { token: string }) {
     category: "",
     description: "",
     expectedEvidence: "",
-    practicalTaskTitle: "",
-    practicalTaskInstructions: "",
-    practicalTaskDeliverables: "",
-    practicalTaskTestCommand: "",
-    practicalTaskTestFilePath: "",
-    practicalTaskTestFileContent: "",
-    theoryQuestion: "",
-    theoryOptions: "",
-    theoryCorrectAnswer: "",
+    practicalTasks: [] as CompetencyPracticalTaskDraft[],
+    theoryQuestions: [] as CompetencyTheoryQuestionDraft[],
   });
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [viewingCompetency, setViewingCompetency] = useState<Competency | null>(null);
   const [competencySearch, setCompetencySearch] = useState("");
   const [competencyCategoryFilter, setCompetencyCategoryFilter] = useState("all");
   const competencyCategoryOptions = useMemo(
@@ -6057,6 +6465,67 @@ export function CompetenciesPage({ token }: { token: string }) {
     [data, competencyCategoryFilter, competencySearch],
   );
 
+  const activeCompetencyForm = editingCompetencyId ? editForm : form;
+
+  function updateActiveCompetencyForm(
+    updater: (currentForm: typeof form) => typeof form,
+  ) {
+    if (editingCompetencyId) {
+      setEditForm((currentForm) => updater(currentForm));
+      return;
+    }
+
+    setForm((currentForm) => updater(currentForm));
+  }
+
+  function addPracticalTaskRow() {
+    setFormError("");
+    updateActiveCompetencyForm((currentForm) => ({
+      ...currentForm,
+      practicalTasks: [...currentForm.practicalTasks, createPracticalTaskDraft()],
+    }));
+  }
+
+  function updatePracticalTaskRow(key: string, changes: Partial<CompetencyPracticalTaskDraft>) {
+    updateActiveCompetencyForm((currentForm) => ({
+      ...currentForm,
+      practicalTasks: currentForm.practicalTasks.map((task) =>
+        task.key === key ? { ...task, ...changes } : task,
+      ),
+    }));
+  }
+
+  function removePracticalTaskRow(key: string) {
+    updateActiveCompetencyForm((currentForm) => ({
+      ...currentForm,
+      practicalTasks: currentForm.practicalTasks.filter((task) => task.key !== key),
+    }));
+  }
+
+  function addTheoryQuestionRow() {
+    setFormError("");
+    updateActiveCompetencyForm((currentForm) => ({
+      ...currentForm,
+      theoryQuestions: [...currentForm.theoryQuestions, createTheoryQuestionDraft()],
+    }));
+  }
+
+  function updateTheoryQuestionRow(key: string, changes: Partial<CompetencyTheoryQuestionDraft>) {
+    updateActiveCompetencyForm((currentForm) => ({
+      ...currentForm,
+      theoryQuestions: currentForm.theoryQuestions.map((question) =>
+        question.key === key ? { ...question, ...changes } : question,
+      ),
+    }));
+  }
+
+  function removeTheoryQuestionRow(key: string) {
+    updateActiveCompetencyForm((currentForm) => ({
+      ...currentForm,
+      theoryQuestions: currentForm.theoryQuestions.filter((question) => question.key !== key),
+    }));
+  }
+
   function resetCompetencyForm() {
     setForm({
       code: "",
@@ -6064,15 +6533,8 @@ export function CompetenciesPage({ token }: { token: string }) {
       category: "",
       description: "",
       expectedEvidence: "",
-      practicalTaskTitle: "",
-      practicalTaskInstructions: "",
-      practicalTaskDeliverables: "",
-        practicalTaskTestCommand: "",
-      practicalTaskTestFilePath: "",
-      practicalTaskTestFileContent: "",
-      theoryQuestion: "",
-      theoryOptions: "",
-      theoryCorrectAnswer: "",
+      practicalTasks: [],
+      theoryQuestions: [],
     });
   }
 
@@ -6083,22 +6545,13 @@ export function CompetenciesPage({ token }: { token: string }) {
       category: "",
       description: "",
       expectedEvidence: "",
-      practicalTaskTitle: "",
-      practicalTaskInstructions: "",
-      practicalTaskDeliverables: "",
-        practicalTaskTestCommand: "",
-      practicalTaskTestFilePath: "",
-      practicalTaskTestFileContent: "",
-      theoryQuestion: "",
-      theoryOptions: "",
-      theoryCorrectAnswer: "",
+      practicalTasks: [],
+      theoryQuestions: [],
     });
   }
 
   function startEditCompetency(competency: Competency) {
     setEditingCompetencyId(competency._id);
-    const practicalTask = competency.practicalTasks?.[0];
-    const theoryQuestion = competency.theoryQuestions?.[0];
 
     setEditForm({
       code: competency.code,
@@ -6106,20 +6559,84 @@ export function CompetenciesPage({ token }: { token: string }) {
       category: competency.category,
       description: competency.description || "",
       expectedEvidence: competency.expectedEvidence || "",
-      practicalTaskTitle: practicalTask?.title || "",
-      practicalTaskInstructions: practicalTask?.instructions || "",
-      practicalTaskDeliverables: practicalTask?.deliverables || "",
-      practicalTaskTestCommand: practicalTask?.automatedTestCommand || "",
-      practicalTaskTestFilePath:
-        practicalTask?.automatedTestFiles?.[0]?.path || "",
-      practicalTaskTestFileContent:
-        practicalTask?.automatedTestFiles?.[0]?.content || "",
-      theoryQuestion: theoryQuestion?.question || "",
-      theoryOptions: theoryQuestion?.options?.join("\n") || "",
-      theoryCorrectAnswer: theoryQuestion?.correctAnswer || "",
+      practicalTasks: (competency.practicalTasks || []).map(practicalTaskDraftFromTask),
+      theoryQuestions: (competency.theoryQuestions || []).map(theoryQuestionDraftFromQuestion),
     });
     setFormError("");
     setMessage("");
+  }
+
+  function parseRequiredApiRoutesInput(value: string) {
+    return value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  function parsePublicTestCasesInput(value: string) {
+    return value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line, index) => {
+        const [input, expectedOutput] = line.split("=>").map((part) => part.trim());
+        return {
+          id: `public-${index + 1}`,
+          input: input || "",
+          expectedOutput: expectedOutput || "",
+          validator: "normalized_text",
+        };
+      });
+  }
+
+  function buildCompetencyPracticalTasksPayload(tasks: CompetencyPracticalTaskDraft[]) {
+    return tasks
+      .filter((task) => task.title.trim())
+      .map((task) => ({
+        title: task.title.trim(),
+        instructions: task.instructions.trim(),
+        deliverables: task.deliverables.trim(),
+        estimatedMinutes: 60,
+        maxScore: 100,
+        // These hidden tests are injected into a graduate repository during
+        // review to verify the exact practical task behavior.
+        automatedTestCommand: task.testCommand.trim(),
+        automatedTestFiles:
+          task.testFilePath.trim() && task.testFileContent.trim()
+            ? [{ path: task.testFilePath.trim(), content: task.testFileContent }]
+            : [],
+        // These fields become the submissionContract shown to graduates so
+        // they know exactly which language/protocol/routes are expected.
+        allowedLanguages: task.allowedLanguages
+          .split(",")
+          .map((language) => language.trim().toLowerCase())
+          .filter(Boolean),
+        executionInterface: task.executionInterface,
+        requiredApiRoutes: parseRequiredApiRoutesInput(task.requiredApiRoutes),
+        publicTestCases: parsePublicTestCasesInput(task.publicTestCasesText),
+      }));
+  }
+
+  function buildCompetencyTheoryQuestionsPayload(questions: CompetencyTheoryQuestionDraft[]) {
+    return questions
+      .filter((question) => question.question.trim())
+      .map((question) => {
+        const options = question.options
+          .split("\n")
+          .map((option) => option.trim())
+          .filter(Boolean);
+
+        return {
+          question: question.question.trim(),
+          type: question.type,
+          options: question.type === "multiple_choice" ? options : [],
+          correctAnswer:
+            question.type === "multiple_choice" ? question.correctAnswer.trim() : "",
+          expectedAnswer:
+            question.type === "short_answer" ? question.expectedAnswer.trim() : "",
+          points: question.points || 1,
+        };
+      });
   }
 
   async function handleUpdateCompetency(event: FormEvent<HTMLFormElement>) {
@@ -6136,50 +6653,13 @@ export function CompetenciesPage({ token }: { token: string }) {
     setIsSaving(true);
 
     try {
-      const theoryOptions = editForm.theoryOptions
-        .split("\n")
-        .map((option) => option.trim())
-        .filter(Boolean);
-
       await api.updateCompetency(token, editingCompetencyId!, {
-        code: editForm.code.trim(),
         title: editForm.title.trim(),
         category: editForm.category.trim(),
         description: editForm.description.trim(),
         expectedEvidence: editForm.expectedEvidence.trim(),
-        practicalTasks: editForm.practicalTaskTitle.trim()
-          ? [
-              {
-                title: editForm.practicalTaskTitle.trim(),
-                instructions: editForm.practicalTaskInstructions.trim(),
-                deliverables: editForm.practicalTaskDeliverables.trim(),
-                estimatedMinutes: 60,
-                maxScore: 100,
-                automatedTestCommand: editForm.practicalTaskTestCommand.trim(),
-                automatedTestFiles:
-                  editForm.practicalTaskTestFilePath.trim() &&
-                  editForm.practicalTaskTestFileContent.trim()
-                    ? [
-                        {
-                          path: editForm.practicalTaskTestFilePath.trim(),
-                          content: editForm.practicalTaskTestFileContent,
-                        },
-                      ]
-                    : [],
-              },
-            ]
-          : [],
-        theoryQuestions: editForm.theoryQuestion.trim()
-          ? [
-              {
-                question: editForm.theoryQuestion.trim(),
-                type: "multiple_choice",
-                options: theoryOptions,
-                correctAnswer: editForm.theoryCorrectAnswer.trim(),
-                points: 1,
-              },
-            ]
-          : [],
+        practicalTasks: buildCompetencyPracticalTasksPayload(editForm.practicalTasks),
+        theoryQuestions: buildCompetencyTheoryQuestionsPayload(editForm.theoryQuestions),
       });
       setEditingCompetencyId(null);
       resetEditForm();
@@ -6196,21 +6676,31 @@ export function CompetenciesPage({ token }: { token: string }) {
     }
   }
 
-  async function handleDeleteCompetency(id: string) {
-    if (!window.confirm("Are you sure you want to delete this competency?")) {
+  async function handleToggleCompetencyStatus(competency: Competency) {
+    const shouldActivate = competency.isActive === false;
+    const actionLabel = shouldActivate ? "activate" : "deactivate";
+
+    if (!window.confirm(`${shouldActivate ? "Activate" : "Deactivate"} this competency?`)) {
       return;
     }
 
-    setIsDeleting(id);
+    setIsDeleting(competency._id);
+    setMessage("");
+    setFormError("");
     try {
-      await api.deleteCompetency(token, id);
-      setMessage("Competency deleted successfully.");
+      if (shouldActivate) {
+        await api.activateCompetency(token, competency._id);
+      } else {
+        await api.deleteCompetency(token, competency._id);
+      }
+
+      setMessage(`Competency ${actionLabel}d successfully.`);
       await refresh();
     } catch (caughtError) {
       setFormError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Failed to delete competency",
+          : `Failed to ${actionLabel} competency`,
       );
     } finally {
       setIsDeleting(null);
@@ -6218,54 +6708,59 @@ export function CompetenciesPage({ token }: { token: string }) {
   }
 
   function validateCompetencyForm(formData: typeof form) {
-    const code = formData.code.trim();
     const title = formData.title.trim();
     const category = formData.category.trim();
-    const hasPracticalTask = Boolean(formData.practicalTaskTitle.trim());
-    const hasAnyInstructorTestField = Boolean(
-      formData.practicalTaskTestCommand.trim() ||
-      formData.practicalTaskTestFilePath.trim() ||
-      formData.practicalTaskTestFileContent.trim(),
-    );
-    const hasCompleteInstructorTest =
-      Boolean(formData.practicalTaskTestCommand.trim()) &&
-      Boolean(formData.practicalTaskTestFilePath.trim()) &&
-      Boolean(formData.practicalTaskTestFileContent.trim());
-    const hasTheoryQuestion = Boolean(formData.theoryQuestion.trim());
-    const theoryOptions = formData.theoryOptions
-      .split("\n")
-      .map((option) => option.trim())
-      .filter(Boolean);
 
-    if (!code || !title || !category) {
-      return "Code, title, and category are required.";
+    if (!title || !category) {
+      return "Title and category are required.";
     }
 
-    if (hasPracticalTask && !formData.practicalTaskInstructions.trim()) {
-      return "Task instructions are required when a practical task is added.";
+    for (const [index, task] of formData.practicalTasks.entries()) {
+      const hasAnyField = Boolean(
+        task.title.trim() || task.instructions.trim() || task.deliverables.trim(),
+      );
+      if (!hasAnyField) continue;
+
+      if (!task.title.trim() || !task.instructions.trim()) {
+        return `Practical task ${index + 1} needs a title and instructions.`;
+      }
+
+      const hasAnyInstructorTestField = Boolean(
+        task.testCommand.trim() || task.testFilePath.trim() || task.testFileContent.trim(),
+      );
+      const hasCompleteInstructorTest = Boolean(
+        task.testCommand.trim() && task.testFilePath.trim() && task.testFileContent.trim(),
+      );
+      if (hasAnyInstructorTestField && !hasCompleteInstructorTest) {
+        return `Practical task ${index + 1}: instructor test command, file path, and file content must all be provided together.`;
+      }
     }
 
-    if (hasAnyInstructorTestField && !hasCompleteInstructorTest) {
-      return "Instructor test command, file path, and file content must all be provided together.";
-    }
+    for (const [index, question] of formData.theoryQuestions.entries()) {
+      if (!question.question.trim()) continue;
 
-    if (hasTheoryQuestion && !formData.theoryCorrectAnswer.trim()) {
-      return "Correct answer is required when a theory question is added.";
-    }
+      if (question.type === "multiple_choice") {
+        const options = question.options
+          .split("\n")
+          .map((option) => option.trim())
+          .filter(Boolean);
 
-    if (hasTheoryQuestion && theoryOptions.length < 2) {
-      return "Add at least two multiple-choice options for the theory question.";
-    }
-
-    if (
-      hasTheoryQuestion &&
-      !theoryOptions.some(
-        (option) =>
-          option.toLowerCase() ===
-          formData.theoryCorrectAnswer.trim().toLowerCase(),
-      )
-    ) {
-      return "Correct answer must match one of the multiple-choice options.";
+        if (options.length < 2) {
+          return `Theory question ${index + 1}: add at least two multiple-choice options.`;
+        }
+        if (!question.correctAnswer.trim()) {
+          return `Theory question ${index + 1}: a correct answer is required.`;
+        }
+        if (
+          !options.some(
+            (option) => option.toLowerCase() === question.correctAnswer.trim().toLowerCase(),
+          )
+        ) {
+          return `Theory question ${index + 1}: correct answer must match one of the options.`;
+        }
+      } else if (question.type === "short_answer" && !question.expectedAnswer.trim()) {
+        return `Theory question ${index + 1}: an expected answer is required so short answers can be scored accurately.`;
+      }
     }
 
     return "";
@@ -6285,55 +6780,16 @@ export function CompetenciesPage({ token }: { token: string }) {
     setIsSaving(true);
 
     try {
-      const theoryOptions = form.theoryOptions
-        .split("\n")
-        .map((option) => option.trim())
-        .filter(Boolean);
-
-      await api.createCompetency(token, {
-        code: form.code.trim(),
+      const created = await api.createCompetency(token, {
         title: form.title.trim(),
         category: form.category.trim(),
         description: form.description.trim(),
         expectedEvidence: form.expectedEvidence.trim(),
-        practicalTasks: form.practicalTaskTitle.trim()
-          ? [
-              {
-                title: form.practicalTaskTitle.trim(),
-                instructions: form.practicalTaskInstructions.trim(),
-                deliverables: form.practicalTaskDeliverables.trim(),
-                estimatedMinutes: 60,
-                maxScore: 100,
-                // These hidden tests are injected into a graduate repository
-                // during review to verify the exact practical task behavior.
-                automatedTestCommand: form.practicalTaskTestCommand.trim(),
-                automatedTestFiles:
-                  form.practicalTaskTestFilePath.trim() &&
-                  form.practicalTaskTestFileContent.trim()
-                    ? [
-                        {
-                          path: form.practicalTaskTestFilePath.trim(),
-                          content: form.practicalTaskTestFileContent,
-                        },
-                      ]
-                    : [],
-              },
-            ]
-          : [],
-        theoryQuestions: form.theoryQuestion.trim()
-          ? [
-              {
-                question: form.theoryQuestion.trim(),
-                type: "multiple_choice",
-                options: theoryOptions,
-                correctAnswer: form.theoryCorrectAnswer.trim(),
-                points: 1,
-              },
-            ]
-          : [],
+        practicalTasks: buildCompetencyPracticalTasksPayload(form.practicalTasks),
+        theoryQuestions: buildCompetencyTheoryQuestionsPayload(form.theoryQuestions),
       });
       resetCompetencyForm();
-      setMessage("Competency created successfully.");
+      setMessage(`Competency created successfully. Assigned code: ${created.code}.`);
       await refresh();
     } catch (caughtError) {
       setFormError(
@@ -6370,17 +6826,21 @@ export function CompetenciesPage({ token }: { token: string }) {
           className="form-grid"
           onSubmit={editingCompetencyId ? handleUpdateCompetency : handleCreate}
         >
-          <TextField
-            label="Code"
-            value={editingCompetencyId ? editForm.code : form.code}
-            onChange={(event) =>
-              editingCompetencyId
-                ? setEditForm({ ...editForm, code: event.target.value })
-                : setForm({ ...form, code: event.target.value })
-            }
-            required
-            disabled={editingCompetencyId ? isSaving : false}
-          />
+          <div>
+            <TextField
+              label="Code"
+              value={editingCompetencyId ? editForm.code : ""}
+              placeholder={editingCompetencyId ? "" : "Generated automatically after you save"}
+              onChange={() => undefined}
+              disabled
+              readOnly
+            />
+            <small className="form-help">
+              {editingCompetencyId
+                ? "Generated automatically when this competency was created and cannot be changed."
+                : "A unique code is generated automatically once you save this competency."}
+            </small>
+          </div>
           <TextField
             label="Title"
             value={editingCompetencyId ? editForm.title : form.title}
@@ -6433,210 +6893,272 @@ export function CompetenciesPage({ token }: { token: string }) {
             disabled={editingCompetencyId ? isSaving : false}
           />
           <div className="full-span form-subsection">
-            <h3>Practical test</h3>
-            <p className="form-help">
-              Add a practical GitHub task and optional hidden instructor tests.
-              Hidden tests make repository scores more realistic because they
-              prove whether submitted code solves the task.
-            </p>
-            <div className="form-grid">
-              <TextField
-                label="Task title"
-                value={
-                  editingCompetencyId
-                    ? editForm.practicalTaskTitle
-                    : form.practicalTaskTitle
-                }
-                onChange={(event) =>
-                  editingCompetencyId
-                    ? setEditForm({
-                        ...editForm,
-                        practicalTaskTitle: event.target.value,
-                      })
-                    : setForm({
-                        ...form,
-                        practicalTaskTitle: event.target.value,
-                      })
-                }
-                disabled={editingCompetencyId ? isSaving : false}
-              />
-              <TextField
-                label="Deliverables"
-                value={
-                  editingCompetencyId
-                    ? editForm.practicalTaskDeliverables
-                    : form.practicalTaskDeliverables
-                }
-                onChange={(event) =>
-                  editingCompetencyId
-                    ? setEditForm({
-                        ...editForm,
-                        practicalTaskDeliverables: event.target.value,
-                      })
-                    : setForm({
-                        ...form,
-                        practicalTaskDeliverables: event.target.value,
-                      })
-                }
-                disabled={editingCompetencyId ? isSaving : false}
-              />
-              <div className="full-span">
-                <TextArea
-                  label="Task instructions"
-                  rows={4}
-                  value={
-                    editingCompetencyId
-                      ? editForm.practicalTaskInstructions
-                      : form.practicalTaskInstructions
-                  }
-                  onChange={(event) =>
-                    editingCompetencyId
-                      ? setEditForm({
-                          ...editForm,
-                          practicalTaskInstructions: event.target.value,
-                        })
-                      : setForm({
-                          ...form,
-                          practicalTaskInstructions: event.target.value,
-                        })
-                  }
-                  disabled={editingCompetencyId ? isSaving : false}
-                />
+            <div className="checklist-editor-header">
+              <div>
+                <h3>Practical tasks</h3>
+                <p className="form-help">
+                  Add one or more practical GitHub tasks. Hidden instructor tests make
+                  repository scores more realistic because they prove whether submitted
+                  code actually solves the task, instead of only estimating from keywords.
+                </p>
               </div>
-
-              <TextField
-                label="Instructor test command"
-                value={
-                  editingCompetencyId
-                    ? editForm.practicalTaskTestCommand
-                    : form.practicalTaskTestCommand
-                }
-                onChange={(event) =>
-                  editingCompetencyId
-                    ? setEditForm({
-                        ...editForm,
-                        practicalTaskTestCommand: event.target.value,
-                      })
-                    : setForm({
-                        ...form,
-                        practicalTaskTestCommand: event.target.value,
-                      })
-                }
-                placeholder="npm test -- --runInBand tests/instructor-task.test.js"
-                disabled={editingCompetencyId ? isSaving : false}
-              />
-              <TextField
-                label="Instructor test file path"
-                value={
-                  editingCompetencyId
-                    ? editForm.practicalTaskTestFilePath
-                    : form.practicalTaskTestFilePath
-                }
-                onChange={(event) =>
-                  editingCompetencyId
-                    ? setEditForm({
-                        ...editForm,
-                        practicalTaskTestFilePath: event.target.value,
-                      })
-                    : setForm({
-                        ...form,
-                        practicalTaskTestFilePath: event.target.value,
-                      })
-                }
-                placeholder="tests/instructor-task.test.js"
-                disabled={editingCompetencyId ? isSaving : false}
-              />
-              <div className="full-span">
-                <TextArea
-                  label="Instructor test file content"
-                  rows={8}
-                  value={
-                    editingCompetencyId
-                      ? editForm.practicalTaskTestFileContent
-                      : form.practicalTaskTestFileContent
-                  }
-                  onChange={(event) =>
-                    editingCompetencyId
-                      ? setEditForm({
-                          ...editForm,
-                          practicalTaskTestFileContent: event.target.value,
-                        })
-                      : setForm({
-                          ...form,
-                          practicalTaskTestFileContent: event.target.value,
-                        })
-                  }
-                  placeholder="Add Jest, Supertest, or Playwright tests that prove the practical task works."
-                  disabled={editingCompetencyId ? isSaving : false}
-                />
-              </div>
+              <Button type="button" variant="secondary" onClick={addPracticalTaskRow} disabled={isSaving}>
+                Add another practical task
+              </Button>
             </div>
+            {activeCompetencyForm.practicalTasks.length === 0 ? (
+              <EmptyState message="No practical tasks added yet. Add at least one so graduates have GitHub evidence to submit." />
+            ) : (
+              activeCompetencyForm.practicalTasks.map((task, index) => (
+                <div className="form-grid competency-repeater-row" key={task.key}>
+                  <div className="full-span checklist-editor-header">
+                    <strong>Practical task {index + 1}</strong>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      onClick={() => removePracticalTaskRow(task.key)}
+                      disabled={isSaving}
+                    >
+                      Remove task
+                    </Button>
+                  </div>
+                  <TextField
+                    label="Task title"
+                    value={task.title}
+                    onChange={(event) =>
+                      updatePracticalTaskRow(task.key, { title: event.target.value })
+                    }
+                    disabled={isSaving}
+                  />
+                  <TextField
+                    label="Deliverables"
+                    value={task.deliverables}
+                    onChange={(event) =>
+                      updatePracticalTaskRow(task.key, { deliverables: event.target.value })
+                    }
+                    disabled={isSaving}
+                  />
+                  <div className="full-span">
+                    <TextArea
+                      label="Task instructions"
+                      rows={4}
+                      value={task.instructions}
+                      onChange={(event) =>
+                        updatePracticalTaskRow(task.key, { instructions: event.target.value })
+                      }
+                      disabled={isSaving}
+                    />
+                  </div>
+
+                  <TextField
+                    label="Instructor test command"
+                    value={task.testCommand}
+                    onChange={(event) =>
+                      updatePracticalTaskRow(task.key, { testCommand: event.target.value })
+                    }
+                    placeholder="npm test -- --runInBand tests/instructor-task.test.js"
+                    disabled={isSaving}
+                  />
+                  <TextField
+                    label="Instructor test file path"
+                    value={task.testFilePath}
+                    onChange={(event) =>
+                      updatePracticalTaskRow(task.key, { testFilePath: event.target.value })
+                    }
+                    placeholder="tests/instructor-task.test.js"
+                    disabled={isSaving}
+                  />
+                  <div className="full-span">
+                    <TextArea
+                      label="Instructor test file content"
+                      rows={8}
+                      value={task.testFileContent}
+                      onChange={(event) =>
+                        updatePracticalTaskRow(task.key, { testFileContent: event.target.value })
+                      }
+                      placeholder="Add Jest, Supertest, or Playwright tests that prove the practical task works."
+                      disabled={isSaving}
+                    />
+                  </div>
+
+                  <SelectField
+                    label="How the system executes submissions"
+                    value={task.executionInterface}
+                    onChange={(event) =>
+                      updatePracticalTaskRow(task.key, { executionInterface: event.target.value })
+                    }
+                    disabled={isSaving}
+                  >
+                    <option value="instructor_tests">Instructor tests (npm test / Jest, above)</option>
+                    <option value="stdin_stdout">Standard input/output program</option>
+                    <option value="rest_api">REST API server</option>
+                    <option value="cli">Command line tool (manual review)</option>
+                    <option value="frontend">Frontend-only (manual review)</option>
+                  </SelectField>
+                  <TextField
+                    label="Allowed language(s)"
+                    value={task.allowedLanguages}
+                    onChange={(event) =>
+                      updatePracticalTaskRow(task.key, { allowedLanguages: event.target.value })
+                    }
+                    placeholder="javascript, typescript, python"
+                    disabled={isSaving}
+                  />
+                  <small className="form-help full-span">
+                    These become the submissionContract graduates see before submitting - so they know exactly
+                    which language(s) to use, and can download a matching competra.json starter file.
+                  </small>
+                  <div className="full-span">
+                    <TextArea
+                      label="Required API endpoints (rest_api tasks only, one per line)"
+                      rows={3}
+                      value={task.requiredApiRoutes}
+                      onChange={(event) =>
+                        updatePracticalTaskRow(task.key, { requiredApiRoutes: event.target.value })
+                      }
+                      placeholder={"GET /health\nPOST /register"}
+                      disabled={isSaving}
+                    />
+                  </div>
+                  <div className="full-span">
+                    <TextArea
+                      label="Sample public test cases (one per line: input => expected output)"
+                      rows={3}
+                      value={task.publicTestCasesText}
+                      onChange={(event) =>
+                        updatePracticalTaskRow(task.key, { publicTestCasesText: event.target.value })
+                      }
+                      placeholder={"5 3 => 8\nhello => HELLO"}
+                      disabled={isSaving}
+                    />
+                    <small className="form-help">
+                      Shown to graduates as proof of the exact input/output their program must produce. Add
+                      hidden variations via the instructor test file above so grading cannot be reverse-engineered.
+                    </small>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
           <div className="full-span form-subsection">
-            <h3>Theory question</h3>
-            <p className="form-help">
-              Add at least two options and make the correct answer match one
-              option exactly.
-            </p>
-            <div className="form-grid">
-              <TextField
-                label="Question"
-                value={
-                  editingCompetencyId
-                    ? editForm.theoryQuestion
-                    : form.theoryQuestion
-                }
-                onChange={(event) =>
-                  editingCompetencyId
-                    ? setEditForm({
-                        ...editForm,
-                        theoryQuestion: event.target.value,
-                      })
-                    : setForm({ ...form, theoryQuestion: event.target.value })
-                }
-                disabled={editingCompetencyId ? isSaving : false}
-              />
-              <TextField
-                label="Correct answer"
-                value={
-                  editingCompetencyId
-                    ? editForm.theoryCorrectAnswer
-                    : form.theoryCorrectAnswer
-                }
-                onChange={(event) =>
-                  editingCompetencyId
-                    ? setEditForm({
-                        ...editForm,
-                        theoryCorrectAnswer: event.target.value,
-                      })
-                    : setForm({
-                        ...form,
-                        theoryCorrectAnswer: event.target.value,
-                      })
-                }
-                disabled={editingCompetencyId ? isSaving : false}
-              />
-              <div className="full-span">
-                <TextArea
-                  label="Multiple-choice options, one per line"
-                  rows={4}
-                  value={
-                    editingCompetencyId
-                      ? editForm.theoryOptions
-                      : form.theoryOptions
-                  }
-                  onChange={(event) =>
-                    editingCompetencyId
-                      ? setEditForm({
-                          ...editForm,
-                          theoryOptions: event.target.value,
-                        })
-                      : setForm({ ...form, theoryOptions: event.target.value })
-                  }
-                  disabled={editingCompetencyId ? isSaving : false}
-                />
+            <div className="checklist-editor-header">
+              <div>
+                <h3>Theory questions</h3>
+                <p className="form-help">
+                  Add one or more theory questions. Multiple-choice is graded by exact
+                  match. Short answer is graded automatically by matching key terms in the
+                  graduate's answer against the expected answer you provide, so a clear
+                  expected answer is required for it to score correctly.
+                </p>
               </div>
+              <Button type="button" variant="secondary" onClick={addTheoryQuestionRow} disabled={isSaving}>
+                Add another theory question
+              </Button>
             </div>
+            {activeCompetencyForm.theoryQuestions.length === 0 ? (
+              <EmptyState message="No theory questions added yet. Add at least one to include a quiz portion in the final score." />
+            ) : (
+              activeCompetencyForm.theoryQuestions.map((question, index) => (
+                <div className="form-grid competency-repeater-row" key={question.key}>
+                  <div className="full-span checklist-editor-header">
+                    <strong>Theory question {index + 1}</strong>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      onClick={() => removeTheoryQuestionRow(question.key)}
+                      disabled={isSaving}
+                    >
+                      Remove question
+                    </Button>
+                  </div>
+                  <div className="full-span">
+                    <TextField
+                      label="Question"
+                      value={question.question}
+                      onChange={(event) =>
+                        updateTheoryQuestionRow(question.key, { question: event.target.value })
+                      }
+                      disabled={isSaving}
+                    />
+                  </div>
+                  <SelectField
+                    label="Answer type"
+                    value={question.type}
+                    onChange={(event) =>
+                      updateTheoryQuestionRow(question.key, {
+                        type: event.target.value as "multiple_choice" | "short_answer",
+                      })
+                    }
+                    disabled={isSaving}
+                  >
+                    <option value="multiple_choice">Multiple choice</option>
+                    <option value="short_answer">Short answer</option>
+                  </SelectField>
+                  <TextField
+                    label="Points"
+                    type="number"
+                    min={1}
+                    value={question.points}
+                    onChange={(event) =>
+                      updateTheoryQuestionRow(question.key, {
+                        points: Number(event.target.value) || 1,
+                      })
+                    }
+                    disabled={isSaving}
+                  />
+                  {question.type === "multiple_choice" ? (
+                    <>
+                      <TextField
+                        label="Correct answer"
+                        value={question.correctAnswer}
+                        onChange={(event) =>
+                          updateTheoryQuestionRow(question.key, {
+                            correctAnswer: event.target.value,
+                          })
+                        }
+                        disabled={isSaving}
+                      />
+                      <div className="full-span">
+                        <TextArea
+                          label="Multiple-choice options, one per line"
+                          rows={4}
+                          value={question.options}
+                          onChange={(event) =>
+                            updateTheoryQuestionRow(question.key, {
+                              options: event.target.value,
+                            })
+                          }
+                          disabled={isSaving}
+                        />
+                        <small className="form-help">
+                          Add at least two options and make the correct answer match one
+                          option exactly.
+                        </small>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="full-span">
+                      <TextArea
+                        label="Expected answer"
+                        rows={3}
+                        value={question.expectedAnswer}
+                        onChange={(event) =>
+                          updateTheoryQuestionRow(question.key, {
+                            expectedAnswer: event.target.value,
+                          })
+                        }
+                        placeholder="Write the key facts or terms a correct answer should include."
+                        disabled={isSaving}
+                      />
+                      <small className="form-help">
+                        Graded automatically by matching key terms in the graduate's answer
+                        against this expected answer.
+                      </small>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
           <div className="full-span button-row">
             <Button type="submit" disabled={isSaving}>
@@ -6703,33 +7225,43 @@ export function CompetenciesPage({ token }: { token: string }) {
                       <th>Code</th>
                       <th>Title</th>
                       <th>Category</th>
-                      <th>Expected Evidence</th>
+                      <th>Status</th>
                       <th>Assessment Content</th>
+                      <th>Benchmark</th>
                       <th className="w-56">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredCompetencies.map((item) => {
-                  const taskCount = item.practicalTasks?.length || 0;
-                  const hiddenTestCount =
-                    item.practicalTasks?.filter(
-                      (task) =>
-                        task.automatedTestCommand ||
-                        task.automatedTestFiles?.length,
-                    ).length || 0;
+                  const hasActiveBenchmark = competencyIdsWithActiveBenchmark.has(item._id);
 
                   return (
                     <tr key={item._id}>
                       <td className="table-code-cell">{item.code}</td>
                       <td>{item.title}</td>
                       <td>{item.category}</td>
-                      <td>{item.expectedEvidence || "N/A"}</td>
                       <td>
-                        {taskCount} GitHub task(s),{" "}
-                        {item.theoryQuestions?.length || 0} theory question(s)
-                        {hiddenTestCount > 0
-                          ? `, ${hiddenTestCount} hidden test set(s)`
-                          : ""}
+                        <Badge tone={item.isActive === false ? "neutral" : "success"}>
+                          {item.isActive === false ? "Inactive" : "Active"}
+                        </Badge>
+                      </td>
+                      <td>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => setViewingCompetency(item)}
+                        >
+                          View
+                        </Button>
+                      </td>
+                      <td>
+                        {hasActiveBenchmark ? (
+                          <Badge tone="success">Active</Badge>
+                        ) : (
+                          <Badge tone="warning" title="Graduates cannot submit an assessment for this competency until an active benchmark is added.">
+                            Missing
+                          </Badge>
+                        )}
                       </td>
                       <td>
                         <div className="table-action-row">
@@ -6744,10 +7276,16 @@ export function CompetenciesPage({ token }: { token: string }) {
                         <Button
                           type="button"
                           variant="danger"
-                          onClick={() => handleDeleteCompetency(item._id)}
+                          onClick={() => void handleToggleCompetencyStatus(item)}
                           disabled={isDeleting === item._id || isSaving}
                         >
-                          {isDeleting === item._id ? "Deleting..." : "Delete"}
+                          {isDeleting === item._id
+                            ? item.isActive === false
+                              ? "Activating..."
+                              : "Deactivating..."
+                            : item.isActive === false
+                              ? "Activate"
+                              : "Deactivate"}
                         </Button>
                         </div>
                       </td>
@@ -6761,6 +7299,59 @@ export function CompetenciesPage({ token }: { token: string }) {
           </>
         )}
       </Card>
+      {viewingCompetency && (
+        <DetailModal
+          title={`${viewingCompetency.code} - ${viewingCompetency.title}`}
+          subtitle={`${viewingCompetency.practicalTasks?.length || 0} practical task(s), ${viewingCompetency.theoryQuestions?.length || 0} theory question(s)`}
+          onClose={() => setViewingCompetency(null)}
+        >
+          <div className="competency-detail-view">
+            <h4>Assessment content</h4>
+            <p>
+              {viewingCompetency.practicalTasks?.length || 0} GitHub task(s),{" "}
+              {viewingCompetency.theoryQuestions?.length || 0} theory question(s)
+              {(() => {
+                const hiddenTestCount =
+                  viewingCompetency.practicalTasks?.filter(
+                    (task) => task.automatedTestCommand || task.automatedTestFiles?.length,
+                  ).length || 0;
+                return hiddenTestCount > 0 ? `, ${hiddenTestCount} hidden test set(s)` : "";
+              })()}
+            </p>
+            <h4>Practical tasks</h4>
+            {(viewingCompetency.practicalTasks?.length || 0) === 0 ? (
+              <EmptyState message="No practical tasks configured." />
+            ) : (
+              viewingCompetency.practicalTasks?.map((task, index) => (
+                <div className="competency-detail-item" key={task._id || index}>
+                  <strong>{index + 1}. {task.title}</strong>
+                  <ReadMoreText text={task.instructions} limit={200} />
+                  <span>
+                    {task.automatedTestCommand || task.automatedTestFiles?.length
+                      ? "Hidden instructor test configured."
+                      : "No hidden instructor test configured."}
+                  </span>
+                </div>
+              ))
+            )}
+            <h4>Theory questions</h4>
+            {(viewingCompetency.theoryQuestions?.length || 0) === 0 ? (
+              <EmptyState message="No theory questions configured." />
+            ) : (
+              viewingCompetency.theoryQuestions?.map((question, index) => (
+                <div className="competency-detail-item" key={question._id || index}>
+                  <strong>{index + 1}. {question.question}</strong>
+                  <span>
+                    {question.type === "multiple_choice"
+                      ? `Multiple choice, ${question.options?.length || 0} option(s), ${question.points} point(s).`
+                      : `Short answer, ${question.points} point(s), scored against the admin expected answer.`}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </DetailModal>
+      )}
     </section>
   );
 }
@@ -6796,10 +7387,10 @@ export function LegalPoliciesPage({ token }: { token: string }) {
 
   const filteredPolicies = useMemo(
     () =>
-      data.filter((policy) => {
+      sortByLatestDate(data.filter((policy) => {
         const matchesStatus = statusFilter === "all" || policy.status === statusFilter;
         return matchesStatus && matchesSearchTerm(search, policy.type, policy.title, policy.version, policy.status, policy.content);
-      }),
+      }), (policy) => policy.publishedAt || policy.updatedAt || policy.createdAt),
     [data, search, statusFilter],
   );
 
@@ -6984,7 +7575,7 @@ export function LegalPoliciesPage({ token }: { token: string }) {
           </div>
           <div className="full-span">
             <div className="policy-upload-section">
-              <p className="policy-upload-label">Attach document <span className="policy-upload-hint">(optional — PDF, DOCX, TXT, MD · max 5 MB)</span></p>
+              <p className="policy-upload-label">Attach document <span className="policy-upload-hint">(optional - PDF, DOCX, TXT, MD - max 5 MB)</span></p>
               {fileError && <Alert type="error">{fileError}</Alert>}
               {form.documentFile ? (
                 <div className="policy-file-attached">
@@ -7104,7 +7695,7 @@ export function LegalPoliciesPage({ token }: { token: string }) {
                               {policy.documentFile.name}
                             </button>
                           ) : (
-                            <span className="text-muted">—</span>
+                            <span className="text-muted">-</span>
                           )}
                         </td>
                         <td>{policy.publishedAt ? formatDate(policy.publishedAt) : "Not published"}</td>

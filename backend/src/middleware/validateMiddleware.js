@@ -340,8 +340,9 @@ export function validateOrganization(req, res, next) {
 export function validateCompetency(req, res, next) {
   try {
     const isCreate = req.method === "POST";
-    assertStringField(req.body, "code", "Competency code", { required: isCreate, min: 2, max: 40 });
-    if (!isBlank(req.body.code)) req.body.code = req.body.code.toUpperCase();
+    // The code is system-generated (see competencyService.generateUniqueCompetencyCode)
+    // so it is never accepted from the client, on create or update.
+    delete req.body.code;
     assertStringField(req.body, "title", "Competency title", { required: isCreate, min: 3, max: 180 });
     assertStringField(req.body, "category", "Category", { required: isCreate, min: 2, max: 120 });
     assertStringField(req.body, "description", "Description", { required: false, max: 5000 });

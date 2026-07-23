@@ -174,6 +174,10 @@
     @apply rounded-lg border border-slate-200 bg-slate-50 p-5 max-[640px]:p-4;
   }
 
+  .competency-repeater-row {
+    @apply mt-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 first:mt-0;
+  }
+
   .form-help {
     @apply mb-3 text-sm font-bold text-slate-500;
   }
@@ -1094,6 +1098,34 @@
     @apply text-xs font-black uppercase tracking-wide text-slate-500;
   }
 
+  .submission-contract-panel {
+    @apply mt-3 grid gap-3 rounded-lg border border-[#0077B6]/25 bg-[#0077B6]/5 p-4;
+  }
+
+  .submission-contract-panel__title {
+    @apply text-xs font-black uppercase tracking-wide text-[#0077B6];
+  }
+
+  .submission-contract-panel__row {
+    @apply grid gap-1 text-sm text-slate-700;
+  }
+
+  .submission-contract-panel__row > strong {
+    @apply text-xs font-black uppercase tracking-wide text-slate-500;
+  }
+
+  .submission-contract-panel__row code {
+    @apply rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800 ring-1 ring-inset ring-slate-200;
+  }
+
+  .submission-contract-panel__row ul {
+    @apply grid gap-1;
+  }
+
+  .submission-contract-panel__hint {
+    @apply text-xs font-semibold text-slate-500;
+  }
+
   .assessment-action-row,
   .assessment-navigation-row {
     @apply grid grid-cols-2 gap-3 max-[520px]:grid-cols-1;
@@ -1243,6 +1275,34 @@
     @apply text-xs font-semibold not-italic text-slate-500;
   }
 
+  .checklist-description-input {
+    @apply mt-2 min-h-16;
+  }
+
+  .checklist-validation-help {
+    @apply mt-1 block text-xs font-semibold text-slate-500;
+  }
+
+  .checklist-preview-description {
+    @apply mt-1 block text-xs font-semibold text-slate-500;
+  }
+
+  .checklist-confidence-legend {
+    @apply mb-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500;
+  }
+
+  .competency-detail-view h4 {
+    @apply mt-4 text-sm font-black uppercase tracking-wide text-slate-500 first:mt-0;
+  }
+
+  .competency-detail-item {
+    @apply mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3;
+  }
+
+  .competency-detail-item span {
+    @apply mt-1 block text-sm font-semibold text-slate-500;
+  }
+
   .weighted-checklist-table {
     @apply overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70 transition duration-300 hover:shadow-md;
   }
@@ -1348,6 +1408,22 @@
 
   .repository-checklist-result tfoot td {
     @apply border-t border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-[#0B3142];
+  }
+
+  .checklist-command-evidence {
+    @apply mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2;
+  }
+
+  .checklist-command-evidence summary {
+    @apply cursor-pointer text-xs font-bold uppercase tracking-wide text-[#0077B6];
+  }
+
+  .checklist-command-evidence__command {
+    @apply mt-2 break-words font-mono text-xs font-semibold text-slate-700;
+  }
+
+  .checklist-command-evidence__output {
+    @apply mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-slate-900 p-2 font-mono text-xs text-slate-100;
   }
 
   .admin-checklist-preview {
@@ -2729,3 +2805,7 @@
 .policy-doc-card__btn:active {
   transform: translateY(0);
 }
+
+  .linked-result-row {
+    @apply bg-[#0077B6]/10 ring-1 ring-inset ring-[#0077B6]/30;
+  }

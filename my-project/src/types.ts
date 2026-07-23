@@ -92,6 +92,26 @@ export type PracticalTaskChecklistItem = {
   feedbackWhenFailed?: string
 }
 
+export type SubmissionContract = {
+  manifestFileName: string
+  allowedLanguages: string[]
+  executionInterface: string
+  manifestTemplate: Record<string, unknown>
+  publicTestCases: {
+    id?: string
+    title?: string
+    input?: string
+    expectedOutput?: string
+    validator?: string
+  }[]
+  requiredApiRoutes: {
+    method: string
+    path: string
+    raw?: string
+  }[]
+  hiddenTestCaseCount: number
+}
+
 export type PracticalTask = {
   _id: string
   title: string
@@ -105,6 +125,10 @@ export type PracticalTask = {
     content?: string
   }[]
   reviewChecklist?: PracticalTaskChecklistItem[]
+  allowedLanguages?: string[]
+  executionInterface?: string
+  requiredApiRoutes?: string[]
+  submissionContract?: SubmissionContract
 }
 
 export type RepositoryChecklist = {
@@ -201,6 +225,12 @@ export type Assessment = {
   reviewedAt?: string
 }
 
+export type CommandEvidence = {
+  command: string
+  exitCode: number | null
+  output: string
+}
+
 export type RepositoryTaskReview = {
   taskId?: string
   taskTitle?: string
@@ -221,6 +251,8 @@ export type RepositoryTaskReview = {
     category?: string
     evidence?: string
     advice?: string
+    confidence?: 'verified' | 'estimated'
+    commandEvidence?: CommandEvidence | null
   }[]
   taskKeywords?: string[]
   matchedTaskKeywords?: string[]
@@ -424,6 +456,8 @@ export type Report = {
     label?: string
     score?: number
     explanation?: string
+    confidence?: 'verified' | 'estimated'
+    commandEvidence?: CommandEvidence | null
   }[]
   finalConclusion?: string
   createdAt?: string

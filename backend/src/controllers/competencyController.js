@@ -23,6 +23,10 @@ class CompetencyController {
     sendSuccess(res, 'Competency updated', competency);
   });
 
+  activateCompetency = asyncHandler(async (req, res) => {
+    const competency = await competencyService.activateCompetencyById(req.params.id);
+    sendSuccess(res, 'Competency activated', competency);
+  });
   deleteCompetency = asyncHandler(async (req, res) => {
     const competency = await competencyService.deactivateCompetencyById(req.params.id);
     sendSuccess(res, 'Competency deactivated', competency);
@@ -35,5 +39,6 @@ export const listCompetencies = competencyController.listCompetencies;
 export const getCompetency = competencyController.getCompetency;
 export const createCompetency = competencyController.createCompetency;
 export const updateCompetency = competencyController.updateCompetency;
+export const activateCompetency = competencyController.activateCompetency;
 export const deleteCompetency = competencyController.deleteCompetency;
 export default competencyController;

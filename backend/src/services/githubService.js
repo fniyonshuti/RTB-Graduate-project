@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import dotenv from 'dotenv';
+import { Sandbox } from 'e2b';
 import Competency from '../models/Competency.js';
 import RepositoryAssessmentResult from '../models/RepositoryAssessmentResult.js';
 import { isLearnerRole, ROLES } from '../constants/roles.js';
@@ -720,6 +721,87 @@ function buildDefaultExecutionCommand(manifest) {
   return '';
 }
 
+const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+
+// Admins author requiredApiRoutes as plain strings ("POST /api/register") so the
+// checklist stays easy to edit; this is the one place that shape is parsed into
+// the method/path pair the sandbox HTTP check actually needs.
+export function parseRequiredApiRoute(value = '') {
+  const trimmed = String(value || '').trim();
+  const [firstWord, ...rest] = trimmed.split(/\s+/);
+  const candidateMethod = String(firstWord || '').toUpperCase();
+
+  if (HTTP_METHODS.has(candidateMethod) && rest.length > 0) {
+    const restPath = rest.join(' ');
+    return {
+      method: candidateMethod,
+      path: restPath.startsWith('/') ? restPath : `/${restPath}`,
+      raw: trimmed,
+    };
+  }
+
+  const path = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return { method: 'GET', path, raw: trimmed };
+}
+
+function defaultMainEntryFor(language) {
+  return language === 'python' ? 'main.py' : 'main.js';
+}
+
+function defaultRunCommandFor(language, mainEntry) {
+  return language === 'python' ? `python ${mainEntry}` : `node ${mainEntry}`;
+}
+
+// Generates a ready-to-copy competra.json so a learner never has to reverse
+// engineer the manifest schema from documentation that does not exist for them.
+export function buildManifestTemplate(practicalTask = {}) {
+  const language = normalizeSubmissionLanguage((practicalTask.allowedLanguages || [])[0]) || 'javascript';
+  const protocol = normalizeProtocol(practicalTask.executionInterface) || 'instructor_tests';
+  const mainEntry = defaultMainEntryFor(language);
+
+  const template = {
+    language,
+    inputOutputProtocol: protocol,
+    workingDirectory: '.',
+  };
+
+  if (protocol === 'rest_api') {
+    template.startCommand = defaultRunCommandFor(language, mainEntry);
+    template.port = 3000;
+  } else if (protocol === 'stdin_stdout') {
+    template.mainEntry = mainEntry;
+    template.runCommand = defaultRunCommandFor(language, mainEntry);
+  } else {
+    template.mainEntry = mainEntry;
+    template.testCommand = language === 'python' ? 'pytest' : 'npm test';
+  }
+
+  return template;
+}
+
+// The learner-facing contract for a practical task: everything needed to know
+// how to format a submission so the automatic checks can actually run, without
+// ever exposing hidden test content (only a count, so integrity is preserved).
+export function buildSubmissionContract(practicalTask = {}) {
+  const publicTestCases = (practicalTask.publicTestCases || []).map((testCase) => ({
+    id: testCase.id || '',
+    title: testCase.title || '',
+    input: testCase.input || '',
+    expectedOutput: testCase.expectedOutput || '',
+    validator: testCase.validator || 'normalized_text',
+  }));
+
+  return {
+    manifestFileName: 'competra.json',
+    allowedLanguages: practicalTask.allowedLanguages || [],
+    executionInterface: practicalTask.executionInterface || 'instructor_tests',
+    manifestTemplate: buildManifestTemplate(practicalTask),
+    publicTestCases,
+    requiredApiRoutes: (practicalTask.requiredApiRoutes || []).map(parseRequiredApiRoute),
+    hiddenTestCaseCount: (practicalTask.hiddenTestCases || []).length,
+  };
+}
+
 function validateSubmissionManifest(manifest, practicalTask = {}) {
   const checks = [];
 
@@ -798,6 +880,18 @@ function validateSubmissionManifest(manifest, practicalTask = {}) {
     error: 'Provide runCommand, startCommand, testCommand, or mainEntry in competra.json.',
     weight: 10,
   });
+
+  if (protocol === 'rest_api') {
+    checks.push({
+      id: 'rest-api-port-declared',
+      title: 'Submission declares the port its server listens on',
+      competency: 'deployment',
+      passed: Number.isInteger(manifest.port) && manifest.port > 0,
+      evidence: manifest.port ? `Declared port: ${manifest.port}.` : '',
+      error: 'Provide a numeric "port" in competra.json so the evaluator can reach the running server.',
+      weight: 8,
+    });
+  }
 
   return {
     manifest: { ...manifest, language, inputOutputProtocol: protocol },
@@ -931,6 +1025,137 @@ async function runBlackBoxStdoutTests({ sandbox, repositoryPath, contract, pract
   return { testCases, commandResults };
 }
 
+const REST_API_READY_POLL_ATTEMPTS = 10;
+const REST_API_READY_POLL_DELAY_MS = 750;
+
+async function waitForRestApiServerReady(baseUrl) {
+  for (let attempt = 1; attempt <= REST_API_READY_POLL_ATTEMPTS; attempt += 1) {
+    try {
+      await fetch(baseUrl, { method: 'GET' });
+      return true;
+    } catch {
+      if (attempt === REST_API_READY_POLL_ATTEMPTS) return false;
+      await new Promise((resolve) => setTimeout(resolve, REST_API_READY_POLL_DELAY_MS));
+    }
+  }
+
+  return false;
+}
+
+// Behavioral proof for rest_api submissions: start the learner's server in the
+// sandbox, reach it from outside via E2B's port forwarding, and confirm every
+// admin-declared required route actually responds. This never inspects source
+// code, so it works the same regardless of language or file layout.
+async function runBlackBoxRestApiTests({ sandbox, contract, practicalTask }) {
+  const testCases = [];
+  const commandResults = [];
+  const routes = (practicalTask.requiredApiRoutes || [])
+    .map(parseRequiredApiRoute)
+    .filter((route) => route.path);
+  const startCommand = commandOrEmpty(contract.manifest?.startCommand);
+  const port = Number(contract.manifest?.port);
+  const portIsValid = Number.isInteger(port) && port > 0;
+
+  if (contract.protocol !== 'rest_api' || !startCommand || !portIsValid || routes.length === 0) {
+    return { testCases, commandResults };
+  }
+
+  let serverHandle;
+
+  try {
+    serverHandle = await sandbox.commands.run(startCommand, {
+      cwd: safeSandboxWorkingDirectory(E2B_REPOSITORY_PATH, contract.workingDirectory),
+      background: true,
+    });
+  } catch (error) {
+    testCases.push({
+      id: 'rest-api-server-start',
+      title: 'REST API server starts from the manifest startCommand',
+      competency: 'deployment',
+      passed: false,
+      weight: 10,
+      evidence: '',
+      error: error.message || 'Server failed to start in the sandbox.',
+    });
+    return { testCases, commandResults };
+  }
+
+  try {
+    const baseUrl = `https://${sandbox.getHost(port)}`;
+    const isReady = await waitForRestApiServerReady(baseUrl);
+
+    testCases.push({
+      id: 'rest-api-server-start',
+      title: 'REST API server starts and listens on the declared port',
+      competency: 'deployment',
+      passed: isReady,
+      weight: 10,
+      evidence: isReady ? `Server responded on declared port ${port}.` : '',
+      error: isReady
+        ? ''
+        : `No response from port ${port} within ${REST_API_READY_POLL_ATTEMPTS * REST_API_READY_POLL_DELAY_MS}ms. Check that competra.json's startCommand binds to this port.`,
+    });
+
+    if (!isReady) {
+      return { testCases, commandResults };
+    }
+
+    for (const route of routes) {
+      const startedRequestAt = Date.now();
+      const requestLabel = `${route.method} ${route.path}`;
+
+      try {
+        const response = await fetch(`${baseUrl}${route.path}`, { method: route.method });
+        const passed = response.status < 500 && response.status !== 404;
+
+        commandResults.push({
+          name: `REST API check: ${requestLabel}`,
+          command: requestLabel,
+          success: passed,
+          exitCode: passed ? 0 : 1,
+          stdout: `HTTP ${response.status}`,
+          stderr: passed ? '' : `HTTP ${response.status}`,
+          durationMs: Date.now() - startedRequestAt,
+        });
+        testCases.push({
+          id: `rest-api-route-${route.method.toLowerCase()}-${route.path}`,
+          title: `Required endpoint ${requestLabel} responds`,
+          competency: 'backend',
+          passed,
+          weight: 10,
+          evidence: passed ? `Received HTTP ${response.status} from ${requestLabel}.` : '',
+          error: passed
+            ? ''
+            : `Received HTTP ${response.status} from ${requestLabel}. Expected a response other than 404/5xx.`,
+        });
+      } catch (error) {
+        commandResults.push({
+          name: `REST API check: ${requestLabel}`,
+          command: requestLabel,
+          success: false,
+          exitCode: 1,
+          stdout: '',
+          stderr: error.message || 'Request failed.',
+          durationMs: Date.now() - startedRequestAt,
+        });
+        testCases.push({
+          id: `rest-api-route-${route.method.toLowerCase()}-${route.path}`,
+          title: `Required endpoint ${requestLabel} responds`,
+          competency: 'backend',
+          passed: false,
+          weight: 10,
+          evidence: '',
+          error: error.message || `Request to ${requestLabel} failed.`,
+        });
+      }
+    }
+
+    return { testCases, commandResults };
+  } finally {
+    await serverHandle.kill().catch(() => null);
+  }
+}
+
 async function evaluateSubmissionContract({ localPath, practicalTask, analysis, e2bContext }) {
   const { manifest } = await readSubmissionManifest(localPath);
   const contract = validateSubmissionManifest(manifest, practicalTask);
@@ -1029,12 +1254,17 @@ async function evaluateSubmissionContract({ localPath, practicalTask, analysis, 
     contract,
     practicalTask,
   });
+  const restApiResult = await runBlackBoxRestApiTests({
+    sandbox: e2bContext.sandbox,
+    contract,
+    practicalTask,
+  });
 
   return {
     ...contract,
     executionMode: 'e2b',
-    commandResults: [...commandResults, ...blackBoxResult.commandResults],
-    testCases: [...testCases, ...blackBoxResult.testCases],
+    commandResults: [...commandResults, ...blackBoxResult.commandResults, ...restApiResult.commandResults],
+    testCases: [...testCases, ...blackBoxResult.testCases, ...restApiResult.testCases],
     securityNotes,
   };
 }
@@ -1800,6 +2030,9 @@ class GitHubService {
   scoreRepositoryAssessment = scoreRepositoryAssessment;
   parseGitHubRepositoryUrl = parseGitHubRepositoryUrl;
   validateGitHubRepositoryUrl = validateGitHubRepositoryUrl;
+  parseRequiredApiRoute = parseRequiredApiRoute;
+  buildManifestTemplate = buildManifestTemplate;
+  buildSubmissionContract = buildSubmissionContract;
   summarizeGitHubRepository = summarizeGitHubRepository;
   reviewGitHubRepositoryForTask = reviewGitHubRepositoryForTask;
   assessGithubRepository = assessGithubRepository;

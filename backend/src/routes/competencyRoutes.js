@@ -4,6 +4,7 @@ import {
   getCompetency,
   createCompetency,
   updateCompetency,
+  activateCompetency,
   deleteCompetency,
 } from '../controllers/competencyController.js';
 import { protect } from '../middleware/authMiddleware.js';
@@ -19,10 +20,12 @@ router
   .get(listCompetencies)
   .post(
     authorize('admin'),
-    requireFields('title', 'code', 'category'),
+    requireFields('title', 'category'),
     validateCompetency,
     createCompetency
   );
+
+router.patch('/:id/activate', authorize('admin'), activateCompetency);
 
 router
   .route('/:id')

@@ -383,10 +383,10 @@ export async function submitAssessment(user, payload) {
     user,
   );
   const staticRepositoryTaskReview = backendRepositoryTaskReview;
-  const repositoryEvidenceSummary = staticRepositoryTaskReview?.repositoryEvidenceSummary || null;
+  const repositorySummary = staticRepositoryTaskReview?.repositorySummary || null;
 
-  if (repositoryEvidenceSummary && staticRepositoryTaskReview?.taskReview) {
-    repositoryEvidenceSummary.taskReview = staticRepositoryTaskReview.taskReview;
+  if (repositorySummary && staticRepositoryTaskReview?.taskReview) {
+    repositorySummary.taskReview = staticRepositoryTaskReview.taskReview;
   }
 
   const graduate = await User.findById(user._id);
@@ -407,7 +407,7 @@ export async function submitAssessment(user, payload) {
     );
   }
 
-  const practicalRepositoryScore = Number(repositoryEvidenceSummary?.taskReview?.score || 0);
+  const practicalRepositoryScore = Number(repositorySummary?.taskReview?.score || 0);
   const skillGapAnalysis = analyzeCompetency(
     {
       practicalTaskScore: practicalRepositoryScore,
@@ -430,7 +430,7 @@ export async function submitAssessment(user, payload) {
       benchmarkScore: skillGapAnalysis.benchmarkScore,
       skillGap: skillGapAnalysis.skillGap,
       gapLevel: skillGapAnalysis.gapLevel,
-      evidence: { repositoryEvidenceSummary },
+      evidence: { repositorySummary },
       automaticAssessmentComment,
       evidenceVerification,
     },
@@ -451,7 +451,7 @@ export async function submitAssessment(user, payload) {
       practicalTaskInstructions: selectedPracticalTask?.instructions,
       practicalTask: payload.practicalTask,
       githubRepositoryUrl: payload.githubRepositoryUrl,
-      repositoryEvidenceSummary,
+      repositorySummary,
       quizAnswers: theoryScoringResult.quizAnswers || payload.quizAnswers,
       theoryAnswers: theoryScoringResult.theoryAnswers,
       fileUrls: payload.fileUrls || [],
@@ -567,30 +567,51 @@ function checklistKeywords(item = {}) {
     .filter((term) => term.length > 3 && !CHECKLIST_STOP_WORDS.has(term));
 }
 
-function repositorySourceText(staticReview = {}) {
-  const repositorySummary = staticReview.repositorySummary || staticReview.repositoryEvidenceSummary || {};
+function repositoryNarrativeText(staticReview = {}) {
+  const repositorySummary = staticReview.repositorySummary || {};
   return [
     repositorySummary.description,
     repositorySummary.readmeExcerpt,
     repositorySummary.summaryText,
     ...(repositorySummary.topLevelItems || []),
-    ...(repositorySummary.sampledSourceFiles || []).map(
-      (file) => `${file.path || ""} ${file.language || ""} ${file.excerpt || ""}`,
-    ),
   ]
+    .join(' ')
+    .toLowerCase();
+}
+
+function repositorySourceCodeText(staticReview = {}) {
+  const repositorySummary = staticReview.repositorySummary || {};
+  return (repositorySummary.sampledSourceFiles || [])
+    .map((file) => `${file.path || ""} ${file.language || ""} ${file.excerpt || ""}`)
     .join(" ")
     .toLowerCase();
 }
 
+// Keyword matching is the weakest evidence signal this engine has, so it is
+// deliberately conservative: a match against real source code counts more
+// than a match against README/description prose, and a checklist item backed
+// by only one or two keywords (which is easy to hit by accident) is capped
+// below full credit unless the match is grounded in actual code.
 function scoreChecklistSourceMatch(checklistItem, staticReview) {
   const keywords = checklistKeywords(checklistItem);
   if (keywords.length === 0) return 0;
 
-  const sourceText = repositorySourceText(staticReview);
-  if (!sourceText) return 0;
+  const codeText = repositorySourceCodeText(staticReview);
+  const narrativeText = repositoryNarrativeText(staticReview);
+  if (!codeText && !narrativeText) return 0;
 
-  const matchedKeywords = keywords.filter((keyword) => sourceText.includes(keyword));
-  return roundReviewScore((matchedKeywords.length / keywords.length) * 100);
+  const matchedInCode = keywords.filter((keyword) => codeText.includes(keyword));
+  const matchedInNarrativeOnly = keywords.filter(
+    (keyword) => !matchedInCode.includes(keyword) && narrativeText.includes(keyword),
+  );
+  const matchedWeight = matchedInCode.length + matchedInNarrativeOnly.length * 0.5;
+  const rawScore = roundReviewScore((matchedWeight / keywords.length) * 100);
+
+  if (keywords.length < 2 && matchedInCode.length === 0) {
+    return Math.min(rawScore, 60);
+  }
+
+  return rawScore;
 }
 
 function relatedRequirementsForChecklist(repositoryAssessment = {}, item = {}) {
@@ -607,7 +628,64 @@ function relatedRequirementsForChecklist(repositoryAssessment = {}, item = {}) {
     return (category && text.includes(category)) || terms.split(/\s+/).some((term) => term.length > 4 && text.includes(term));
   });
 
-  return related.length > 0 ? related : requirements;
+  return {
+    requirements: related.length > 0 ? related : requirements,
+    // Distinguishes a real category/keyword match from the "no match found,
+    // here is everything" fallback so callers can weight it accordingly.
+    isSpecificMatch: related.length > 0,
+  };
+}
+
+const VERIFIED_CHECKLIST_VALIDATION_TYPES = new Set([
+  'eslint',
+  'security_scan',
+  'hidden_test',
+  'automated_test',
+  'repository_scan',
+]);
+
+// eslint/security_scan/hidden_test/automated_test/repository_scan are backed by
+// real tool output (a scanner or an executed test). implementation_review and
+// manual_review are heuristic estimates from static code/keyword matching.
+// The UI uses this to tell graduates and admins which results are proven.
+function checklistItemConfidence(validationType) {
+  return VERIFIED_CHECKLIST_VALIDATION_TYPES.has(String(validationType))
+    ? 'verified'
+    : 'estimated';
+}
+
+function normalizeForCommandMatch(value = '') {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Finds the literal sandbox command that backs a checklist item, so the item
+// can carry real proof (exact command + captured output) instead of only a
+// score - this is what a graduate can point to in a capstone defense.
+function findCommandResultByTerms(commandResults = [], terms = []) {
+  const normalizedTerms = terms.map(normalizeForCommandMatch).filter((term) => term.length > 3);
+  if (normalizedTerms.length === 0) return null;
+
+  return (
+    commandResults.find((result) => {
+      const haystack = normalizeForCommandMatch(`${result.name || ''} ${result.command || ''}`);
+      return normalizedTerms.some((term) => haystack.includes(term));
+    }) || null
+  );
+}
+
+function truncateCommandOutput(value = '', maxLength = 800) {
+  const text = String(value || '').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength)}\n... (truncated)` : text;
+}
+
+function commandEvidenceFromResult(commandResult) {
+  if (!commandResult) return null;
+
+  return {
+    command: commandResult.command || commandResult.name || '',
+    exitCode: Number.isFinite(commandResult.exitCode) ? commandResult.exitCode : null,
+    output: truncateCommandOutput(commandResult.stdout || commandResult.stderr || ''),
+  };
 }
 
 function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessment }) {
@@ -615,30 +693,46 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
   const category = String(checklistItem.category || 'general').toLowerCase();
   const implementationReview = staticReview.taskReview?.implementationReview || {};
   const competencyScore = Number(repositoryAssessment.competencyScores?.[category] || 0);
-  const relatedRequirements = relatedRequirementsForChecklist(repositoryAssessment, checklistItem);
+  const commandResults = repositoryAssessment.commandResults || [];
+  const { requirements: relatedRequirements, isSpecificMatch } = relatedRequirementsForChecklist(
+    repositoryAssessment,
+    checklistItem,
+  );
 
   if (validationType === 'eslint') {
     const eslintResult = repositoryAssessment.eslintResult || {};
-    if (eslintResult.available === false) return { percent: 0, evidence: eslintResult.output || 'ESLint was not available.' };
+    if (eslintResult.available === false) return { percent: 0, evidence: eslintResult.output || 'ESLint was not available.', commandEvidence: null };
     const percent = eslintResult.success && Number(eslintResult.errors || 0) === 0
       ? 100
       : Math.max(0, 100 - Number(eslintResult.errors || 0) * 25 - Number(eslintResult.warnings || 0) * 5);
-    return { percent, evidence: `ESLint errors: ${eslintResult.errors || 0}, warnings: ${eslintResult.warnings || 0}.` };
+    return {
+      percent,
+      evidence: `ESLint errors: ${eslintResult.errors || 0}, warnings: ${eslintResult.warnings || 0}.`,
+      commandEvidence: commandEvidenceFromResult(findCommandResultByTerms(commandResults, ['eslint'])),
+    };
   }
 
   if (validationType === 'security_scan') {
     const security = repositoryAssessment.securityScanResult || {};
-    if (security.available === false) return { percent: 0, evidence: security.output || 'Security scan was not available.' };
+    if (security.available === false) return { percent: 0, evidence: security.output || 'Security scan was not available.', commandEvidence: null };
     const secretCount = (security.secretFindings || []).length;
     const percent = security.success
       ? 100
       : Math.max(0, 100 - Number(security.critical || 0) * 50 - Number(security.high || 0) * 25 - secretCount * 40);
-    return { percent, evidence: `Security scan: ${security.critical || 0} critical, ${security.high || 0} high, ${secretCount} secret finding(s).` };
+    return {
+      percent,
+      evidence: `Security scan: ${security.critical || 0} critical, ${security.high || 0} high, ${secretCount} secret finding(s).`,
+      commandEvidence: commandEvidenceFromResult(findCommandResultByTerms(commandResults, ['security', 'audit'])),
+    };
   }
 
   if (validationType === 'repository_scan') {
     const percent = roundReviewScore((Number(staticReview.taskReview?.taskKeywordMatchRate || 0) + Number(staticReview.taskReview?.score || 0)) / 2);
-    return { percent, evidence: `Repository task keyword match: ${staticReview.taskReview?.taskKeywordMatchRate || 0}%. Static review score: ${staticReview.taskReview?.score || 0}%.` };
+    return {
+      percent,
+      evidence: `Repository task keyword match: ${staticReview.taskReview?.taskKeywordMatchRate || 0}%. Static review score: ${staticReview.taskReview?.score || 0}%.`,
+      commandEvidence: null,
+    };
   }
 
   if (validationType === 'hidden_test' || validationType === 'automated_test') {
@@ -646,21 +740,37 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
     const percent = testRequirements.length > 0
       ? requirementEvidenceScore(testRequirements)
       : Number(repositoryAssessment.accuracyScore || 0);
-    return { percent, evidence: `${repositoryAssessment.passedTestCases || 0}/${repositoryAssessment.totalTestCases || 0} objective repository check(s) passed.` };
+    const matchTerms = [checklistItem.title, checklistItem.category, ...testRequirements.flatMap((requirement) => [requirement.id, requirement.title])];
+    return {
+      percent,
+      evidence: `${repositoryAssessment.passedTestCases || 0}/${repositoryAssessment.totalTestCases || 0} objective repository check(s) passed.`,
+      commandEvidence: commandEvidenceFromResult(findCommandResultByTerms(commandResults, matchTerms)),
+    };
   }
 
   if (validationType === 'manual_review') {
     const percent = Math.max(Number(implementationReview.implementationEvidenceScore || 0), competencyScore);
-    return { percent, evidence: 'Automatic evidence is shown for assessor confirmation because this checklist row needs human validation.' };
+    return {
+      percent,
+      evidence: 'Best-effort automatic estimate from repository evidence. No human administrator has confirmed this item; treat it as approximate.',
+      commandEvidence: null,
+    };
   }
 
   const sourceMatchScore = scoreChecklistSourceMatch(checklistItem, staticReview);
+  const relatedRequirementScore = relatedRequirements.length > 0
+    ? requirementEvidenceScore(relatedRequirements)
+    : 0;
   const evidenceValues = [
     implementationReview.implementationEvidenceScore,
     implementationReview.functionalCoverageRate,
     implementationReview.actionCoverageRate,
     competencyScore,
     sourceMatchScore,
+    // A specific requirement match (not the "no match, here's everything"
+    // fallback) is the strongest objective signal available here, so it
+    // counts twice as much as the other heuristic signals.
+    ...(isSpecificMatch ? [relatedRequirementScore, relatedRequirementScore] : [relatedRequirementScore]),
   ].map(Number).filter((value) => Number.isFinite(value) && value > 0);
   const implementationPercent = evidenceValues.length > 0
     ? roundReviewScore(evidenceValues.reduce((sum, value) => sum + value, 0) / evidenceValues.length)
@@ -668,7 +778,10 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
 
   return {
     percent: implementationPercent,
-    evidence: `Checklist-code match: ${sourceMatchScore}%. Implementation evidence: ${implementationReview.implementationEvidenceScore || 0}%. Functional coverage: ${implementationReview.functionalCoverageRate || 0}%. Category score: ${competencyScore || 0}%.`,
+    evidence: `Checklist-code match: ${sourceMatchScore}%. Implementation evidence: ${implementationReview.implementationEvidenceScore || 0}%. Functional coverage: ${implementationReview.functionalCoverageRate || 0}%. Category score: ${competencyScore || 0}%.${
+      isSpecificMatch ? ` Matched objective requirement evidence: ${relatedRequirementScore}%.` : ''
+    }`,
+    commandEvidence: null,
   };
 }
 
@@ -700,7 +813,7 @@ function buildAdminWeightedChecklist({ rubric, staticReview, repositoryAssessmen
   return rubric.map((item, index) => {
     const weight = clampReviewScore(item.weight || 10, 1, 100);
     const maxScore = clampReviewScore(item.maxScore || 10, 1, 100);
-    const { percent, evidence } = scoreChecklistEvidence({ checklistItem: item, staticReview, repositoryAssessment });
+    const { percent, evidence, commandEvidence } = scoreChecklistEvidence({ checklistItem: item, staticReview, repositoryAssessment });
     const scoreAwarded = roundReviewScore((clampReviewScore(percent) / 100) * maxScore);
     const threshold = clampReviewScore(item.successThreshold ?? 70, 0, 100);
 
@@ -713,6 +826,8 @@ function buildAdminWeightedChecklist({ rubric, staticReview, repositoryAssessmen
       scoreAwarded,
       validationType: item.validationType || 'implementation_review',
       category: item.category || 'general',
+      confidence: checklistItemConfidence(item.validationType),
+      commandEvidence: commandEvidence || null,
       evidence: item.description ? `${item.description} ${evidence}` : evidence,
       advice:
         percent >= threshold
@@ -734,7 +849,7 @@ function buildStaticRepositoryReviewFallback({
     "GitHub static repository review failed before producing a result.";
 
   return {
-    repositoryEvidenceSummary: {
+    repositorySummary: {
       url: payload.githubRepositoryUrl,
       owner: "",
       repo: "",
@@ -855,8 +970,8 @@ export async function previewRepositoryTaskReview(payload, user) {
   const passedCount = checklist.filter((item) => item.passed).length;
 
   return {
-    repositoryEvidenceSummary: {
-      ...staticReview.repositoryEvidenceSummary,
+    repositorySummary: {
+      ...staticReview.repositorySummary,
       repositoryAssessmentResult: repositoryAssessment,
     },
     taskReview: {
