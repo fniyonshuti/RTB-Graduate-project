@@ -430,8 +430,8 @@ function RepositoryChecklistTable({ checklist }: { checklist: RepositoryChecklis
   );
 }
 
-function downloadTextFile(filename: string, content: string) {
-  const blob = new Blob([content], { type: "application/json" });
+function downloadTextFile(filename: string, content: string, mimeType = "application/json") {
+  const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -5690,6 +5690,107 @@ function serializeChecklistRows(rows: PracticalTaskChecklistItem[]) {
     .join("\n");
 }
 
+function splitCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ",") {
+      values.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function resolveChecklistCategory(value: string): string {
+  const normalized = String(value || "").trim().toLowerCase();
+  return CHECKLIST_CATEGORIES.find((category) => category.toLowerCase() === normalized) || "general";
+}
+
+function resolveChecklistValidationType(value: string): { type: string; matched: boolean } {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return { type: "implementation_review", matched: false };
+
+  const keyMatch = CHECKLIST_VALIDATION_TYPES.find((type) => type.toLowerCase() === normalized);
+  if (keyMatch) return { type: keyMatch, matched: true };
+
+  const labelMatch = CHECKLIST_VALIDATION_TYPES.find((type) => {
+    const label = (CHECKLIST_VALIDATION_TYPE_LABELS[type] || "").toLowerCase();
+    return label === normalized || label.replace(" (estimate)", "") === normalized;
+  });
+  if (labelMatch) return { type: labelMatch, matched: true };
+
+  return { type: "implementation_review", matched: false };
+}
+
+// Columns: Requirement, Category, Scored From, Weight, Description, Feedback When Failed.
+// "Category" and "Scored From" accept either the internal key or the display label (case-insensitive).
+function parseChecklistCsv(text: string) {
+  const lines = text
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  let unmatchedCount = 0;
+
+  const rows = lines
+    .map((line, index) => {
+      const [title, category, scoredFrom, weightValue, description = "", feedbackWhenFailed = ""] =
+        splitCsvLine(line);
+      const trimmedTitle = String(title || "").trim();
+
+      if (index === 0 && /^(requirement|title)$/i.test(trimmedTitle)) return null;
+      if (!trimmedTitle) return null;
+
+      const { type: validationType, matched } = resolveChecklistValidationType(scoredFrom);
+      if (!matched && String(scoredFrom || "").trim()) unmatchedCount += 1;
+
+      const weight = Math.min(Math.max(Number(weightValue) || 10, 1), 100);
+
+      return {
+        key: `checklist-upload-${Date.now()}-${index}`,
+        title: trimmedTitle,
+        description: String(description || "").trim(),
+        category: resolveChecklistCategory(category),
+        validationType,
+        maxScore: weight,
+        weight,
+        successThreshold: 70,
+        feedbackWhenFailed: String(feedbackWhenFailed || "").trim(),
+      };
+    })
+    .filter(Boolean);
+
+  return { rows, unmatchedCount };
+}
+
+const CHECKLIST_CSV_TEMPLATE = [
+  "Requirement,Category,Scored From,Weight,Description,Feedback When Failed",
+  '"Provide README with setup instructions",documentation,"Code review (estimate)",10,"Explain environment setup and how to run the API.",""',
+  '"ESLint passes with no errors",general,"ESLint scan",15,"","Fix the reported ESLint errors and resubmit."',
+].join("\n");
+
 function createChecklistBuilderRow(index: number): PracticalTaskChecklistItem {
   return {
     key: `checklist-${Date.now()}-${index}`,
@@ -5728,9 +5829,58 @@ function ChecklistBuilderModal({
   const [draftRows, setDraftRows] = useState<PracticalTaskChecklistItem[]>(
     rows.length > 0 ? rows : [createChecklistBuilderRow(1)],
   );
+  const [uploadError, setUploadError] = useState("");
+  const [uploadNotice, setUploadNotice] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const totalWeight = checklistWeight(draftRows);
   const hasRequirements = draftRows.some((row) => String(row.title || "").trim());
   const canApplyChecklist = hasRequirements && totalWeight === 100;
+
+  async function handleChecklistFileUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const maxSize = 1 * 1024 * 1024;
+
+    setUploadError("");
+    setUploadNotice("");
+
+    if (file.size > maxSize) {
+      setUploadError(`"${file.name}" exceeds the 1 MB limit. Please choose a smaller file.`);
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const text = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsText(file);
+      });
+
+      const { rows, unmatchedCount } = parseChecklistCsv(text);
+      const importedRows = rows as PracticalTaskChecklistItem[];
+
+      if (importedRows.length === 0) {
+        setUploadError(
+          `No valid checklist rows found in "${file.name}". Expect columns: Requirement, Category, Scored From, Weight, Description, Feedback When Failed.`,
+        );
+        return;
+      }
+
+      setDraftRows(importedRows);
+      setUploadNotice(
+        `Imported ${importedRows.length} requirement(s) from "${file.name}".` +
+          (unmatchedCount > 0
+            ? ` ${unmatchedCount} row(s) had an unrecognized category or "Scored from" value and were set to a default.`
+            : ""),
+      );
+    } catch {
+      setUploadError(`Could not read "${file.name}". Please try again.`);
+    } finally {
+      setIsUploading(false);
+    }
+  }
 
   function updateRow(index: number, changes: Partial<PracticalTaskChecklistItem>) {
     setDraftRows((currentRows) =>
@@ -5817,6 +5967,41 @@ function ChecklistBuilderModal({
       subtitle="Add measurable requirements and assign a fair weight. The total weight must be exactly 100%."
       onClose={onClose}
     >
+      <div className="checklist-upload-panel">
+        <div className="checklist-upload-panel__text">
+          <strong>Upload a checklist file</strong>
+          <span>
+            Import a CSV with columns Requirement, Category, Scored From, Weight,
+            Description, Feedback When Failed - the rows below will be filled in
+            automatically.
+          </span>
+        </div>
+        <div className="checklist-upload-panel__actions">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              downloadTextFile("checklist-template.csv", CHECKLIST_CSV_TEMPLATE, "text/csv")
+            }
+          >
+            Download CSV template
+          </Button>
+          <label className="policy-file-drop checklist-upload-drop">
+            <Upload size={18} />
+            <span>{isUploading ? "Importing..." : "Click to upload CSV"}</span>
+            <input
+              type="file"
+              accept=".csv,.txt,text/csv,text/plain"
+              disabled={isUploading}
+              onChange={(event) => void handleChecklistFileUpload(event.target.files)}
+              style={{ display: "none" }}
+            />
+          </label>
+        </div>
+        {uploadError && <p className="checklist-upload-error">{uploadError}</p>}
+        {uploadNotice && <p className="checklist-upload-notice">{uploadNotice}</p>}
+      </div>
+
       <div className="checklist-builder-toolbar">
         <div>
           <strong>Total checklist weight: {totalWeight} / 100</strong>
