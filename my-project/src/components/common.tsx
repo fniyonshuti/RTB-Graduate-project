@@ -443,7 +443,16 @@ export function PieChartComponent({
   dataKey,
   nameKey,
   title,
-  colors = ["#0077B6", "#10b981", "#1f2937", "#0077B6", "#34d399"],
+  colors = [
+    "#0077B6",
+    "#eb6834",
+    "#1baf7a",
+    "#eda100",
+    "#e87ba4",
+    "#008300",
+    "#4a3aa7",
+    "#e34948",
+  ],
 }: {
   data: ChartDatum[];
   dataKey: string;
