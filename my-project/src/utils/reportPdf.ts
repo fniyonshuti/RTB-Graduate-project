@@ -1,13 +1,14 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { Report } from '../types'
+import type { Assessment, Report } from '../types'
 import { formatDate, formatPercent } from './gapLevels'
+
+const STRONG_GAP_LEVELS = new Set(['No Gap', 'Very Low Gap'])
 
 type RGB = [number, number, number]
 
 const COLORS = {
   primary: [0, 119, 182] as RGB,
-  primaryDark: [3, 78, 123] as RGB,
   ink: [15, 23, 42] as RGB,
   muted: [100, 116, 139] as RGB,
   border: [226, 232, 240] as RGB,
@@ -93,37 +94,59 @@ function drawStatCards(
   return y + cardHeight + 8
 }
 
-function drawBulletColumn(
+function competencyRecommendation(report: Report, assessment: Assessment) {
+  return (report.recommendations || []).find(
+    (recommendation) => recommendation.competency?._id === assessment.competency?._id,
+  )
+}
+
+function drawInsightList(
   doc: jsPDF,
-  x: number,
   y: number,
-  width: number,
   title: string,
-  items: string[],
   toneColor: RGB,
+  toneBg: RGB,
+  entries: { heading: string; detail: string }[],
+  emptyText: string,
 ): number {
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.setTextColor(...toneColor)
-  doc.text(title, x, y)
-  let cursorY = y + 5.5
+  y = sectionTitle(doc, title, y)
 
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(...COLORS.ink)
-
-  if (items.length === 0) {
-    doc.text('None recorded.', x, cursorY)
-    cursorY += 4.6
-  } else {
-    items.forEach((item) => {
-      const lines = doc.splitTextToSize(`• ${item}`, width)
-      doc.text(lines, x, cursorY)
-      cursorY += lines.length * 4.6
-    })
+  if (entries.length === 0) {
+    y = ensureSpace(doc, y, 8)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9.5)
+    doc.setTextColor(...COLORS.muted)
+    doc.text(emptyText, MARGIN, y)
+    return y + 8
   }
 
-  return cursorY
+  entries.forEach((entry) => {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    const detailLines = doc.splitTextToSize(entry.detail, CONTENT_WIDTH - 12)
+    const blockHeight = detailLines.length * 4.3 + 11
+    y = ensureSpace(doc, y, blockHeight)
+
+    doc.setFillColor(...toneBg)
+    doc.setDrawColor(...COLORS.border)
+    doc.roundedRect(MARGIN, y - 4.5, CONTENT_WIDTH, blockHeight - 2, 1.5, 1.5, 'FD')
+    doc.setFillColor(...toneColor)
+    doc.circle(MARGIN + 4, y - 0.5, 1.1, 'F')
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(...COLORS.ink)
+    doc.text(entry.heading, MARGIN + 8, y)
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...COLORS.muted)
+    doc.text(detailLines, MARGIN + 8, y + 4.6)
+
+    y += blockHeight + 4
+  })
+
+  return y + 2
 }
 
 export function buildReportPdf(report: Report): jsPDF {
@@ -177,40 +200,51 @@ export function buildReportPdf(report: Report): jsPDF {
     },
   ])
 
-  // Strengths / weaknesses
-  const columnGap = 6
-  const columnWidth = (CONTENT_WIDTH - columnGap) / 2
-  const strengthsColumnX = MARGIN
-  const weaknessesColumnX = MARGIN + columnWidth + columnGap
-  const estimatedBulletHeight =
-    Math.max(report.strengths?.length ?? 1, report.weaknesses?.length ?? 1) * 10 + 12
-  y = ensureSpace(doc, y, estimatedBulletHeight)
-  const strengthsEndY = drawBulletColumn(
+  const assessments = report.assessments || []
+  const strongAssessments = assessments.filter(
+    (assessment) => assessment.gapLevel && STRONG_GAP_LEVELS.has(assessment.gapLevel),
+  )
+  const weakAssessments = assessments.filter(
+    (assessment) => assessment.gapLevel && !STRONG_GAP_LEVELS.has(assessment.gapLevel),
+  )
+
+  // Strengths
+  y = drawInsightList(
     doc,
-    strengthsColumnX,
     y,
-    columnWidth,
     'Strengths',
-    report.strengths || [],
     COLORS.success,
+    COLORS.successBg,
+    strongAssessments.map((assessment) => ({
+      heading: `${assessment.competency?.title || 'Competency'}  -  ${formatPercent(assessment.scores?.finalScore)}`,
+      detail:
+        competencyRecommendation(report, assessment)?.message ||
+        `Meets the RTB benchmark of ${formatPercent(assessment.benchmarkScore)} with no significant skill gap. Consistent, reliable performance in this competency.`,
+    })),
+    'No standout strengths recorded yet.',
   )
-  const weaknessesEndY = drawBulletColumn(
+
+  // Areas to improve
+  y = drawInsightList(
     doc,
-    weaknessesColumnX,
     y,
-    columnWidth,
     'Areas To Improve',
-    report.weaknesses || [],
     COLORS.danger,
+    COLORS.dangerBg,
+    weakAssessments.map((assessment) => ({
+      heading: `${assessment.competency?.title || 'Competency'}  -  ${assessment.gapLevel || 'Gap identified'}`,
+      detail:
+        competencyRecommendation(report, assessment)?.message ||
+        `Score of ${formatPercent(assessment.scores?.finalScore)} falls short of the ${formatPercent(assessment.benchmarkScore)} RTB benchmark. Review the recommended learning resources and resubmit improved evidence.`,
+    })),
+    'No improvement areas recorded - great work across every assessed competency.',
   )
-  y = Math.max(strengthsEndY, weaknessesEndY) + 6
 
   // Competency results table
   y = sectionTitle(doc, 'Competency Results', y)
-  const assessments = report.assessments || []
   autoTable(doc, {
     startY: y,
-    head: [['Code', 'Competency', 'Score', 'Benchmark', 'Gap', 'Gap Level', 'Assessor Comment']],
+    head: [['Code', 'Competency', 'Score', 'Benchmark', 'Gap', 'Gap Level', 'Recommendation']],
     body:
       assessments.length > 0
         ? assessments.map((assessment) => [
@@ -220,7 +254,7 @@ export function buildReportPdf(report: Report): jsPDF {
             formatPercent(assessment.benchmarkScore),
             formatPercent(assessment.skillGap),
             assessment.gapLevel || '-',
-            assessment.assessorComment || '-',
+            competencyRecommendation(report, assessment)?.message || 'No recommendation needed.',
           ])
         : [['-', 'No assessment results found.', '-', '-', '-', '-', '-']],
     theme: 'grid',
@@ -245,41 +279,6 @@ export function buildReportPdf(report: Report): jsPDF {
         data.cell.styles.textColor = tone.fg
         data.cell.styles.fontStyle = 'bold'
       }
-    },
-  })
-  y = withLastAutoTableY(doc) + 10
-
-  // Rubric breakdown table
-  y = sectionTitle(doc, 'Rubric Breakdown (Defense Evidence)', y)
-  const rubricBreakdown = report.rubricBreakdown || []
-  autoTable(doc, {
-    startY: y,
-    head: [['Requirement', 'Score', 'Confidence', 'Evidence']],
-    body:
-      rubricBreakdown.length > 0
-        ? rubricBreakdown.map((item) => [
-            item.label || '-',
-            String(item.score ?? '-'),
-            item.confidence === 'estimated' ? 'Estimated' : 'Verified',
-            item.explanation || '-',
-          ])
-        : [['-', '-', '-', 'No rubric breakdown available.']],
-    theme: 'grid',
-    margin: { left: MARGIN, right: MARGIN },
-    styles: {
-      fontSize: 8.5,
-      cellPadding: 2.4,
-      textColor: COLORS.ink,
-      lineColor: COLORS.border,
-      lineWidth: 0.15,
-      overflow: 'linebreak',
-    },
-    headStyles: { fillColor: COLORS.primaryDark, textColor: [255, 255, 255], fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: COLORS.panel },
-    columnStyles: {
-      0: { cellWidth: 46 },
-      1: { cellWidth: 15, halign: 'center' },
-      2: { cellWidth: 22, halign: 'center' },
     },
   })
   y = withLastAutoTableY(doc) + 10
