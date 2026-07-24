@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Alert, Button, Card, TextField } from './components/common'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { Alert, Button, Card, LoadingState, TextField } from './components/common'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { AppLayout, canAccessView, type ViewKey } from './components/layout'
 import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './context/useAuth'
@@ -7,22 +8,33 @@ import { AuthPages } from './pages/AuthPages'
 import { getPasswordPolicy, passwordPolicyMessage } from './utils/passwordPolicy'
 import { isLearnerRole } from './utils/roles'
 import './index.css'
-import {
-  AssessmentsPage,
-  BenchmarksPage,
-  CompetenciesPage,
-  DashboardPage,
-  RepositoryChecklistsPage,
-  GapResultsPage,
-  GraduateProfilePage,
-  NotificationsPage,
-  OrganizationsPage,
-  RecommendationsPage,
-  LegalPoliciesPage,
-  ReportsPage,
-  SubmitAssessmentPage,
-  UsersPage,
-} from './pages/MainPages'
+import type * as MainPagesModule from './pages/MainPages'
+
+// The authenticated pages (dashboard, assessments, reports, admin screens...)
+// account for most of the app's JS but are useless until login succeeds.
+// Loading them as their own chunk keeps the login screen's first paint fast;
+// every lazy() below points at the same module specifier, so bundlers fetch
+// it once as a single chunk regardless of how many named exports are used.
+function lazyPage<Name extends keyof typeof MainPagesModule>(name: Name) {
+  return lazy(() =>
+    import('./pages/MainPages').then((module) => ({ default: module[name] })),
+  ) as (typeof MainPagesModule)[Name]
+}
+
+const AssessmentsPage = lazyPage('AssessmentsPage')
+const BenchmarksPage = lazyPage('BenchmarksPage')
+const CompetenciesPage = lazyPage('CompetenciesPage')
+const DashboardPage = lazyPage('DashboardPage')
+const RepositoryChecklistsPage = lazyPage('RepositoryChecklistsPage')
+const GapResultsPage = lazyPage('GapResultsPage')
+const GraduateProfilePage = lazyPage('GraduateProfilePage')
+const NotificationsPage = lazyPage('NotificationsPage')
+const OrganizationsPage = lazyPage('OrganizationsPage')
+const RecommendationsPage = lazyPage('RecommendationsPage')
+const LegalPoliciesPage = lazyPage('LegalPoliciesPage')
+const ReportsPage = lazyPage('ReportsPage')
+const SubmitAssessmentPage = lazyPage('SubmitAssessmentPage')
+const UsersPage = lazyPage('UsersPage')
 
 function getLinkedResultId() {
   const match = window.location.pathname.match(/^\/results\/([^/]+)/)
@@ -37,9 +49,17 @@ function AppContent() {
   // never changes on in-app navigation. Re-deriving this live would keep
   // matching the original /results/:id path forever and trap the user there.
   const [linkedResultId] = useState(getLinkedResultId)
+  // `user` gets a new object reference whenever AuthContext refreshes it
+  // (the background /auth/me call right after mount, a password change,
+  // etc). Without this guard, each of those refreshes re-runs the effect
+  // below and snaps the user back to Gap Results even after they've
+  // navigated elsewhere — this ref makes the redirect fire at most once.
+  const appliedLinkedResultRef = useRef(false)
 
   useEffect(() => {
+    if (appliedLinkedResultRef.current) return
     if (isAuthenticated && user && linkedResultId) {
+      appliedLinkedResultRef.current = true
       setCurrentView('results')
       // Clear the deep-link path now that it's been applied, so later
       // navigation away from Gap Results isn't immediately reverted.
@@ -151,7 +171,15 @@ function AppContent() {
       onNavigate={setCurrentView}
       user={user}
     >
-      {renderPage()}
+      <ErrorBoundary
+        key={currentView}
+        onReset={() => setCurrentView('dashboard')}
+        resetLabel="Back to dashboard"
+      >
+        <Suspense fallback={<LoadingState message="Loading page..." />}>
+          {renderPage()}
+        </Suspense>
+      </ErrorBoundary>
     </AppLayout>
   )
 }
@@ -255,9 +283,11 @@ function ForcePasswordChangePage() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary onReset={() => window.location.reload()} resetLabel="Reload app">
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 
