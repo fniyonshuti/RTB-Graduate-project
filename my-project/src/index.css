@@ -685,7 +685,7 @@
   }
 
   .profile-avatar {
-    @apply flex h-36 w-36 items-center justify-center rounded-full border-[10px] border-white bg-[#D6D3F0] text-[#0B3142] shadow-xl shadow-slate-900/15;
+    @apply flex h-36 w-36 items-center justify-center overflow-hidden rounded-full border-[10px] border-white bg-[#D6D3F0] text-[#0B3142] shadow-xl shadow-slate-900/15;
   }
 
   .profile-summary-copy {
