@@ -1429,16 +1429,20 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const [assessmentCategoryFilter, setAssessmentCategoryFilter] = useState("all");
   const [practicalTaskId, setPracticalTaskId] = useState("");
   const [practicalTask, setPracticalTask] = useState("");
+  const [evidenceSourceType, setEvidenceSourceType] = useState<"github" | "zip">("github");
   const [githubRepositoryUrl, setGithubRepositoryUrl] = useState("");
-  const [evidenceFiles, setEvidenceFiles] = useState<
-    { name: string; type?: string; size?: number; dataUrl: string }[]
-  >([]);
+  const [uploadedProjectZip, setUploadedProjectZip] = useState<{
+    name: string;
+    size?: number;
+    dataUrl: string;
+  } | null>(null);
+  const [isUploadingProjectZip, setIsUploadingProjectZip] = useState(false);
   const [theoryAnswers, setTheoryAnswers] = useState<Record<string, string>>(
     {},
   );
   const [repositoryTaskReview, setRepositoryTaskReview] = useState<{
     competency: string;
-    githubRepositoryUrl: string;
+    sourceKey: string;
     practicalTaskId: string;
     taskReview: RepositoryTaskReview;
   } | null>(null);
@@ -1498,10 +1502,18 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     availableTasks.find((task) => task._id === practicalTaskId) ||
     availableTasks[0];
   const reviewedRepositoryUrl = githubRepositoryUrl.trim();
+  const activeEvidenceSourceKey =
+    evidenceSourceType === "github"
+      ? reviewedRepositoryUrl
+      : uploadedProjectZip
+        ? `zip:${uploadedProjectZip.name}:${uploadedProjectZip.size ?? 0}`
+        : "";
+  const hasEvidenceSource = activeEvidenceSourceKey.length > 0;
   const activeRepositoryTaskReview =
     repositoryTaskReview &&
+    hasEvidenceSource &&
     repositoryTaskReview.competency === competency &&
-    repositoryTaskReview.githubRepositoryUrl === reviewedRepositoryUrl &&
+    repositoryTaskReview.sourceKey === activeEvidenceSourceKey &&
     repositoryTaskReview.practicalTaskId === (selectedTask?._id || "")
       ? repositoryTaskReview.taskReview
       : null;
@@ -1513,14 +1525,12 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     theoryQuestions.length === 0 ||
     answeredTheoryCount === theoryQuestions.length;
   const evidenceCount = [
-    githubRepositoryUrl,
+    activeEvidenceSourceKey,
     practicalTask,
-    evidenceFiles.length > 0 ? String(evidenceFiles.length) : "",
     answeredTheoryCount > 0 ? String(answeredTheoryCount) : "",
   ].filter((value) => value.trim().length > 0).length;
   const canContinueToEvidence = Boolean(competency);
-  const practicalEvidenceReady =
-    reviewedRepositoryUrl.length > 0 && Boolean(activeRepositoryTaskReview);
+  const practicalEvidenceReady = hasEvidenceSource && Boolean(activeRepositoryTaskReview);
   const canReview = practicalEvidenceReady && requiredTheoryAnswered;
   const canSubmit =
     Boolean(competency) && practicalEvidenceReady && requiredTheoryAnswered;
@@ -1528,43 +1538,51 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const evidenceStepDone = practicalEvidenceReady && requiredTheoryAnswered;
   const reviewStepDone = canSubmit;
 
-  async function handleEvidenceFiles(files: FileList | null) {
-    if (!files) return;
+  async function handleProjectZipUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const maxSize = 10 * 1024 * 1024;
 
-    const selectedFiles = Array.from(files);
-    const maxSize = 2 * 1024 * 1024;
-    const oversized = selectedFiles.find((file) => file.size > maxSize);
+    setError("");
 
-    if (oversized) {
-      setError(`File "${oversized.name}" is larger than 2MB.`);
+    if (!/\.zip$/i.test(file.name)) {
+      setError(`"${file.name}" must be a .zip file.`);
       return;
     }
 
-    const encodedFiles = await Promise.all(
-      selectedFiles.map(
-        (file) =>
-          new Promise<{
-            name: string;
-            type?: string;
-            size?: number;
-            dataUrl: string;
-          }>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () =>
-              resolve({
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                dataUrl: String(reader.result),
-              });
-            reader.onerror = () =>
-              reject(new Error(`Failed to read ${file.name}`));
-            reader.readAsDataURL(file);
-          }),
-      ),
-    );
+    if (file.size > maxSize) {
+      setError(`"${file.name}" exceeds the 10MB limit. Please choose a smaller zip.`);
+      return;
+    }
 
-    setEvidenceFiles((current) => [...current, ...encodedFiles]);
+    setIsUploadingProjectZip(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsDataURL(file);
+      });
+
+      setUploadedProjectZip({ name: file.name, size: file.size, dataUrl });
+      setRepositoryTaskReview(null);
+      setIsRepositoryResultOpen(false);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : `Could not read "${file.name}". Please try again.`,
+      );
+    } finally {
+      setIsUploadingProjectZip(false);
+    }
+  }
+
+  function handleSelectEvidenceSourceType(nextType: "github" | "zip") {
+    if (nextType === evidenceSourceType) return;
+    setEvidenceSourceType(nextType);
+    setRepositoryTaskReview(null);
+    setIsRepositoryResultOpen(false);
     setError("");
   }
 
@@ -1580,11 +1598,11 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
     try {
       await api.submitAssessment(token, {
         competency,
-        practicalSubmissionMode: "mixed",
+        practicalSubmissionMode: evidenceSourceType === "zip" ? "file_upload" : "mixed",
         practicalTaskId: selectedTask?._id,
         practicalTask,
-        githubRepositoryUrl,
-        evidenceFiles,
+        githubRepositoryUrl: evidenceSourceType === "github" ? githubRepositoryUrl : undefined,
+        uploadedProjectZip: evidenceSourceType === "zip" ? uploadedProjectZip || undefined : undefined,
         repositoryTaskReview: activeRepositoryTaskReview || undefined,
         theoryAnswers: theoryQuestions.map((question) => ({
           questionId: question._id,
@@ -1596,7 +1614,8 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
       );
       setPracticalTask("");
       setGithubRepositoryUrl("");
-      setEvidenceFiles([]);
+      setUploadedProjectZip(null);
+      setEvidenceSourceType("github");
       setPracticalTaskId("");
       setTheoryAnswers({});
       setRepositoryTaskReview(null);
@@ -1618,7 +1637,8 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   function resetAssessmentEvidence() {
     setPracticalTask("");
     setGithubRepositoryUrl("");
-    setEvidenceFiles([]);
+    setUploadedProjectZip(null);
+    setEvidenceSourceType("github");
     setPracticalTaskId("");
     setTheoryAnswers({});
     setRepositoryTaskReview(null);
@@ -1650,8 +1670,12 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
       return;
     }
 
-    if (!githubRepositoryUrl.trim()) {
-      setError("Enter a GitHub repository URL before reviewing the task.");
+    if (!hasEvidenceSource) {
+      setError(
+        evidenceSourceType === "github"
+          ? "Enter a GitHub repository URL before reviewing the task."
+          : "Upload a project zip before reviewing the task.",
+      );
       return;
     }
 
@@ -1661,12 +1685,13 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
       const result = await api.reviewRepositoryTask(token, {
         competency: selectedCompetency._id,
         practicalTaskId: selectedTask._id,
-        githubRepositoryUrl,
+        githubRepositoryUrl: evidenceSourceType === "github" ? githubRepositoryUrl : undefined,
+        uploadedProjectZip: evidenceSourceType === "zip" ? uploadedProjectZip || undefined : undefined,
       });
 
       setRepositoryTaskReview({
         competency: selectedCompetency._id,
-        githubRepositoryUrl: reviewedRepositoryUrl,
+        sourceKey: activeEvidenceSourceKey,
         practicalTaskId: selectedTask._id,
         taskReview: result.taskReview,
       });
@@ -1983,34 +2008,97 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                         <span>02</span>
                         <div>
                           <strong>Repository review</strong>
-                          <p>Paste the GitHub repository URL and review it before submission.</p>
+                          <p>
+                            Provide a GitHub repository URL, or - if you don't have a
+                            GitHub account - upload your project as a .zip instead.
+                            Either way it gets the same automatic review.
+                          </p>
                         </div>
                       </div>
-                      <TextField
-                        label="GitHub repository evidence URL"
-                        type="url"
-                        value={githubRepositoryUrl}
-                        onChange={(event) =>
-                          setGithubRepositoryUrl(event.target.value)
-                        }
-                        placeholder={GITHUB_PLACEHOLDER.INDIVIDUAL_PROJECT}
-                        required
-                      />
+                      <div className="button-row evidence-source-toggle">
+                        <Button
+                          variant={evidenceSourceType === "github" ? "primary" : "secondary"}
+                          onClick={() => handleSelectEvidenceSourceType("github")}
+                        >
+                          GitHub repository
+                        </Button>
+                        <Button
+                          variant={evidenceSourceType === "zip" ? "primary" : "secondary"}
+                          onClick={() => handleSelectEvidenceSourceType("zip")}
+                        >
+                          Upload project (.zip)
+                        </Button>
+                      </div>
+                      {evidenceSourceType === "github" ? (
+                        <TextField
+                          label="GitHub repository evidence URL"
+                          type="url"
+                          value={githubRepositoryUrl}
+                          onChange={(event) =>
+                            setGithubRepositoryUrl(event.target.value)
+                          }
+                          placeholder={GITHUB_PLACEHOLDER.INDIVIDUAL_PROJECT}
+                          required
+                        />
+                      ) : (
+                        <div className="upload-panel">
+                          <label className="file-drop">
+                            <span>
+                              {isUploadingProjectZip ? "Reading zip..." : "Upload project (.zip)"}
+                            </span>
+                            <input
+                              accept=".zip,application/zip"
+                              disabled={isUploadingProjectZip}
+                              onChange={(event) =>
+                                void handleProjectZipUpload(event.target.files)
+                              }
+                              type="file"
+                            />
+                          </label>
+                          <small>
+                            No GitHub account? Zip your project folder (excluding
+                            node_modules) and upload it here instead - it goes through
+                            the same automatic review. Maximum 10MB.
+                          </small>
+                          {uploadedProjectZip && (
+                            <div className="uploaded-file-list">
+                              <div className="uploaded-file">
+                                <div>
+                                  <strong>{uploadedProjectZip.name}</strong>
+                                  <span>
+                                    {Math.round((uploadedProjectZip.size || 0) / 1024)} KB
+                                  </span>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setUploadedProjectZip(null);
+                                    setRepositoryTaskReview(null);
+                                    setIsRepositoryResultOpen(false);
+                                  }}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="button-row assessment-action-row">
                         <Button
                           disabled={
                             isReviewingRepository ||
-                            !githubRepositoryUrl.trim() ||
+                            !hasEvidenceSource ||
                             Boolean(activeRepositoryTaskReview)
                           }
                           onClick={() => void handleRepositoryTaskReview()}
                           variant={activeRepositoryTaskReview ? "secondary" : "primary"}
                         >
                           {isReviewingRepository
-                            ? "Reviewing repository..."
+                            ? "Reviewing project..."
                             : activeRepositoryTaskReview
                               ? "Reviewed"
-                              : "Review repository"}
+                              : "Review project"}
                         </Button>
                         <Button
                           disabled={!activeRepositoryTaskReview}
@@ -2022,55 +2110,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                       </div>
                     </div>
 
-                    <div className="supporting-evidence-grid">
-                      <div className="upload-panel">
-                        <label className="file-drop">
-                          <span>Upload project files or folders</span>
-                          <input
-                            multiple
-                            {...({ webkitdirectory: "" } as Record<string, string>)}
-                            onChange={(event) =>
-                              void handleEvidenceFiles(event.target.files)
-                            }
-                            type="file"
-                          />
-                        </label>
-                        <small>
-                          Optional supporting evidence: project folder, screenshots,
-                          PDFs, exported work, source files, or images. Maximum 2MB
-                          per file.
-                        </small>
-                        {evidenceFiles.length > 0 && (
-                          <div className="uploaded-file-list">
-                            {evidenceFiles.map((file) => (
-                              <div
-                                className="uploaded-file"
-                                key={`${file.name}-${file.size}`}
-                              >
-                                <div>
-                                  <strong>{file.name}</strong>
-                                  <span>
-                                    {Math.round((file.size || 0) / 1024)} KB
-                                  </span>
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  onClick={() =>
-                                    setEvidenceFiles((current) =>
-                                      current.filter(
-                                        (item) => item.dataUrl !== file.dataUrl,
-                                      ),
-                                    )
-                                  }
-                                >
-                                  Remove
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   </section>
 
                   <aside className="assessment-theory-panel" aria-label="Theory questions">
@@ -2196,11 +2235,19 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 />
                 <ReviewLine
                   label="Submission mode"
-                  value="GitHub review + upload evidence"
+                  value={
+                    evidenceSourceType === "zip"
+                      ? "Uploaded project (.zip) review + upload evidence"
+                      : "GitHub review + upload evidence"
+                  }
                 />
                 <ReviewLine
-                  label="GitHub repository"
-                  value={githubRepositoryUrl || "Not provided"}
+                  label={evidenceSourceType === "zip" ? "Uploaded project" : "GitHub repository"}
+                  value={
+                    evidenceSourceType === "zip"
+                      ? uploadedProjectZip?.name || "Not provided"
+                      : githubRepositoryUrl || "Not provided"
+                  }
                 />
                 <ReviewLine
                   label="Provisional repository task score"
@@ -2208,14 +2255,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                     activeRepositoryTaskReview
                       ? `${formatPercent(activeRepositoryTaskReview.score)} (${activeRepositoryTaskReview.passedCount}/${activeRepositoryTaskReview.checklist.length} checks passed)`
                       : "Repository task review not completed"
-                  }
-                />
-                <ReviewLine
-                  label="Uploaded evidence"
-                  value={
-                    evidenceFiles.length > 0
-                      ? evidenceFiles.map((file) => file.name).join(", ")
-                      : "No files uploaded"
                   }
                 />
                 <ReviewLine
@@ -3429,10 +3468,6 @@ export function GapResultsPage({ token, linkedResultId = "" }: { token: string; 
     [filteredGapResults, gapPage],
   );
 
-  useEffect(() => {
-    setGapPage(1);
-  }, [gapLevelFilter, gapSearch]);
-
   if (isLoading) return <LoadingState message="Loading gap results..." />;
 
   const linkedResultExists = linkedResultId ? data.some((assessment) => assessment._id === linkedResultId) : false;
@@ -3494,7 +3529,10 @@ export function GapResultsPage({ token, linkedResultId = "" }: { token: string; 
           </div>
           <ListToolbar
             search={gapSearch}
-            onSearchChange={setGapSearch}
+            onSearchChange={(value) => {
+              setGapSearch(value);
+              setGapPage(1);
+            }}
             searchPlaceholder="Search competency, graduate, gap level..."
             totalCount={data.length}
             filteredCount={filteredGapResults.length}
@@ -3502,7 +3540,10 @@ export function GapResultsPage({ token, linkedResultId = "" }: { token: string; 
             <SelectField
               label="Gap level"
               value={gapLevelFilter}
-              onChange={(event) => setGapLevelFilter(event.target.value)}
+              onChange={(event) => {
+                setGapLevelFilter(event.target.value);
+                setGapPage(1);
+              }}
             >
               <option value="all">All gap levels</option>
               {gapLevelOptions.map((level) => (
@@ -3602,10 +3643,6 @@ export function RecommendationsPage({ token }: { token: string }) {
     [filteredRecommendations, recommendationPage],
   );
 
-  useEffect(() => {
-    setRecommendationPage(1);
-  }, [recommendationPriorityFilter, recommendationSearch]);
-
   if (isLoading) return <LoadingState message="Loading recommendations..." />;
 
   const highPriorityCount = data.filter(
@@ -3657,7 +3694,10 @@ export function RecommendationsPage({ token }: { token: string }) {
 
           <ListToolbar
             search={recommendationSearch}
-            onSearchChange={setRecommendationSearch}
+            onSearchChange={(value) => {
+              setRecommendationSearch(value);
+              setRecommendationPage(1);
+            }}
             searchPlaceholder="Search competency, recommendation, resources..."
             totalCount={data.length}
             filteredCount={filteredRecommendations.length}
@@ -3665,7 +3705,10 @@ export function RecommendationsPage({ token }: { token: string }) {
             <SelectField
               label="Priority"
               value={recommendationPriorityFilter}
-              onChange={(event) => setRecommendationPriorityFilter(event.target.value)}
+              onChange={(event) => {
+                setRecommendationPriorityFilter(event.target.value);
+                setRecommendationPage(1);
+              }}
             >
               <option value="all">All priorities</option>
               {recommendationPriorityOptions.map((priority) => (
@@ -3831,10 +3874,6 @@ export function ReportsPage({ token, role }: PageProps) {
     [filteredReports, reportPage],
   );
 
-  useEffect(() => {
-    setReportPage(1);
-  }, [reportGapFilter, reportSearch]);
-
   async function handleGenerate() {
     setMessage("");
     await api.generateReport(
@@ -3927,7 +3966,10 @@ export function ReportsPage({ token, role }: PageProps) {
 
           <ListToolbar
             search={reportSearch}
-            onSearchChange={setReportSearch}
+            onSearchChange={(value) => {
+              setReportSearch(value);
+              setReportPage(1);
+            }}
             searchPlaceholder="Search title, graduate, competency, summary..."
             totalCount={data.length}
             filteredCount={filteredReports.length}
@@ -3935,7 +3977,10 @@ export function ReportsPage({ token, role }: PageProps) {
             <SelectField
               label="Gap level"
               value={reportGapFilter}
-              onChange={(event) => setReportGapFilter(event.target.value)}
+              onChange={(event) => {
+                setReportGapFilter(event.target.value);
+                setReportPage(1);
+              }}
             >
               <option value="all">All gap levels</option>
               {reportGapOptions.map((level) => (

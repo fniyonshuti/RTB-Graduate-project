@@ -26,6 +26,15 @@ const evidenceSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    submissionSource: {
+      type: String,
+      enum: ['github', 'zip_upload'],
+      default: 'github',
+    },
+    uploadedFileName: {
+      type: String,
+      trim: true,
+    },
     repositorySummary: {
       url: String,
       owner: String,

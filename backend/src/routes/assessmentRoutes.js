@@ -30,7 +30,7 @@ router.get("/results/:id", authorize("learner"), myResult);
 router.post(
   "/repository-task-review",
   authorize("learner"),
-  requireFields("competency", "githubRepositoryUrl"),
+  requireFields("competency"),
   validateRepositoryTaskReview,
   reviewRepositoryTask,
 );

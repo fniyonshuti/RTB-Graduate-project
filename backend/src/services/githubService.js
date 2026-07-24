@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import dotenv from 'dotenv';
+import extract from 'extract-zip';
 import { Sandbox } from 'e2b';
 import Competency from '../models/Competency.js';
 import RepositoryAssessmentResult from '../models/RepositoryAssessmentResult.js';
@@ -14,7 +15,7 @@ dotenv.config({ quiet: true });
 
 // GitHub, repository execution, and repository assessment logic lives here.
 
-async function cleanupTempFolder(folderPath) {
+export async function cleanupTempFolder(folderPath) {
   if (!folderPath) return;
   await fs.rm(folderPath, { recursive: true, force: true }).catch(() => null);
 }
@@ -231,6 +232,156 @@ export async function cloneGithubRepository(repositoryUrl) {
     cloneResult: {
       ...cloneResult,
       args: ['clone', '--depth', '1', repository.cloneUrl, destination],
+    },
+  };
+}
+
+const MAX_UPLOAD_ZIP_BYTES = 10 * 1024 * 1024;
+const MAX_UPLOAD_EXTRACTED_FILES = 5000;
+const MAX_UPLOAD_EXTRACTED_BYTES = 150 * 1024 * 1024;
+const EXCLUDED_UPLOAD_DIRECTORY_NAMES = new Set(['node_modules', '.git']);
+
+function decodeUploadedZipBuffer(dataUrl) {
+  const match = /^data:([^;]*);base64,([\s\S]+)$/.exec(String(dataUrl || ''));
+
+  if (!match) {
+    throw new AppError('Uploaded project file must be a base64-encoded zip file.', 400);
+  }
+
+  return Buffer.from(match[2], 'base64');
+}
+
+// Strips node_modules/.git anywhere in the tree (any nesting depth, since a
+// zip's root may itself be a single wrapper folder) before anything else
+// reads it - a fresh npm install runs in the sandbox anyway, so there is no
+// reason to walk, sample, or upload a graduate's local node_modules/.git.
+async function removeUploadedProjectExcludedDirectories(rootPath) {
+  let entries;
+
+  try {
+    entries = await fs.readdir(rootPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (entry.isSymbolicLink() || !entry.isDirectory()) continue;
+
+    const entryPath = path.join(rootPath, entry.name);
+
+    if (EXCLUDED_UPLOAD_DIRECTORY_NAMES.has(entry.name)) {
+      await fs.rm(entryPath, { recursive: true, force: true }).catch(() => null);
+    } else {
+      await removeUploadedProjectExcludedDirectories(entryPath);
+    }
+  }
+}
+
+// Shared by summarizeUploadedProject (static review) and
+// uploadLocalDirectoryToSandbox (execution): symlinks are skipped rather than
+// followed, since extract-zip only guards a symlink entry's own destination
+// path, not where the link itself points - following it here (on the trusted
+// backend host, not inside the E2B sandbox) could otherwise read outside the
+// extracted tree.
+async function listLocalProjectFiles(rootPath) {
+  const results = [];
+
+  async function walk(currentDir, relativePrefix) {
+    const entries = await fs.readdir(currentDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+
+      const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
+      const entryPath = path.join(currentDir, entry.name);
+
+      if (entry.isDirectory()) {
+        await walk(entryPath, relativePath);
+      } else if (entry.isFile()) {
+        const stats = await fs.stat(entryPath);
+        results.push({ path: relativePath, size: stats.size });
+      }
+    }
+  }
+
+  await walk(rootPath, '');
+  return results;
+}
+
+export async function extractUploadedProjectZip({ name, dataUrl } = {}) {
+  const fileName = String(name || '').trim();
+
+  if (!/\.zip$/i.test(fileName)) {
+    throw new AppError('Uploaded project must be a .zip file.', 400);
+  }
+
+  const zipBuffer = decodeUploadedZipBuffer(dataUrl);
+
+  if (zipBuffer.length === 0) {
+    throw new AppError('Uploaded project zip is empty.', 400);
+  }
+
+  if (zipBuffer.length > MAX_UPLOAD_ZIP_BYTES) {
+    throw new AppError(
+      `Uploaded project zip is too large (${Math.ceil(zipBuffer.length / (1024 * 1024))}MB). Maximum is ${MAX_UPLOAD_ZIP_BYTES / (1024 * 1024)}MB.`,
+      400,
+    );
+  }
+
+  const tempUploadsDir = path.resolve(
+    process.cwd(),
+    process.env.TEMP_UPLOAD_DIR || 'tmp/uploads',
+  );
+  await fs.mkdir(tempUploadsDir, { recursive: true });
+
+  const uploadId = crypto.randomUUID();
+  const zipFilePath = path.join(tempUploadsDir, `${uploadId}.zip`);
+  const destination = path.join(tempUploadsDir, uploadId);
+
+  await fs.writeFile(zipFilePath, zipBuffer);
+
+  try {
+    await extract(zipFilePath, { dir: destination });
+  } catch (error) {
+    await cleanupTempFolder(destination);
+    throw new AppError(`Uploaded project zip could not be extracted. ${error.message}`, 400);
+  } finally {
+    await fs.rm(zipFilePath, { force: true }).catch(() => null);
+  }
+
+  await removeUploadedProjectExcludedDirectories(destination);
+
+  const files = await listLocalProjectFiles(destination);
+
+  if (files.length === 0) {
+    await cleanupTempFolder(destination);
+    throw new AppError('Uploaded project zip did not contain any files.', 400);
+  }
+
+  if (files.length > MAX_UPLOAD_EXTRACTED_FILES) {
+    await cleanupTempFolder(destination);
+    throw new AppError(
+      `Uploaded project has too many files (${files.length}). Maximum is ${MAX_UPLOAD_EXTRACTED_FILES}.`,
+      400,
+    );
+  }
+
+  const totalBytes = files.reduce((sum, file) => sum + (file.size || 0), 0);
+
+  if (totalBytes > MAX_UPLOAD_EXTRACTED_BYTES) {
+    await cleanupTempFolder(destination);
+    throw new AppError(
+      'Uploaded project is too large once extracted. Remove build artifacts, dependencies, or large binary files and try again.',
+      400,
+    );
+  }
+
+  return {
+    localPath: destination,
+    meta: {
+      fileName,
+      fileCount: files.length,
+      totalBytes,
     },
   };
 }
@@ -623,6 +774,67 @@ async function createE2bRepositoryContext(repository) {
     await sandbox.kill().catch(() => null);
     throw new AppError(
       'Repository clone failed inside E2B sandbox. ' + (error.stderr || error.message || ''),
+      400,
+    );
+  }
+}
+
+// Writes an already-extracted local directory (from an uploaded project zip)
+// into the sandbox, in place of sandbox.git.clone. Chunked as cheap insurance
+// against an undocumented batch-size ceiling on sandbox.files.write. Files are
+// read as raw bytes (not decoded as text) so binary assets survive intact.
+async function uploadLocalDirectoryToSandbox(
+  sandbox,
+  localDirPath,
+  repositoryPath = E2B_REPOSITORY_PATH,
+  { chunkSize = 50 } = {},
+) {
+  const files = await listLocalProjectFiles(localDirPath);
+  const writtenPaths = [];
+
+  for (let start = 0; start < files.length; start += chunkSize) {
+    const batch = files.slice(start, start + chunkSize);
+    const entries = await Promise.all(
+      batch.map(async (file) => {
+        const buffer = await fs.readFile(path.join(localDirPath, file.path));
+        const data = buffer.buffer.slice(
+          buffer.byteOffset,
+          buffer.byteOffset + buffer.byteLength,
+        );
+        const segments = file.path.split('/').filter(Boolean);
+
+        return { path: path.posix.join(repositoryPath, ...segments), data };
+      }),
+    );
+
+    await sandbox.files.write(entries);
+    writtenPaths.push(...batch.map((file) => file.path));
+  }
+
+  return writtenPaths;
+}
+
+async function createE2bContextFromLocalDirectory(localPath, meta = {}) {
+  const sandbox = await createE2bSandbox();
+  const startedAt = Date.now();
+
+  try {
+    const writtenPaths = await uploadLocalDirectoryToSandbox(sandbox, localPath);
+
+    return {
+      sandbox,
+      repositoryPath: E2B_REPOSITORY_PATH,
+      cloneResult: toCommandResult(
+        'Upload project files to E2B sandbox',
+        `write ${writtenPaths.length} file(s) from uploaded project "${meta.fileName || 'project.zip'}" to ${E2B_REPOSITORY_PATH}`,
+        { exitCode: 0, stdout: `${writtenPaths.length} file(s) written.`, stderr: '' },
+        startedAt,
+      ),
+    };
+  } catch (error) {
+    await sandbox.kill().catch(() => null);
+    throw new AppError(
+      'Uploaded project files could not be written into the E2B sandbox. ' + (error.message || ''),
       400,
     );
   }
@@ -1949,6 +2161,170 @@ export async function assessGithubRepository({
   }
 }
 
+// Mirrors assessGithubRepository from the sandbox-context step onward: the
+// execution/scoring internals (analyzeRepository/runRepositoryTests/runEslint/
+// runSecurityScan/scoreRepositoryAssessment) are source-agnostic and reused
+// unchanged. Unlike assessGithubRepository, localPath is NOT cleaned up here -
+// it is shared with reviewUploadedProjectForTask (run in parallel by the
+// caller) and is the caller's responsibility to remove once both finish.
+export async function assessUploadedProjectRepository({
+  localPath,
+  meta,
+  competencyId,
+  practicalTaskId,
+  user,
+}) {
+  let e2bContext = null;
+  const projectLabel = meta?.fileName
+    ? String(meta.fileName).replace(/\.zip$/i, '')
+    : 'uploaded-project';
+
+  try {
+    const competency = competencyId
+      ? await Competency.findById(competencyId)
+      : null;
+    const practicalTask = findPracticalTask(competency, practicalTaskId);
+
+    if (competencyId && !competency) {
+      throw new AppError('Competency was not found.', 404);
+    }
+
+    e2bContext = await createE2bContextFromLocalDirectory(localPath, meta);
+
+    const task = {
+      title: practicalTask?.title || competency?.title || '',
+      instructions: practicalTask?.instructions || '',
+      deliverables: practicalTask?.deliverables || '',
+      description: competency?.description || '',
+    };
+    const analysis = await analyzeRepository(localPath, task);
+    const testResult = await runRepositoryTests(localPath, analysis, practicalTask || {}, e2bContext);
+    const eslintResult = await runEslint(localPath, analysis, e2bContext);
+    const securityScanResult = await runSecurityScan(localPath, analysis, e2bContext);
+    const score = scoreRepositoryAssessment({
+      staticChecks: analysis.requirementChecks,
+      testCases: testResult.testCases,
+      eslintResult,
+      securityScanResult,
+    });
+    const draftResult = {
+      graduate: user?._id,
+      organization: user?.organization?._id || user?.organization,
+      competency: competency?._id,
+      practicalTaskId: practicalTask?._id,
+      submissionSource: 'zip_upload',
+      uploadedFileName: meta?.fileName || projectLabel,
+      verificationStatus: 'verified',
+      executionMode: testResult.executionMode,
+      projectType: analysis.projectType,
+      detectedTechnologies: analysis.detectedTechnologies,
+      submissionManifest: testResult.submissionManifest || null,
+      evaluatorResult: {
+        status: 'completed',
+        language: testResult.submissionManifest?.language || analysis.projectType,
+        executionMode: testResult.executionMode,
+        correctness: {
+          score: score.accuracyScore,
+          passed: score.passedTestCases,
+          failed: score.totalTestCases - score.passedTestCases,
+          total: score.totalTestCases,
+        },
+        failedRequirements: score.failedRequirements.map((item) => item.id || item.title),
+        build: {
+          success: !score.failedRequirements.some((item) => item.id === 'build-script' || item.id === 'manifest-build-command'),
+        },
+        security: securityScanResult,
+        quality: eslintResult,
+      },
+      totalTestCases: score.totalTestCases,
+      passedTestCases: score.passedTestCases,
+      totalWeight: score.totalWeight,
+      passedWeight: score.passedWeight,
+      accuracyScore: score.accuracyScore,
+      gapClassification: score.gapClassification,
+      competencyScores: score.competencyScores,
+      passedRequirements: score.passedRequirements,
+      failedRequirements: score.failedRequirements,
+      staticChecks: analysis.requirementChecks,
+      commandResults: [
+        e2bContext.cloneResult,
+        ...testResult.commandResults,
+      ],
+      eslintResult,
+      securityScanResult,
+      assessorReviewStatus: 'approved',
+      automaticReviewStatus: 'completed',
+      assessorValidationRequired: false,
+      securityNotes: testResult.securityNotes,
+    };
+
+    draftResult.recommendations =
+      buildRepositoryAssessmentRecommendations(draftResult);
+
+    return RepositoryAssessmentResult.create(draftResult);
+  } catch (error) {
+    const failedRequirement = {
+      id: 'repository-assessment-engine',
+      title: 'Repository assessment engine completed',
+      competency: 'testing',
+      passed: false,
+      evidence: '',
+      weight: 10,
+      error:
+        error.message ||
+        'Repository assessment failed before objective checks could be completed.',
+    };
+    const result = await RepositoryAssessmentResult.create({
+      graduate: user?._id,
+      organization: user?.organization?._id || user?.organization,
+      competency: competencyId,
+      practicalTaskId,
+      submissionSource: 'zip_upload',
+      uploadedFileName: meta?.fileName || projectLabel,
+      verificationStatus: 'failed',
+      executionMode: 'failed',
+      totalTestCases: 1,
+      passedTestCases: 0,
+      totalWeight: failedRequirement.weight || 10,
+      passedWeight: 0,
+      accuracyScore: 0,
+      gapClassification: 'High Gap',
+      submissionManifest: null,
+      evaluatorResult: {
+        status: 'failed',
+        error: error.message || 'Repository assessment failed before objective checks could be completed.',
+        correctness: { score: 0, passed: 0, failed: 1, total: 1 },
+      },
+      competencyScores: {
+        frontend: 0,
+        backend: 0,
+        database: 0,
+        authentication: 0,
+        testing: 0,
+        documentation: 0,
+        deployment: 0,
+      },
+      passedRequirements: [],
+      failedRequirements: [failedRequirement],
+      staticChecks: [failedRequirement],
+      assessorReviewStatus: 'returned',
+      automaticReviewStatus: 'failed',
+      assessorValidationRequired: false,
+      errorMessage: error.message,
+      recommendations: [
+        'Fix the uploaded project structure, dependencies, or automated tests, then run the assessment again.',
+      ],
+      securityNotes: [
+        'The system did not invent an accuracy score because objective repository execution or verification failed.',
+      ],
+    });
+
+    return result;
+  } finally {
+    await cleanupE2bSandbox(e2bContext?.sandbox);
+  }
+}
+
 export function listRepositoryAssessmentResults(user) {
   const query = isLearnerRole(user.role)
     ? { graduate: user._id }
@@ -2898,6 +3274,136 @@ export async function summarizeGitHubRepository(url = "") {
   }
 }
 
+// Mirrors summarizeGitHubRepository's return shape so the same checklist logic
+// (buildTaskReviewChecklist) can score either source identically. Fields that
+// only make sense for a hosted GitHub repo (stars, forks, commit history, CI
+// run status) are not derivable from a local upload and are hard-defaulted -
+// ciWorkflowFound still reflects a workflow file's presence in the zip, just
+// never a live run result.
+export async function summarizeUploadedProject(localPath, meta = {}) {
+  const files = await listLocalProjectFiles(localPath);
+  const supportedSourceFiles = files.filter((file) =>
+    SUPPORTED_CODE_EXTENSIONS.has(getFileExtension(file.path)),
+  );
+  const extensionCounts = supportedSourceFiles.reduce((counts, file) => {
+    const extension = getFileExtension(file.path) || "unknown";
+    counts[extension] = (counts[extension] || 0) + 1;
+    return counts;
+  }, {});
+  const supportedFileTypes = Object.entries(extensionCounts).map(
+    ([extension, count]) => ({ extension, count }),
+  );
+  const setupFileFound = files.some((file) => CONFIG_FILE_PATTERN.test(file.path));
+  const testFileFound = files.some((file) => TEST_FILE_PATTERN.test(file.path));
+  const ciWorkflowFound = files.some((file) => CI_WORKFLOW_PATTERN.test(file.path));
+  const packageManifestFile = files.find((file) => PACKAGE_FILE_PATTERN.test(file.path));
+  const packageManifestContent = packageManifestFile
+    ? await fs
+        .readFile(path.join(localPath, packageManifestFile.path), "utf8")
+        .catch(() => "")
+    : "";
+  const packageScripts = parsePackageScripts(packageManifestContent);
+  const readmeFile = files.find((file) =>
+    file.path.toLowerCase().split("/").pop()?.startsWith("readme"),
+  );
+  const readmeFound = Boolean(readmeFile);
+  const readmeDocumentContent = readmeFile
+    ? await fs.readFile(path.join(localPath, readmeFile.path), "utf8").catch(() => "")
+    : "";
+  const repositoryEvidenceScore = scoreRepositoryEvidence({
+    repository: { description: "" },
+    readmeFound,
+    readmeDocumentContent,
+    supportedSourceFiles,
+    repositoryFiles: files,
+    commits: [],
+    languages: {},
+  });
+  const maxSampledFiles = readNumericEnvironmentValue("GITHUB_MAX_SAMPLED_FILES", 20);
+  const reviewKeywords = extractKeywords(meta.fileName || "", readmeDocumentContent || "");
+  const filesForReview = sortSourceFilesForReview(supportedSourceFiles, reviewKeywords);
+  const sampledSourceFiles = await Promise.all(
+    filesForReview.slice(0, maxSampledFiles).map(async (file) => {
+      const content = await fs
+        .readFile(path.join(localPath, file.path), "utf8")
+        .catch(() => "");
+
+      return {
+        path: file.path,
+        language: detectLanguageFromFilePath(file.path),
+        size: file.size || 0,
+        excerpt: truncateLongText(content, 900),
+      };
+    }),
+  );
+  const projectLabel = meta.fileName
+    ? meta.fileName.replace(/\.zip$/i, "")
+    : "uploaded-project";
+  const codeQualityNotes = [
+    readmeFound
+      ? "README file found for project explanation."
+      : "README file was not detected and should be improved before resubmission.",
+    supportedSourceFiles.length > 0
+      ? `${supportedSourceFiles.length} supported code/documentation files detected.`
+      : "No supported code files were detected by automatic analysis.",
+    "Commit history is not available for an uploaded project.",
+    `Repository quality score: ${repositoryEvidenceScore.codeQualityScore}%.`,
+    `Evidence completeness score: ${repositoryEvidenceScore.evidenceCompletenessScore}%.`,
+    packageScripts.testScriptFound
+      ? "Package test script detected."
+      : "Package test script was not detected.",
+    packageScripts.buildScriptFound
+      ? "Package build script detected."
+      : "Package build script was not detected.",
+    ciWorkflowFound
+      ? "A CI workflow file was found in the uploaded project (not executed - there is no hosted CI for an upload)."
+      : "No CI workflow file was found.",
+    ...repositoryEvidenceScore.positiveNotes,
+  ];
+
+  return {
+    url: "",
+    owner: "uploaded-project",
+    repo: projectLabel,
+    isValid: true,
+    fetchStatus: "uploaded",
+    analyzedAt: new Date(),
+    description: "",
+    defaultBranch: "",
+    stars: 0,
+    forks: 0,
+    languages: Object.keys(extensionCounts),
+    readmeFound,
+    readmeExcerpt: truncateLongText(readmeDocumentContent, 1500),
+    recentCommits: [],
+    supportedFileCount: supportedSourceFiles.length,
+    supportedFileTypes,
+    setupFileFound,
+    testFileFound,
+    packageScripts: packageScripts.scripts,
+    testScriptFound: packageScripts.testScriptFound,
+    buildScriptFound: packageScripts.buildScriptFound,
+    ciWorkflowFound,
+    ciRunFound: false,
+    ciRunName: "",
+    ciRunStatus: "",
+    ciRunConclusion: "",
+    ciRunUrl: "",
+    ciRunUpdatedAt: "",
+    ciPassing: false,
+    codeQualityScore: repositoryEvidenceScore.codeQualityScore,
+    evidenceCompletenessScore: repositoryEvidenceScore.evidenceCompletenessScore,
+    riskFlags: repositoryEvidenceScore.riskFlags,
+    sampledSourceFiles,
+    topLevelItems: files
+      .filter((file) => !file.path.includes("/"))
+      .slice(0, 12)
+      .map((file) => file.path),
+    codeQualityNotes,
+    summaryText: `${projectLabel} was uploaded as a project archive and analyzed locally. ${codeQualityNotes.join(" ")}`,
+  };
+}
+
 // Practical task implementation review
 export async function reviewGitHubRepositoryForTask({
   repositoryUrl,
@@ -2905,6 +3411,25 @@ export async function reviewGitHubRepositoryForTask({
   practicalTask,
 }) {
   const repositorySummary = await summarizeGitHubRepository(repositoryUrl);
+  return buildTaskReviewChecklist({ repositorySummary, competency, practicalTask });
+}
+
+export async function reviewUploadedProjectForTask({
+  localPath,
+  meta,
+  competency,
+  practicalTask,
+}) {
+  const repositorySummary = await summarizeUploadedProject(localPath, meta);
+  return buildTaskReviewChecklist({ repositorySummary, competency, practicalTask });
+}
+
+// Shared by both the GitHub and zip-upload review paths - scores a
+// repositorySummary (whichever source produced it) against the competency's
+// task-specific checklist. Source-agnostic: everything it reads
+// (repositorySummary.*) is populated identically by summarizeGitHubRepository
+// and summarizeUploadedProject.
+function buildTaskReviewChecklist({ repositorySummary, competency, practicalTask }) {
   // Keywords come from the official competency/task definition. Matching these
   // against README and code helps detect unrelated repositories early.
   const taskKeywords = extractKeywords(
