@@ -192,6 +192,8 @@ export type Assessment = {
     practicalTaskInstructions?: string
     practicalTask?: string
     githubRepositoryUrl?: string
+    submissionSource?: 'github' | 'zip_upload'
+    uploadedFileName?: string
     repositorySummary?: RepositorySummary
     quizAnswers?: string
     theoryAnswers?: {
@@ -287,6 +289,8 @@ export type RepositorySummary = {
   url?: string
   owner?: string
   repo?: string
+  submissionSource?: 'github' | 'zip_upload'
+  uploadedFileName?: string
   isValid?: boolean
   fetchStatus?: string
   analyzedAt?: string

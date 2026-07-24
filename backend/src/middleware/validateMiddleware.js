@@ -142,6 +142,38 @@ function assertUrlField(body, field, label = field, options = {}) {
   }
 }
 
+// Keep in sync with MAX_UPLOAD_ZIP_BYTES in services/githubService.js - this
+// is a fast client-facing rejection, the service layer re-checks the decoded
+// buffer's real length as the authoritative limit.
+const MAX_UPLOADED_PROJECT_ZIP_BYTES = 10 * 1024 * 1024;
+
+function assertUploadedProjectZipField(body, field, label = field, options = {}) {
+  const value = body[field];
+
+  if (value === undefined || value === null) {
+    if (options.required === false) return;
+    fail(`${label} is required`);
+  }
+
+  if (typeof value !== "object" || Array.isArray(value)) {
+    fail(`${label} must be a file object with name and dataUrl`);
+  }
+
+  assertStringField(value, "name", `${label} file name`);
+  if (!/\.zip$/i.test(value.name)) fail(`${label} must be a .zip file`);
+
+  if (typeof value.dataUrl !== "string" || !/^data:[^;]*;base64,/.test(value.dataUrl)) {
+    fail(`${label} must include base64-encoded zip file contents`);
+  }
+
+  const base64Payload = value.dataUrl.slice(value.dataUrl.indexOf(",") + 1);
+  const decodedByteLength = Math.ceil((base64Payload.length * 3) / 4);
+
+  if (decodedByteLength > MAX_UPLOADED_PROJECT_ZIP_BYTES) {
+    fail(`${label} exceeds the ${MAX_UPLOADED_PROJECT_ZIP_BYTES / (1024 * 1024)}MB limit`);
+  }
+}
+
 function validatePracticalTasks(tasks = []) {
   if (!Array.isArray(tasks)) fail("Practical tasks must be a list");
 
@@ -384,14 +416,35 @@ export function validateChecklist(req, res, next) {
   }
 }
 
+function assertExactlyOneEvidenceSource(body) {
+  const hasGitHubUrl = Boolean(body.githubRepositoryUrl);
+  const hasUploadedZip = Boolean(body.uploadedProjectZip);
+
+  if (hasGitHubUrl === hasUploadedZip) {
+    fail("Provide exactly one evidence source: a GitHub repository URL or an uploaded project zip");
+  }
+}
+
 export function validateRepositoryTaskReview(req, res, next) {
   try {
     assertObjectIdField(req.body, "competency", "Competency");
     assertObjectIdField(req.body, "practicalTaskId", "Practical task", { required: false });
-    assertUrlField(req.body, "githubRepositoryUrl", "GitHub repository URL", { protocols: ["https:"] });
-    if (!/^https:\/\/(www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/i.test(req.body.githubRepositoryUrl.replace(/\.git$/i, ""))) {
+    assertExactlyOneEvidenceSource(req.body);
+    assertUrlField(req.body, "githubRepositoryUrl", "GitHub repository URL", {
+      required: false,
+      protocols: ["https:"],
+    });
+    if (
+      req.body.githubRepositoryUrl &&
+      !/^https:\/\/(www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/i.test(
+        req.body.githubRepositoryUrl.replace(/\.git$/i, ""),
+      )
+    ) {
       fail("GitHub repository URL must point to a GitHub repository");
     }
+    assertUploadedProjectZipField(req.body, "uploadedProjectZip", "Uploaded project", {
+      required: false,
+    });
     return next();
   } catch (error) {
     return next(error);
@@ -402,10 +455,14 @@ export function validateAssessmentSubmission(req, res, next) {
   try {
     const isCreate = req.method === "POST";
     assertObjectIdField(req.body, "competency", "Competency", { required: isCreate });
+    if (isCreate) assertExactlyOneEvidenceSource(req.body);
     assertUrlField(req.body, "githubRepositoryUrl", "GitHub repository URL", { required: false, protocols: ["https:"] });
     if (req.body.githubRepositoryUrl && !/^https:\/\/(www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/i.test(req.body.githubRepositoryUrl.replace(/\.git$/i, ""))) {
       fail("GitHub repository URL must point to a GitHub repository");
     }
+    assertUploadedProjectZipField(req.body, "uploadedProjectZip", "Uploaded project", {
+      required: false,
+    });
     if (req.body.theoryAnswers !== undefined && !Array.isArray(req.body.theoryAnswers)) {
       fail("Theory answers must be a list");
     }

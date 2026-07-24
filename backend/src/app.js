@@ -36,7 +36,10 @@ app.use(requestId);
 app.use(corsMiddleware);
 app.use(securityHeaders);
 app.use(createRateLimiter());
-app.use(express.json({ limit: '1mb' }));
+// 1mb was too small even before zip uploads - legal-policy documents (5MB client
+// cap) and multi-file evidence uploads (2MB/file) already silently failed above
+// 1MB. 20mb comfortably covers those plus a base64-encoded 10MB project zip.
+app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 function sendApiStatus(res) {

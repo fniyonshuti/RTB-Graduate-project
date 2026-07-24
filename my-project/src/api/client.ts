@@ -385,6 +385,11 @@ export const api = {
       practicalTaskId?: string
       practicalTask?: string
       githubRepositoryUrl?: string
+      uploadedProjectZip?: {
+        name: string
+        size?: number
+        dataUrl: string
+      }
       quizAnswers?: string
       theoryAnswers?: {
         questionId: string
@@ -412,7 +417,12 @@ export const api = {
     body: {
       competency: string
       practicalTaskId?: string
-      githubRepositoryUrl: string
+      githubRepositoryUrl?: string
+      uploadedProjectZip?: {
+        name: string
+        size?: number
+        dataUrl: string
+      }
     },
   ) =>
     request<{

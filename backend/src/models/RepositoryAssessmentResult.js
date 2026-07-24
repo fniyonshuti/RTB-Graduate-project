@@ -45,9 +45,18 @@ const repositoryAssessmentResultSchema = new mongoose.Schema(
       ref: 'Competency',
     },
     practicalTaskId: mongoose.Schema.Types.ObjectId,
+    submissionSource: {
+      type: String,
+      enum: ['github', 'zip_upload'],
+      default: 'github',
+    },
     repositoryUrl: {
       type: String,
-      required: true,
+      required: false,
+      trim: true,
+    },
+    uploadedFileName: {
+      type: String,
       trim: true,
     },
     owner: String,

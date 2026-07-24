@@ -15,7 +15,11 @@ import {
 } from "./recommendationService.js";
 import {
   assessGithubRepository,
+  assessUploadedProjectRepository,
+  cleanupTempFolder,
+  extractUploadedProjectZip,
   reviewGitHubRepositoryForTask,
+  reviewUploadedProjectForTask,
   validateGitHubRepositoryUrl,
 } from "./githubService.js";
 import { generateGraduateReport } from "./reportService.js";
@@ -340,14 +344,18 @@ function validateAssessmentEvidenceSubmission({ competency, payload, theoryScori
   }
 
   const hasGitHubUrl = Boolean(payload.githubRepositoryUrl);
-  if (!hasGitHubUrl) {
+  const hasUploadedZip = Boolean(payload.uploadedProjectZip);
+
+  if (!hasGitHubUrl && !hasUploadedZip) {
     throw new AppError(
-      "GitHub repository URL is required for ICT skills assessment",
+      "A GitHub repository URL or an uploaded project zip is required for ICT skills assessment",
       400,
     );
   }
 
-  validateGitHubRepositoryUrl(payload.githubRepositoryUrl);
+  if (hasGitHubUrl) {
+    validateGitHubRepositoryUrl(payload.githubRepositoryUrl);
+  }
 
   if (theoryQuestions.length > 0 && theoryScoringResult.theoryAnswers.length === 0) {
     throw new AppError("Theory answers are required for this competency", 400);
@@ -379,6 +387,7 @@ export async function submitAssessment(user, payload) {
       competency: competency._id,
       practicalTaskId: selectedPracticalTask?._id,
       githubRepositoryUrl: payload.githubRepositoryUrl,
+      uploadedProjectZip: payload.uploadedProjectZip,
     },
     user,
   );
@@ -451,6 +460,9 @@ export async function submitAssessment(user, payload) {
       practicalTaskInstructions: selectedPracticalTask?.instructions,
       practicalTask: payload.practicalTask,
       githubRepositoryUrl: payload.githubRepositoryUrl,
+      submissionSource:
+        repositorySummary?.submissionSource || (payload.uploadedProjectZip ? "zip_upload" : "github"),
+      uploadedFileName: repositorySummary?.uploadedFileName || payload.uploadedProjectZip?.name,
       repositorySummary,
       quizAnswers: theoryScoringResult.quizAnswers || payload.quizAnswers,
       theoryAnswers: theoryScoringResult.theoryAnswers,
@@ -837,7 +849,7 @@ function buildAdminWeightedChecklist({ rubric, staticReview, repositoryAssessmen
   });
 }
 function buildStaticRepositoryReviewFallback({
-  payload,
+  sourceLabel,
   competency,
   selectedPracticalTask,
   error,
@@ -846,11 +858,11 @@ function buildStaticRepositoryReviewFallback({
   // This lets the graduate see actionable feedback instead of a broken page.
   const message =
     error?.message ||
-    "GitHub static repository review failed before producing a result.";
+    "Static repository review failed before producing a result.";
 
   return {
     repositorySummary: {
-      url: payload.githubRepositoryUrl,
+      url: sourceLabel || "",
       owner: "",
       repo: "",
       isValid: false,
@@ -892,47 +904,13 @@ function buildStaticRepositoryReviewFallback({
   };
 }
 
-export async function previewRepositoryTaskReview(payload, user) {
-  const competency = await Competency.findById(payload.competency);
-
-  if (!competency || !competency.isActive) {
-    throw new AppError("Active competency was not found", 404);
-  }
-
-  const selectedPracticalTask =
-    competency.practicalTasks.find(
-      (task) => String(task._id) === String(payload.practicalTaskId),
-    ) || competency.practicalTasks[0];
-
-  if (!selectedPracticalTask) {
-    throw new AppError("Practical task was not found for this competency", 404);
-  }
-
-  if (!payload.githubRepositoryUrl) {
-    throw new AppError(
-      "GitHub repository URL is required for task review",
-      400,
-    );
-  }
-
-  const adminChecklistRubric = await loadAdminChecklistRubric(competency, selectedPracticalTask);
-
-  const staticReview = await reviewGitHubRepositoryForTask({
-    repositoryUrl: payload.githubRepositoryUrl,
-    competency,
-    practicalTask: selectedPracticalTask,
-  }).catch((error) =>
-    buildStaticRepositoryReviewFallback({ payload, competency, selectedPracticalTask, error }),
-  );
-  // The executable assessment is best-effort: Docker, cloning, or dependency
-  // failures lower the automatic score but do not block the user from seeing
-  // static repository feedback.
-  const repositoryAssessment = await assessGithubRepository({
-    repositoryUrl: payload.githubRepositoryUrl,
-    competencyId: competency._id,
-    practicalTaskId: selectedPracticalTask._id,
-    user,
-  }).catch((error) => ({
+// Shared fallback shape for both assessGithubRepository and
+// assessUploadedProjectRepository catches below - each already persists its
+// own failed RepositoryAssessmentResult internally, so this only needs to
+// keep the in-flight checklist-building code from crashing on a rejection
+// that somehow escapes that persistence step.
+function buildFailedRepositoryAssessmentFallback(error, hint) {
+  return {
     _id: undefined,
     verificationStatus: "failed",
     accuracyScore: 0,
@@ -955,12 +933,115 @@ export async function previewRepositoryTaskReview(payload, user) {
       },
     ],
     competencyScores: {},
-    recommendations: [
-      "Check E2B_API_KEY, GitHub repository access, dependency setup, and instructor test configuration, then run repository review again.",
-    ],
+    recommendations: [hint],
     assessorValidationRequired: false,
     errorMessage: error.message,
-  }));
+  };
+}
+
+export async function previewRepositoryTaskReview(payload, user) {
+  const competency = await Competency.findById(payload.competency);
+
+  if (!competency || !competency.isActive) {
+    throw new AppError("Active competency was not found", 404);
+  }
+
+  const selectedPracticalTask =
+    competency.practicalTasks.find(
+      (task) => String(task._id) === String(payload.practicalTaskId),
+    ) || competency.practicalTasks[0];
+
+  if (!selectedPracticalTask) {
+    throw new AppError("Practical task was not found for this competency", 404);
+  }
+
+  const hasGitHubUrl = Boolean(payload.githubRepositoryUrl);
+  const hasUploadedZip = Boolean(payload.uploadedProjectZip);
+
+  if (hasGitHubUrl === hasUploadedZip) {
+    throw new AppError(
+      "Provide exactly one evidence source: a GitHub repository URL or an uploaded project zip",
+      400,
+    );
+  }
+
+  const adminChecklistRubric = await loadAdminChecklistRubric(competency, selectedPracticalTask);
+
+  let staticReview;
+  let repositoryAssessment;
+  let uploadedLocalPath = "";
+
+  try {
+    if (hasUploadedZip) {
+      const extracted = await extractUploadedProjectZip(payload.uploadedProjectZip);
+      uploadedLocalPath = extracted.localPath;
+
+      // Static review and the executable E2B assessment are independent (neither uses
+      // the other's output) and each already falls back gracefully on its own failure,
+      // so they run in parallel instead of back-to-back - sequentially, each can take
+      // up to two to five minutes on its own, which was pushing the combined request
+      // past what the frontend/host would tolerate before treating it as a dropped
+      // connection. Both share the same extracted localPath, cleaned up once below.
+      [staticReview, repositoryAssessment] = await Promise.all([
+        reviewUploadedProjectForTask({
+          localPath: extracted.localPath,
+          meta: extracted.meta,
+          competency,
+          practicalTask: selectedPracticalTask,
+        }).catch((error) =>
+          buildStaticRepositoryReviewFallback({
+            sourceLabel: extracted.meta?.fileName,
+            competency,
+            selectedPracticalTask,
+            error,
+          }),
+        ),
+        assessUploadedProjectRepository({
+          localPath: extracted.localPath,
+          meta: extracted.meta,
+          competencyId: competency._id,
+          practicalTaskId: selectedPracticalTask._id,
+          user,
+        }).catch((error) =>
+          buildFailedRepositoryAssessmentFallback(
+            error,
+            "Check E2B_API_KEY, the uploaded project's dependency setup, and instructor test configuration, then run the review again.",
+          ),
+        ),
+      ]);
+    } else {
+      [staticReview, repositoryAssessment] = await Promise.all([
+        reviewGitHubRepositoryForTask({
+          repositoryUrl: payload.githubRepositoryUrl,
+          competency,
+          practicalTask: selectedPracticalTask,
+        }).catch((error) =>
+          buildStaticRepositoryReviewFallback({
+            sourceLabel: payload.githubRepositoryUrl,
+            competency,
+            selectedPracticalTask,
+            error,
+          }),
+        ),
+        assessGithubRepository({
+          repositoryUrl: payload.githubRepositoryUrl,
+          competencyId: competency._id,
+          practicalTaskId: selectedPracticalTask._id,
+          user,
+        }).catch((error) =>
+          buildFailedRepositoryAssessmentFallback(
+            error,
+            "Check E2B_API_KEY, GitHub repository access, dependency setup, and instructor test configuration, then run repository review again.",
+          ),
+        ),
+      ]);
+    }
+  } finally {
+    if (uploadedLocalPath) {
+      await cleanupTempFolder(uploadedLocalPath);
+    }
+  }
+
   const checklist = buildAdminWeightedChecklist({
     rubric: adminChecklistRubric,
     staticReview,
@@ -972,6 +1053,8 @@ export async function previewRepositoryTaskReview(payload, user) {
   return {
     repositorySummary: {
       ...staticReview.repositorySummary,
+      submissionSource: hasUploadedZip ? "zip_upload" : "github",
+      uploadedFileName: hasUploadedZip ? payload.uploadedProjectZip?.name : undefined,
       repositoryAssessmentResult: repositoryAssessment,
     },
     taskReview: {
