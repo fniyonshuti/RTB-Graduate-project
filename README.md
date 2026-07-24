@@ -718,6 +718,68 @@ cd my-project
 npm test
 ```
 
+## Testing Results
+
+Screenshot evidence for the three required testing dimensions. All screenshots are stored in [`docs/screenshots/`](docs/screenshots/).
+
+### 1. Different testing strategies
+
+**Automated backend tests** (Node.js built-in test runner, `npm test` in `backend/`):
+
+![Backend automated tests passing](docs/screenshots/backendtest.png)
+
+26/26 tests passing across 7 suites: gap classifier utilities, JWT utilities, GitHub URL parsing, role management rules, scoring utilities, repository assessment scoring, and Gemini recommendation request/response handling.
+
+**Automated frontend tests** (Vitest, `npm test` in `my-project/`):
+
+![Frontend automated tests passing](docs/screenshots/frontendtest.png)
+
+10/10 tests passing across 3 test files (`gapLevels.test.ts`, `AuthProvider.test.tsx`, `common.test.tsx`). The React `act()` message shown in the console is informational only and does not fail the run.
+
+**Manual functional/UI testing** with intentionally invalid input, to confirm client-side validation blocks bad submissions before they reach the API:
+
+![Empty-field validation on sign-in](docs/screenshots/login%20validation.png)
+![Missing-password validation on sign-in](docs/screenshots/validation2.png)
+
+**Manual API-level testing** with a REST client against the running backend, independent of the UI:
+
+![Manual POST /api/auth/login test via REST client](docs/screenshots/performance.png)
+
+**End-to-end manual walkthrough** of the full learner and admin workflows - competency selection, evidence submission, gap results, recommendations, reports, notifications, and both admin dashboards - shown throughout this README and in the demo video linked above.
+
+### 2. Different data values
+
+The **Take Assessment** page lists competencies spanning multiple categories (Backend Development, Frontend Development, Software Development), each with a different number of GitHub tasks and theory questions:
+
+![Different competencies available for assessment](docs/screenshots/assessment.png)
+
+The **Gap Results** page shows real results across multiple different competencies (`ICT-DBAPI-002`, `ICT-FE-103`, `ICT-WEB-API-01`) with different scores, benchmarks, and skill gap values:
+
+![Gap results with varied competency scores](docs/screenshots/gapresult.png)
+
+The **Reports** page shows multiple generated reports with different overall scores (32.93%, 33.26%, 33.66%, 34.19%, ...), confirming the scoring pipeline produces distinct, data-driven results rather than a fixed output:
+
+![Multiple reports with different overall scores](docs/screenshots/report.png)
+
+Direct live-database inspection during development also confirmed the gap classifier behaving correctly at opposite ends of its range for real records - for example, one graduate scored 80.86% against an 80% benchmark (`No Gap`), while other graduates scored well under benchmark (`High Gap`) on different competencies - matching the classification table in [Scoring and Gap Logic](#scoring-and-gap-logic).
+
+### 3. Performance on different hardware/software
+
+**Cross-device rendering** - the same homepage tested at a mobile viewport (iPhone 12 Pro, 390x844, via Chrome DevTools device emulation) instead of the default desktop viewport:
+
+![Responsive layout on a mobile viewport](docs/screenshots/responsive.png)
+
+**Cross-environment execution** - the backend runs locally on Windows during development and, in production, on Render's Linux containers under Node.js v24.14.1 (visible in the deploy log):
+
+![Backend deployment log on Render (Linux, Node.js v24.14.1)](docs/screenshots/backend-deployment.png)
+
+**Production hosting verification** - the frontend build served from Vercel's platform, and the live production application:
+
+![Frontend production deployment on Vercel](docs/screenshots/frontend-deployment.png)
+![Live production application](docs/screenshots/application-production.png)
+
+**API response latency** - the manual API test above (`POST /api/auth/login`) completed in 351 ms end to end with a `200 OK` response, confirming acceptable latency for a local backend instance.
+
 ## Deployment
 
 ### Backend on Render
@@ -849,3 +911,88 @@ Check:
 - Advanced learning roadmap generation.
 - Mobile application version.
 - Stronger analytics for organizations and administrators.
+
+## Analysis
+
+This analysis compares implementation results against the objectives defined in the project proposal, reviewed with the project supervisor at milestone checkpoints.
+
+**Objectives achieved:**
+
+- Objective, evidence-based skills gap analysis using GitHub repository review instead of self-reported skill claims, implemented via admin-defined checklists, static repository analysis, and optional E2B sandbox execution.
+- RTB-aligned benchmark comparison and skill gap classification (`No Gap` to `High Gap`), verified with automated unit tests (gap classifier utilities, see [Testing Results](#testing-results)) and confirmed against real, varied assessment data.
+- AI-assisted recommendations (Gemini) tied to the graduate's actual weak areas, strengths, and failed checklist requirements, with action items and learning resources.
+- Automatic, learner-owned report generation, now available as a formatted, downloadable PDF (title, executive summary, stat highlights, evidence-backed strengths/areas-to-improve, and a competency results table).
+- Role-based access for learners, organization users, organization admins, admins, and super admins, including an organization-scoped dashboard.
+- Organization-level performance visibility: organization admins can view an aggregated performance table for every user in their organization and export it to Excel or PDF, closing a gap where organizations previously had no consolidated view of their learners' outcomes.
+- Authentication and account security: JWT auth, Google OAuth, email verification, password reset, and role-based route protection.
+- Deployment of both the frontend (Vercel) and backend (Render) to publicly reachable production URLs.
+
+**Objectives partially achieved or not fully evaluated:**
+
+- Fully automated, execution-based verification of arbitrary practical tasks depends on E2B sandbox availability and quota; when unavailable, the system falls back to static/heuristic evidence review rather than guaranteed command execution. This is an honest, documented limitation (see [Known Limitations](#known-limitations)) rather than a silent gap.
+- Plagiarism/code-similarity detection was scoped as future work and was not implemented in this iteration - automated review currently checks for evidence of required functionality, not originality.
+- The project was validated with real data generated by the developer plus RTB-aligned competency, checklist, and benchmark seed data, rather than a large-scale trial across many independent institutions; broader multi-institution testing remains future work.
+
+Overall, the implemented system meets the core proposal objective of moving skills-gap assessment away from self-reported claims toward evidence-based, benchmark-driven scoring, while staying transparent about where automated evidence still benefits from human assessor validation.
+
+## Discussion
+
+### Importance of the major milestones
+
+- **Authentication and account foundation** - without reliable email verification, Google OAuth, and role separation, none of the downstream competency data could be trusted as belonging to the right person or organization. This milestone was the prerequisite for every other feature.
+- **Competency, checklist, and benchmark data model** - letting administrators define RTB-aligned competencies, practical tasks, theory questions, and weighted checklists is what makes scoring objective and adjustable, instead of a single fixed rubric hard-coded into the application.
+- **GitHub evidence review and automated scoring** - the core value proposition of Competra: turning a GitHub repository into a scored, evidence-backed result instead of a self-declared skill, directly addressing the proposal's goal of more objective ICT TVET competency assessment.
+- **Gap calculation, classification, and recommendations** - converts a raw score into something actionable for the graduate (a gap level and a Gemini-generated improvement plan), turning an assessment tool into a learning-support tool.
+- **Reports, notifications, and organization-level exports** - closes the loop for every audience: the graduate gets a personal, downloadable record of their result, and the organization administrator gets a consolidated, exportable view across all of their learners.
+
+### Impact of the implementation and testing results
+
+- The automated test suites (26 backend tests, 10 frontend tests, all passing - see [Testing Results](#testing-results)) give confidence that scoring, gap classification, and authentication logic behave correctly on their own, independent of manual UI testing.
+- Manual, end-to-end walkthroughs and real generated data (multiple graduates, multiple competencies, multiple gap levels and report scores) show the pipeline behaves consistently from submission through to a final downloadable report, not only in isolated unit tests.
+- Fixing a real defect found during this project - a Mongoose schema casting issue that silently prevented report generation for certain graduates - demonstrates the value of verifying against a live database rather than trusting code review alone, and directly shaped how command-evidence data is now normalized before reuse.
+- For **graduates**, the impact is a shift from "I think I know this" to a scored, benchmark-compared, evidence-backed result they can download and share.
+- For **organizations**, the performance export feature turns individual results into an institution-level view, supporting decisions like which competencies need more training focus across a cohort.
+- For **administrators and RTB**, centrally managed competencies, checklists, and benchmarks mean assessment criteria can stay aligned with RTB standards without changing application code.
+- For the **wider TVET community**, the project demonstrates a reusable pattern for objective, technology-assisted competency verification that could inform how practical ICT skills are assessed beyond this single tool.
+
+### Challenges experienced
+
+- Balancing automatic code verification against the reality that repository evidence can be incomplete, private, or dependent on infrastructure (E2B) with its own availability and quota limits.
+- A subtle data-modeling issue where an explicit `null` value was valid when first saved but was not safely reusable when read back and re-saved elsewhere (Mongoose single-nested subdocuments) - this caused report generation to fail silently for real users and required direct database inspection to fully diagnose.
+- Keeping role-based access (learner, organization user, organization admin, admin, super admin) consistent across both the API layer and the UI navigation as new features, such as the organization performance export, were added.
+- UI details that only surface with real data, such as a square default avatar image not being clipped correctly inside a circular frame.
+
+These challenges, and how they were resolved, were discussed with the project supervisor at the relevant milestone checkpoints.
+
+## Recommendations
+
+### To ICT TVET graduates
+
+- Use the platform across multiple competencies, not just one, to build a broader evidence-based profile over time.
+- Treat the downloadable PDF report as a portfolio artifact for job applications or further study, not only as a pass/fail result.
+- Prioritize fixing flagged checklist requirements and weak areas from the recommendation output, since these map directly to what the RTB benchmark expects.
+- Keep GitHub repositories public (or accessible with a token), documented, and runnable, since automatic review is only as accurate as the evidence it can actually observe.
+
+### To TVET institutions
+
+- Use the organization admin dashboard and the Excel/PDF performance export to identify competencies where an entire cohort is under-benchmark, rather than reviewing learners one at a time.
+- Pair automated results with periodic human assessor spot-checks, especially for high-stakes decisions such as certification or placement.
+- Standardize on the RTB-aligned competencies, checklists, and benchmarks configured by an administrator so results stay comparable across intakes and cohorts.
+
+### To RTB and education stakeholders
+
+- Consider formally aligning the platform's competency, checklist, and benchmark definitions with official RTB curricula, so results generated here can support, not replace, existing certification processes.
+- Treat automated scores as a decision-support signal alongside human validation, in line with the limitation already documented in this README: automatic analysis can verify observable evidence, but cannot perfectly prove every implementation style.
+- Monitor third-party service usage (GitHub, Gemini, E2B, Brevo, MongoDB Atlas, Render, Vercel) if the platform is adopted more broadly, since current scoring and delivery features depend on their availability and quota.
+
+### Responsible application of Competra
+
+- Do not use automated scores as the sole basis for a final certification decision without human assessor review, particularly while plagiarism/code-similarity detection is not yet implemented.
+- Safeguard learner data: GitHub URLs, repository content, and personal profile data should be handled under a clear data-privacy policy before wider institutional rollout.
+- Be transparent with learners about which parts of their result are automatically scored versus reviewed by a human, so expectations about the assessment process stay clear.
+
+### Future work
+
+- Pilot the platform with a real cohort of graduates and RTB assessors to gather structured feedback before wider institutional adoption.
+- Establish a formal data governance and privacy policy for repository and learner data before scaling beyond the current deployment.
+- Continue the technical roadmap already identified in [Future Improvements](#future-improvements): direct RTB competency database integration, broader hidden-test authoring, employer dashboards, plagiarism detection, richer learning roadmaps, a mobile application, and deeper organization analytics.
