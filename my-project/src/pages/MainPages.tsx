@@ -74,6 +74,7 @@ import type {
 import { formatDate, formatPercent, readableStatus } from "../utils/gapLevels";
 import { isLearnerRole, roleLabel } from "../utils/roles";
 import { GITHUB_PLACEHOLDER } from "../constants/github";
+import { downloadReportPdf } from "../utils/reportPdf";
 
 type PageProps = {
   token: string;
@@ -3830,15 +3831,26 @@ export function RecommendationsPage({ token }: { token: string }) {
   );
 }
 
-export function ReportsPage({ token, role }: PageProps) {
+export function ReportsPage({ token }: PageProps) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.reports(token),
     [] as Report[],
   );
-  const [graduateId, setGraduateId] = useState("");
-  const [message, setMessage] = useState("");
-  const [generateError, setGenerateError] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
+  // The backend generates a report automatically as soon as an assessment is
+  // reviewed, but that generation can fail silently (e.g. a past backend
+  // error) with nothing to retry it. If the list loads empty, quietly try
+  // once - if the graduate genuinely has no reviewed assessments yet this
+  // just fails and the empty state stays as-is; if a report should exist,
+  // this self-heals it without needing a visible "generate" control.
+  const autoGenerateAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (isLoading || data.length > 0 || autoGenerateAttemptedRef.current) return;
+    autoGenerateAttemptedRef.current = true;
+    api
+      .generateReport(token)
+      .then(() => refresh())
+      .catch(() => {});
+  }, [isLoading, data.length, token, refresh]);
   const [reportSearch, setReportSearch] = useState("");
   const [reportGapFilter, setReportGapFilter] = useState("all");
   const [reportPage, setReportPage] = useState(1);
@@ -3873,39 +3885,8 @@ export function ReportsPage({ token, role }: PageProps) {
     [filteredReports, reportPage],
   );
 
-  async function handleGenerate() {
-    setMessage("");
-    setGenerateError("");
-    setIsGenerating(true);
-    try {
-      await api.generateReport(
-        token,
-        isLearnerRole(role) ? undefined : graduateId,
-      );
-      setMessage("Report generated successfully.");
-      await refresh();
-    } catch (caughtError) {
-      setGenerateError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Failed to generate report",
-      );
-    } finally {
-      setIsGenerating(false);
-    }
-  }
-
   function downloadReport(report: Report) {
-    const reportHtml = buildReportHtml(report);
-    const blob = new Blob([reportHtml], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${report.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.html`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    downloadReportPdf(report);
   }
 
   if (isLoading) return <LoadingState message="Loading reports..." />;
@@ -3923,39 +3904,12 @@ export function ReportsPage({ token, role }: PageProps) {
     <section className="page-stack">
       <PageHeader
         title="Reports"
-        description="Generate and review report summaries for competency performance."
+        description="Your report generates automatically once an assessment is reviewed - view details or download it below."
         onRefresh={refresh}
       />
       {error && <Alert type="error">{error}</Alert>}
-      {generateError && <Alert type="error">{generateError}</Alert>}
-      {message && <Alert type="success">{message}</Alert>}
-      <div className="report-command-panel">
-        <div>
-          <span className="eyebrow">Report center</span>
-          <h3>Generate and download reviewed assessment reports</h3>
-          <p>
-            Reports summarize reviewed competencies, final scores, gap levels,
-            repository evidence, and approved recommendations.
-          </p>
-        </div>
-        <div className="report-command-panel__actions">
-          {!isLearnerRole(role) && (
-            <TextField
-              label="Assessment user ID"
-              value={graduateId}
-              onChange={(event) => setGraduateId(event.target.value)}
-            />
-          )}
-          <Button
-            disabled={isGenerating || (!isLearnerRole(role) && !graduateId.trim())}
-            onClick={() => void handleGenerate()}
-          >
-            {isGenerating ? "Generating..." : "Generate Report"}
-          </Button>
-        </div>
-      </div>
       {data.length === 0 ? (
-        <EmptyState message="No reports generated yet." />
+        <EmptyState message="No reports yet. A report is generated automatically as soon as one of your assessments is reviewed." />
       ) : (
         <>
           <div className="stat-grid">
@@ -4131,197 +4085,6 @@ export function ReportsPage({ token, role }: PageProps) {
       )}
     </section>
   );
-}
-
-function escapeHtml(value: string | number | undefined) {
-  return String(value ?? "N/A")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function buildReportHtml(report: Report) {
-  const assessments = report.assessments || [];
-  const recommendations = report.recommendations || [];
-  const recommendationFor = (assessment: Assessment) =>
-    recommendations.find(
-      (item) => item.competency._id === assessment.competency._id,
-    );
-  const repositoryDetails = assessments
-    .map((assessment) => {
-      const summary = assessment.evidence.repositorySummary;
-      const sampledFiles =
-        summary?.sampledSourceFiles
-          ?.map(
-            (file) =>
-              `<li>${escapeHtml(file.path)} (${escapeHtml(file.language)}): ${escapeHtml(file.excerpt || "")}</li>`,
-          )
-          .join("") || "<li>No sampled source file excerpts available.</li>";
-      const scoreBreakdown = `
-        <li>GitHub practical task: ${escapeHtml(formatPercent(assessment.scores.practicalTaskScore))}</li>
-        <li>Theory / quiz: ${escapeHtml(formatPercent(assessment.scores.quizScore))}</li>
-      `;
-      const riskFlags =
-        summary?.riskFlags
-          ?.map((flag) => `<li>${escapeHtml(flag)}</li>`)
-          .join("") || "<li>No repository risk flags recorded.</li>";
-      const verification = assessment.evidenceVerification
-        ? [
-            assessment.evidenceVerification.githubReviewed
-              ? "GitHub project reviewed"
-              : "",
-            assessment.evidenceVerification.practicalEvidenceReviewed
-              ? "Practical evidence reviewed"
-              : "",
-            assessment.evidenceVerification.theoryReviewed
-              ? "Theory answers reviewed"
-              : "",
-          ]
-            .filter(Boolean)
-            .join(", ") || "No verification checks recorded."
-        : "No verification checks recorded.";
-
-      return `<section class="summary">
-        <h3>${escapeHtml(assessment.competency.code)} - ${escapeHtml(assessment.competency.title)}</h3>
-        <p>${escapeHtml(summary?.summaryText || "No repository summary available.")}</p>
-        <p><strong>Repository quality:</strong> ${escapeHtml(formatPercent(summary?.codeQualityScore || 0))}</p>
-        <p><strong>Evidence completeness:</strong> ${escapeHtml(formatPercent(summary?.evidenceCompletenessScore || 0))}</p>
-        <p><strong>Evidence verification:</strong> ${escapeHtml(verification)}</p>
-        <p><strong>Authenticity notes:</strong> ${escapeHtml(assessment.evidenceVerification?.authenticityNotes || "N/A")}</p>
-        <p><strong>README:</strong> ${escapeHtml(summary?.readmeExcerpt || "No README excerpt available.")}</p>
-        <h4>Repository risk flags</h4>
-        <ul>${riskFlags}</ul>
-        <h4>Assessment score breakdown</h4>
-        <ul>${scoreBreakdown}</ul>
-        <h4>Sampled source files</h4>
-        <ul>${sampledFiles}</ul>
-      </section>`;
-    })
-    .join("");
-
-  const rubricRows = (report.rubricBreakdown || [])
-    .map(
-      (item) => `
-        <tr>
-          <td>${escapeHtml(item.label || "")}</td>
-          <td>${escapeHtml(String(item.score ?? ""))}</td>
-          <td>${escapeHtml(item.confidence === "estimated" ? "Estimated" : "Verified")}</td>
-          <td>
-            ${escapeHtml(item.explanation || "")}
-            ${
-              item.commandEvidence
-                ? `<br /><code>$ ${escapeHtml(item.commandEvidence.command)}</code><pre>${escapeHtml(item.commandEvidence.output || "")}</pre>`
-                : ""
-            }
-          </td>
-        </tr>
-      `,
-    )
-    .join("");
-
-  const assessmentRows = assessments
-    .map((assessment) => {
-      const recommendation = recommendationFor(assessment);
-      return `
-        <tr>
-          <td>${escapeHtml(assessment.competency.code)}</td>
-          <td>${escapeHtml(assessment.competency.title)}</td>
-          <td>${escapeHtml(formatPercent(assessment.scores.finalScore))}</td>
-          <td>${escapeHtml(formatPercent(assessment.benchmarkScore))}</td>
-          <td>${escapeHtml(formatPercent(assessment.skillGap))}</td>
-          <td>${escapeHtml(assessment.gapLevel)}</td>
-          <td>${escapeHtml(assessment.assessorComment || "")}</td>
-          <td>${escapeHtml(recommendation?.message || "")}</td>
-        </tr>
-      `;
-    })
-    .join("");
-
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${escapeHtml(report.title)}</title>
-    <style>
-      body { font-family: Arial, sans-serif; color: #17202a; margin: 32px; line-height: 1.5; }
-      h1 { margin-bottom: 4px; }
-      .meta { color: #617285; margin-bottom: 24px; }
-      .summary { border: 1px solid #dbe2ea; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
-      table { border-collapse: collapse; width: 100%; margin-top: 16px; }
-      th, td { border: 1px solid #dbe2ea; padding: 10px; text-align: left; vertical-align: top; }
-      th { background: #f1f5f9; }
-      .pill { display: inline-block; background: #e8f5f2; border-radius: 999px; padding: 4px 10px; margin-right: 6px; }
-      pre { background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; font-size: 12px; }
-      code { font-family: "Courier New", monospace; }
-    </style>
-  </head>
-  <body>
-    <h1>${escapeHtml(report.title)}</h1>
-    <div class="meta">
-      Graduate: ${escapeHtml(report.graduate?.name)} |
-      Institution: ${escapeHtml(report.graduate?.institution)} |
-      Generated: ${escapeHtml(formatDate(report.createdAt))}
-    </div>
-    <div class="summary">
-      <strong>Overall Score:</strong> ${escapeHtml(formatPercent(report.overallScore))}<br />
-      <strong>Overall Gap Level:</strong> ${escapeHtml(report.overallGapLevel)}<br />
-      <strong>Summary:</strong> ${escapeHtml(report.summary)}
-    </div>
-    <p>
-      <strong>Strengths:</strong>
-      ${(report.strengths || []).map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join("") || "N/A"}
-    </p>
-    <p>
-      <strong>Weaknesses:</strong>
-      ${(report.weaknesses || []).map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join("") || "N/A"}
-    </p>
-    <h2>Repository Summaries</h2>
-    <ul>
-      ${
-        assessments
-          .map(
-            (assessment) =>
-              `<li><strong>${escapeHtml(assessment.competency.code)} - ${escapeHtml(assessment.competency.title)}</strong>: ${escapeHtml(
-                assessment.evidence.repositorySummary?.summaryText ||
-                  "No repository summary available.",
-              )}</li>`,
-          )
-          .join("") || "<li>No repository summaries available.</li>"
-      }
-    </ul>
-    ${repositoryDetails}
-    <h2>Competency Results</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Code</th>
-          <th>Competency</th>
-          <th>Graduate Score</th>
-          <th>RTB Benchmark</th>
-          <th>Skill Gap</th>
-          <th>Gap Level</th>
-          <th>Assessor Comment</th>
-          <th>Recommendation</th>
-        </tr>
-      </thead>
-      <tbody>${assessmentRows || '<tr><td colspan="8">No assessment results found.</td></tr>'}</tbody>
-    </table>
-    <h2>Rubric Breakdown (Defense Evidence)</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Requirement</th>
-          <th>Score</th>
-          <th>Confidence</th>
-          <th>Evidence</th>
-        </tr>
-      </thead>
-      <tbody>${rubricRows || '<tr><td colspan="4">No rubric breakdown available.</td></tr>'}</tbody>
-    </table>
-  </body>
-</html>`;
 }
 
 export function NotificationsPage({ token, role }: PageProps) {
