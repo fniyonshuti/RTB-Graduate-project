@@ -11,7 +11,7 @@ The project was built as a practical skills assessment system. It does not depen
 | Frontend | https://rtb-graduate-project.vercel.app/ |
 | Backend API | https://rtb-graduate-project.onrender.com/api |
 | API health check | https://rtb-graduate-project.onrender.com/api/health |
-| Demo / live evidence document | https://docs.google.com/document/d/1c0gMfJDdh6FZgHur0QYa_gu9NMmWGgFYGAZr0C8HBaY/edit?tab=t.0 |
+| Demo video | https://docs.google.com/document/d/1c0gMfJDdh6FZgHur0QYa_gu9NMmWGgFYGAZr0C8HBaY/edit?tab=t.0 |
 
 ## Technology Stack
 

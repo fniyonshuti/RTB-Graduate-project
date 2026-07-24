@@ -134,6 +134,34 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+const fallbackCompetency: Competency = {
+  _id: '',
+  title: 'Deleted competency',
+  code: 'N/A',
+  category: 'unknown',
+}
+
+const fallbackGraduate: User = {
+  id: '',
+  name: 'Unknown user',
+  email: '',
+  role: 'normal_user',
+}
+
+// The backend can return an assessment whose referenced competency or
+// graduate was deleted after the assessment was created; populate() then
+// resolves that reference to null even though the API type promises a
+// Competency/User. Normalize once here so every consumer can rely on the
+// declared shape instead of null-checking at each render site.
+function normalizeAssessment(assessment: Assessment): Assessment {
+  return {
+    ...assessment,
+    competency: (assessment.competency as Competency | null | undefined) ?? fallbackCompetency,
+    graduate: (assessment.graduate as User | null | undefined) ?? fallbackGraduate,
+    scores: assessment.scores ?? {},
+  }
+}
+
 async function request<T>(path: string, options: RequestOptions = {}) {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -372,10 +400,11 @@ export const api = {
   deleteProfile: (token: string) =>
     request<GraduateProfile>('/graduates/me', { method: 'DELETE', token }),
 
-  assessments: (token: string) => request<Assessment[]>('/assessments', { token }),
+  assessments: (token: string) =>
+    request<Assessment[]>('/assessments', { token }).then((list) => list.map(normalizeAssessment)),
 
   assessment: (token: string, id: string) =>
-    request<Assessment>(`/assessments/${id}`, { token }),
+    request<Assessment>(`/assessments/${id}`, { token }).then(normalizeAssessment),
 
   submitAssessment: (
     token: string,
@@ -404,13 +433,13 @@ export const api = {
       }[]
       repositoryTaskReview?: RepositoryTaskReview
     },
-  ) => request<Assessment>('/assessments', { method: 'POST', token, body }),
+  ) => request<Assessment>('/assessments', { method: 'POST', token, body }).then(normalizeAssessment),
 
   updateAssessment: (token: string, id: string, body: Partial<Assessment>) =>
-    request<Assessment>(`/assessments/${id}`, { method: 'PUT', token, body }),
+    request<Assessment>(`/assessments/${id}`, { method: 'PUT', token, body }).then(normalizeAssessment),
 
   deleteAssessment: (token: string, id: string) =>
-    request<Assessment>(`/assessments/${id}`, { method: 'DELETE', token }),
+    request<Assessment>(`/assessments/${id}`, { method: 'DELETE', token }).then(normalizeAssessment),
 
   reviewRepositoryTask: (
     token: string,
@@ -546,7 +575,8 @@ export const api = {
     body,
   }),
 
-  results: (token: string) => request<Assessment[]>('/assessments/results/me', { token }),
+  results: (token: string) =>
+    request<Assessment[]>('/assessments/results/me', { token }).then((list) => list.map(normalizeAssessment)),
 
   recommendations: (token: string) =>
     request<Recommendation[]>('/recommendations', { token }),
