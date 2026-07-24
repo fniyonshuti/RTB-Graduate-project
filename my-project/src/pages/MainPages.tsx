@@ -10,6 +10,8 @@ import {
 import {
   BookOpenCheck,
   CheckCircle2,
+  Download,
+  FileSpreadsheet,
   FileText,
   Mail,
   MapPin,
@@ -54,6 +56,7 @@ import type {
   Assessment,
   Benchmark,
   Competency,
+  GapLevel,
   PracticalTask,
   PracticalTaskChecklistItem,
   TheoryQuestion,
@@ -61,6 +64,7 @@ import type {
   GraduateProfile,
   NotificationItem,
   Organization,
+  OrganizationUserPerformance,
   Recommendation,
   LearningResource,
   LegalPolicy,
@@ -75,6 +79,10 @@ import { formatDate, formatPercent, readableStatus } from "../utils/gapLevels";
 import { isLearnerRole, roleLabel } from "../utils/roles";
 import { GITHUB_PLACEHOLDER } from "../constants/github";
 import { downloadReportPdf } from "../utils/reportPdf";
+import {
+  downloadOrganizationPerformanceExcel,
+  downloadOrganizationPerformancePdf,
+} from "../utils/organizationPerformanceExport";
 
 type PageProps = {
   token: string;
@@ -695,10 +703,105 @@ function assessmentStatusChart(data: DashboardData, assessments: Assessment[]) {
   return Object.entries(totals).map(([name, value]) => ({ name, value }));
 }
 
+const GAP_LEVEL_SEVERITY: Record<GapLevel, number> = {
+  "No Gap": 0,
+  "Very Low Gap": 1,
+  "Low Gap": 2,
+  "Moderate Gap": 3,
+  "High Gap": 4,
+  "Not Reviewed": -1,
+};
+
+function buildOrganizationPerformanceRows(
+  users: User[],
+  assessments: Assessment[],
+): OrganizationUserPerformance[] {
+  const byGraduate = new Map<string, { user: User; assessments: Assessment[] }>();
+
+  users.forEach((user) => {
+    const id = user.id || user._id || "";
+    if (id) byGraduate.set(id, { user, assessments: [] });
+  });
+
+  assessments.forEach((assessment) => {
+    const graduate = assessment.graduate;
+    const id = graduate?.id || graduate?._id || "";
+    if (!id) return;
+    const existing = byGraduate.get(id);
+    if (existing) {
+      existing.assessments.push(assessment);
+    } else {
+      byGraduate.set(id, { user: graduate, assessments: [assessment] });
+    }
+  });
+
+  return Array.from(byGraduate.values()).map(({ user, assessments: userAssessments }) => {
+    const reviewed = userAssessments.filter((assessment) => assessment.status === "reviewed");
+    const scores = reviewed
+      .map((assessment) => Number(assessment.scores?.finalScore))
+      .filter((value) => Number.isFinite(value));
+    const averageScore =
+      scores.length > 0
+        ? scores.reduce((sum, value) => sum + value, 0) / scores.length
+        : undefined;
+    const gapLevel = reviewed.reduce<GapLevel>((worst, assessment) => {
+      const level = assessment.gapLevel || "Not Reviewed";
+      return GAP_LEVEL_SEVERITY[level] > GAP_LEVEL_SEVERITY[worst] ? level : worst;
+    }, "Not Reviewed");
+    const activityDates = userAssessments
+      .map((assessment) => assessment.reviewedAt || assessment.createdAt)
+      .filter((value): value is string => Boolean(value));
+    const lastActivity =
+      activityDates.length > 0
+        ? activityDates.reduce((latest, date) => (date > latest ? date : latest))
+        : undefined;
+
+    return {
+      id: user.id || user._id || "",
+      name: user.name,
+      email: user.email,
+      assessmentsCount: userAssessments.length,
+      reviewedCount: reviewed.length,
+      averageScore,
+      gapLevel,
+      lastActivity,
+    };
+  });
+}
+
 export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
   const { data, isLoading, error, refresh } = useAsyncData(
     () => api.dashboard(token),
     {} as DashboardData,
+  );
+  const { data: orgAssessments } = useAsyncData(
+    () => (role === "org_admin" ? api.assessments(token) : Promise.resolve([] as Assessment[])),
+    [] as Assessment[],
+  );
+  const {
+    data: orgUsersList,
+    isLoading: isLoadingOrgUsers,
+    error: orgUsersError,
+  } = useAsyncData(
+    () => (role === "org_admin" ? api.users(token) : Promise.resolve([] as User[])),
+    [] as User[],
+  );
+  const organizationPerformanceRows = useMemo(
+    () => buildOrganizationPerformanceRows(orgUsersList, orgAssessments),
+    [orgUsersList, orgAssessments],
+  );
+  const [performanceSearch, setPerformanceSearch] = useState("");
+  const [performancePage, setPerformancePage] = useState(1);
+  const filteredPerformanceRows = useMemo(
+    () =>
+      organizationPerformanceRows.filter((row) =>
+        matchesSearchTerm(performanceSearch, row.name, row.email, row.gapLevel),
+      ),
+    [organizationPerformanceRows, performanceSearch],
+  );
+  const paginatedPerformanceRows = useMemo(
+    () => paginateItems(filteredPerformanceRows, performancePage),
+    [filteredPerformanceRows, performancePage],
   );
 
   if (isLoading) return <LoadingState message="Loading dashboard..." />;
@@ -877,6 +980,109 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
           <span>Gap recommendation</span>
         </div>
       </Card>
+
+      {isOrganizationDashboard && (
+        <Card
+          title="Organization User Performance"
+          icon={<Gauge size={20} />}
+          actions={
+            organizationPerformanceRows.length > 0 ? (
+              <div className="button-row">
+                <Button
+                  variant="secondary"
+                  icon={<FileSpreadsheet size={16} />}
+                  onClick={() =>
+                    downloadOrganizationPerformanceExcel(
+                      filteredPerformanceRows,
+                      orgUsersList[0] ? organizationName(orgUsersList[0]) : undefined,
+                    )
+                  }
+                >
+                  Export to Excel
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={<Download size={16} />}
+                  onClick={() =>
+                    downloadOrganizationPerformancePdf(
+                      filteredPerformanceRows,
+                      orgUsersList[0] ? organizationName(orgUsersList[0]) : undefined,
+                    )
+                  }
+                >
+                  Download PDF
+                </Button>
+              </div>
+            ) : undefined
+          }
+        >
+          {orgUsersError && <Alert type="error">{orgUsersError}</Alert>}
+          {isLoadingOrgUsers ? (
+            <LoadingState message="Loading organization user performance..." />
+          ) : organizationPerformanceRows.length === 0 ? (
+            <EmptyState message="No organization users found yet." />
+          ) : (
+            <>
+              <ListToolbar
+                search={performanceSearch}
+                onSearchChange={(value) => {
+                  setPerformanceSearch(value);
+                  setPerformancePage(1);
+                }}
+                searchPlaceholder="Search name, email, gap level..."
+                totalCount={organizationPerformanceRows.length}
+                filteredCount={filteredPerformanceRows.length}
+              />
+              {filteredPerformanceRows.length === 0 ? (
+                <EmptyState message="No organization users match your search." />
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Assessments</th>
+                        <th>Reviewed</th>
+                        <th>Average Score</th>
+                        <th>Gap Level</th>
+                        <th>Last Activity</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedPerformanceRows.items.map((row) => (
+                        <tr key={row.id}>
+                          <td>{row.name}</td>
+                          <td>{row.email}</td>
+                          <td>{row.assessmentsCount}</td>
+                          <td>{row.reviewedCount}</td>
+                          <td>
+                            {row.averageScore !== undefined
+                              ? formatPercent(row.averageScore)
+                              : "N/A"}
+                          </td>
+                          <td>
+                            <GapBadge level={row.gapLevel} />
+                          </td>
+                          <td>{row.lastActivity ? formatDate(row.lastActivity) : "N/A"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <PaginationControls
+                currentPage={paginatedPerformanceRows.currentPage}
+                totalPages={paginatedPerformanceRows.totalPages}
+                totalItems={filteredPerformanceRows.length}
+                startIndex={paginatedPerformanceRows.startIndex}
+                endIndex={paginatedPerformanceRows.endIndex}
+                onPageChange={setPerformancePage}
+              />
+            </>
+          )}
+        </Card>
+      )}
     </section>
   );
 }

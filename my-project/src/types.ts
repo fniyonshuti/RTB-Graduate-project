@@ -467,6 +467,17 @@ export type Report = {
   createdAt?: string
 }
 
+export type OrganizationUserPerformance = {
+  id: string
+  name: string
+  email: string
+  assessmentsCount: number
+  reviewedCount: number
+  averageScore?: number
+  gapLevel: GapLevel
+  lastActivity?: string
+}
+
 export type NotificationItem = {
   _id: string
   recipient?: User
