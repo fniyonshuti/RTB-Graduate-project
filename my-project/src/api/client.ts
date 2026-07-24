@@ -594,12 +594,13 @@ export const api = {
 
   report: (token: string, id: string) => request<Report>(`/reports/${id}`, { token }),
 
-  generateReport: (token: string, graduateId?: string) =>
-    request<Report>('/reports', {
-      method: 'POST',
-      token,
-      body: graduateId ? { graduateId } : {},
-    }),
+  // No UI triggers this directly - the backend already generates a report as
+  // soon as an assessment is reviewed. ReportsPage calls this quietly as a
+  // one-time self-heal if that automatic generation ever failed (e.g. a
+  // past backend error), so the graduate isn't stuck with a permanently
+  // empty page and no way to retry.
+  generateReport: (token: string) =>
+    request<Report>('/reports', { method: 'POST', token, body: {} }),
 
   updateReport: (token: string, id: string, body: Partial<Report>) =>
     request<Report>(`/reports/${id}`, { method: 'PUT', token, body }),
