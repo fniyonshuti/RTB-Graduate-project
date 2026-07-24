@@ -3837,6 +3837,8 @@ export function ReportsPage({ token, role }: PageProps) {
   );
   const [graduateId, setGraduateId] = useState("");
   const [message, setMessage] = useState("");
+  const [generateError, setGenerateError] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
   const [reportSearch, setReportSearch] = useState("");
   const [reportGapFilter, setReportGapFilter] = useState("all");
   const [reportPage, setReportPage] = useState(1);
@@ -3873,12 +3875,24 @@ export function ReportsPage({ token, role }: PageProps) {
 
   async function handleGenerate() {
     setMessage("");
-    await api.generateReport(
-      token,
-      isLearnerRole(role) ? undefined : graduateId,
-    );
-    setMessage("Report generated successfully.");
-    await refresh();
+    setGenerateError("");
+    setIsGenerating(true);
+    try {
+      await api.generateReport(
+        token,
+        isLearnerRole(role) ? undefined : graduateId,
+      );
+      setMessage("Report generated successfully.");
+      await refresh();
+    } catch (caughtError) {
+      setGenerateError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Failed to generate report",
+      );
+    } finally {
+      setIsGenerating(false);
+    }
   }
 
   function downloadReport(report: Report) {
@@ -3913,6 +3927,7 @@ export function ReportsPage({ token, role }: PageProps) {
         onRefresh={refresh}
       />
       {error && <Alert type="error">{error}</Alert>}
+      {generateError && <Alert type="error">{generateError}</Alert>}
       {message && <Alert type="success">{message}</Alert>}
       <div className="report-command-panel">
         <div>
@@ -3931,7 +3946,12 @@ export function ReportsPage({ token, role }: PageProps) {
               onChange={(event) => setGraduateId(event.target.value)}
             />
           )}
-          <Button onClick={handleGenerate}>Generate Report</Button>
+          <Button
+            disabled={isGenerating || (!isLearnerRole(role) && !graduateId.trim())}
+            onClick={() => void handleGenerate()}
+          >
+            {isGenerating ? "Generating..." : "Generate Report"}
+          </Button>
         </div>
       </div>
       {data.length === 0 ? (
