@@ -791,7 +791,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={roleDistributionData}
               dataKey="value"
               nameKey="name"
-              colors={["#0077B6", "#10b981", "#1f2937", "#7c3aed", "#34d399", "#f59e0b", "#6ee7b7"]}
+              colors={["#0077B6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7"]}
             />
           )}
         </Card>
@@ -804,7 +804,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={gapChartData}
               dataKey="value"
               nameKey="name"
-              colors={["#10b981", "#34d399", "#0077B6", "#0077B6", "#1f2937", "#64748b"]}
+              colors={["#0077B6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]}
             />
           )}
         </Card>
@@ -861,7 +861,7 @@ export function DashboardPage({ token, role, onNavigate }: DashboardPageProps) {
               data={benchmarkCoverageData}
               dataKey="count"
               nameKey="name"
-              colors={["#10b981", "#1f2937"]}
+              colors={["#0077B6", "#eb6834"]}
             />
           )}
         </Card>
@@ -1005,7 +1005,7 @@ function GraduateDashboard({
               data={statusChartData}
               dataKey="value"
               nameKey="name"
-              colors={["#0077B6", "#f59e0b", "#10b981", "#64748b"]}
+              colors={["#0077B6", "#eb6834", "#1baf7a", "#eda100"]}
             />
           )}
         </Card>
@@ -1428,7 +1428,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const [assessmentCompetencySearch, setAssessmentCompetencySearch] = useState("");
   const [assessmentCategoryFilter, setAssessmentCategoryFilter] = useState("all");
   const [practicalTaskId, setPracticalTaskId] = useState("");
-  const [practicalTask, setPracticalTask] = useState("");
   const [evidenceSourceType, setEvidenceSourceType] = useState<"github" | "zip">("github");
   const [githubRepositoryUrl, setGithubRepositoryUrl] = useState("");
   const [uploadedProjectZip, setUploadedProjectZip] = useState<{
@@ -1524,13 +1523,14 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   const requiredTheoryAnswered =
     theoryQuestions.length === 0 ||
     answeredTheoryCount === theoryQuestions.length;
-  const evidenceCount = [
-    activeEvidenceSourceKey,
-    practicalTask,
-    answeredTheoryCount > 0 ? String(answeredTheoryCount) : "",
-  ].filter((value) => value.trim().length > 0).length;
   const canContinueToEvidence = Boolean(competency);
   const practicalEvidenceReady = hasEvidenceSource && Boolean(activeRepositoryTaskReview);
+  const evidenceChecklist = [
+    hasEvidenceSource,
+    Boolean(activeRepositoryTaskReview),
+    requiredTheoryAnswered,
+  ];
+  const evidenceCount = evidenceChecklist.filter(Boolean).length;
   const canReview = practicalEvidenceReady && requiredTheoryAnswered;
   const canSubmit =
     Boolean(competency) && practicalEvidenceReady && requiredTheoryAnswered;
@@ -1600,7 +1600,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
         competency,
         practicalSubmissionMode: evidenceSourceType === "zip" ? "file_upload" : "mixed",
         practicalTaskId: selectedTask?._id,
-        practicalTask,
         githubRepositoryUrl: evidenceSourceType === "github" ? githubRepositoryUrl : undefined,
         uploadedProjectZip: evidenceSourceType === "zip" ? uploadedProjectZip || undefined : undefined,
         repositoryTaskReview: activeRepositoryTaskReview || undefined,
@@ -1612,7 +1611,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
       setMessage(
         "Assessment completed. Automatic scores, gap results, recommendations, and report are ready.",
       );
-      setPracticalTask("");
       setGithubRepositoryUrl("");
       setUploadedProjectZip(null);
       setEvidenceSourceType("github");
@@ -1635,7 +1633,6 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
   }
 
   function resetAssessmentEvidence() {
-    setPracticalTask("");
     setGithubRepositoryUrl("");
     setUploadedProjectZip(null);
     setEvidenceSourceType("github");
@@ -2196,9 +2193,9 @@ export function SubmitAssessmentPage({ token }: { token: string }) {
                 <div className="assessment-footer-panel">
                   <div className="evidence-readiness">
                     <strong>
-                      {Math.min(evidenceCount, 4)}/4 evidence sections completed
+                      {evidenceCount}/{evidenceChecklist.length} evidence sections completed
                     </strong>
-                    <ProgressBar value={Math.min(evidenceCount, 4) * 25} />
+                    <ProgressBar value={(evidenceCount / evidenceChecklist.length) * 100} />
                   </div>
                   <div className="button-row assessment-navigation-row">
                     <Button variant="secondary" onClick={() => setCurrentStep(1)}>
