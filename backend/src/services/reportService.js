@@ -37,24 +37,33 @@ export async function generateGraduateReport(graduateId, generatedBy) {
   const summary = summarizeAssessments(assessments);
   const strengths = assessments
     .filter((assessment) => assessment.gapLevel === 'No Gap')
-    .map((assessment) => assessment.competency.title);
+    .map((assessment) => assessment.competency?.title || 'Deleted competency');
   const weaknesses = assessments
     .filter((assessment) =>
       ['Moderate Gap', 'High Gap'].includes(assessment.gapLevel)
     )
-    .map((assessment) => assessment.competency.title);
+    .map((assessment) => assessment.competency?.title || 'Deleted competency');
   const latestAssessment = assessments[0];
   const repositoryTaskReview = latestAssessment?.evidence?.repositorySummary?.taskReview;
   const rubricBreakdown =
-    repositoryTaskReview?.checklist?.map((item) => ({
-      label: item.label,
-      score: item.passed ? item.weight : 0,
-      explanation: item.passed
-        ? item.evidence || 'Requirement passed.'
-        : item.advice || item.evidence || 'Requirement needs improvement.',
-      confidence: item.confidence || 'estimated',
-      commandEvidence: item.commandEvidence || null,
-    })) || [];
+    repositoryTaskReview?.checklist?.map((checklistItem) => {
+      // Subdocuments read back from Mongoose return a truthy wrapper for an
+      // unset/null nested commandEvidence, not plain null/undefined - `.toObject()`
+      // normalizes it to a real null so the `||` fallback below actually works.
+      const item = typeof checklistItem.toObject === 'function'
+        ? checklistItem.toObject()
+        : checklistItem;
+
+      return {
+        label: item.label,
+        score: item.passed ? item.weight : 0,
+        explanation: item.passed
+          ? item.evidence || 'Requirement passed.'
+          : item.advice || item.evidence || 'Requirement needs improvement.',
+        confidence: item.confidence || 'estimated',
+        commandEvidence: item.commandEvidence || undefined,
+      };
+    }) || [];
 
   const report = await Report.create({
     graduate: graduateId,

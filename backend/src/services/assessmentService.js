@@ -691,7 +691,7 @@ function truncateCommandOutput(value = '', maxLength = 800) {
 }
 
 function commandEvidenceFromResult(commandResult) {
-  if (!commandResult) return null;
+  if (!commandResult) return undefined;
 
   return {
     command: commandResult.command || commandResult.name || '',
@@ -713,7 +713,7 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
 
   if (validationType === 'eslint') {
     const eslintResult = repositoryAssessment.eslintResult || {};
-    if (eslintResult.available === false) return { percent: 0, evidence: eslintResult.output || 'ESLint was not available.', commandEvidence: null };
+    if (eslintResult.available === false) return { percent: 0, evidence: eslintResult.output || 'ESLint was not available.', commandEvidence: undefined };
     const percent = eslintResult.success && Number(eslintResult.errors || 0) === 0
       ? 100
       : Math.max(0, 100 - Number(eslintResult.errors || 0) * 25 - Number(eslintResult.warnings || 0) * 5);
@@ -726,7 +726,7 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
 
   if (validationType === 'security_scan') {
     const security = repositoryAssessment.securityScanResult || {};
-    if (security.available === false) return { percent: 0, evidence: security.output || 'Security scan was not available.', commandEvidence: null };
+    if (security.available === false) return { percent: 0, evidence: security.output || 'Security scan was not available.', commandEvidence: undefined };
     const secretCount = (security.secretFindings || []).length;
     const percent = security.success
       ? 100
@@ -743,7 +743,7 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
     return {
       percent,
       evidence: `Repository task keyword match: ${staticReview.taskReview?.taskKeywordMatchRate || 0}%. Static review score: ${staticReview.taskReview?.score || 0}%.`,
-      commandEvidence: null,
+      commandEvidence: undefined,
     };
   }
 
@@ -765,7 +765,7 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
     return {
       percent,
       evidence: 'Best-effort automatic estimate from repository evidence. No human administrator has confirmed this item; treat it as approximate.',
-      commandEvidence: null,
+      commandEvidence: undefined,
     };
   }
 
@@ -793,7 +793,7 @@ function scoreChecklistEvidence({ checklistItem, staticReview, repositoryAssessm
     evidence: `Checklist-code match: ${sourceMatchScore}%. Implementation evidence: ${implementationReview.implementationEvidenceScore || 0}%. Functional coverage: ${implementationReview.functionalCoverageRate || 0}%. Category score: ${competencyScore || 0}%.${
       isSpecificMatch ? ` Matched objective requirement evidence: ${relatedRequirementScore}%.` : ''
     }`,
-    commandEvidence: null,
+    commandEvidence: undefined,
   };
 }
 
@@ -839,7 +839,7 @@ function buildAdminWeightedChecklist({ rubric, staticReview, repositoryAssessmen
       validationType: item.validationType || 'implementation_review',
       category: item.category || 'general',
       confidence: checklistItemConfidence(item.validationType),
-      commandEvidence: commandEvidence || null,
+      commandEvidence: commandEvidence || undefined,
       evidence: item.description ? `${item.description} ${evidence}` : evidence,
       advice:
         percent >= threshold
