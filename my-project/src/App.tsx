@@ -32,19 +32,26 @@ function getLinkedResultId() {
 function AppContent() {
   const { user, token, isAuthenticated, isLoading, logout } = useAuth()
   const [currentView, setCurrentView] = useState<ViewKey>('dashboard')
-  const linkedResultId = getLinkedResultId()
+  // Captured once at mount, not re-read from the URL on every render: this app
+  // switches views via state, not a real router, so window.location.pathname
+  // never changes on in-app navigation. Re-deriving this live would keep
+  // matching the original /results/:id path forever and trap the user there.
+  const [linkedResultId] = useState(getLinkedResultId)
 
   useEffect(() => {
-    const path = window.location.pathname
-    if (isAuthenticated && user && path.startsWith('/results/')) {
+    if (isAuthenticated && user && linkedResultId) {
       setCurrentView('results')
-      return
+      // Clear the deep-link path now that it's been applied, so later
+      // navigation away from Gap Results isn't immediately reverted.
+      window.history.replaceState(null, '', '/')
     }
+  }, [isAuthenticated, user, linkedResultId])
 
+  useEffect(() => {
     if (user && !canAccessView(user.role, currentView)) {
       setCurrentView('dashboard')
     }
-  }, [currentView, isAuthenticated, user])
+  }, [currentView, user])
 
   if (isLoading) {
     return <div className="boot-screen">Loading application...</div>
